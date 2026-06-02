@@ -48,6 +48,7 @@ export default function GuruDashboard() {
 
   const fetchRiwayat = async () => {
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
     const { data } = await supabase
       .from('setoran')
       .select('*, santri:santri_id(nama)')
@@ -66,6 +67,7 @@ export default function GuruDashboard() {
     setErrorMsg('')
 
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
     const isRosib = status === 'rosib'
 
     const { error } = await supabase.from('setoran').insert({
