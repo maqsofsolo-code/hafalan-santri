@@ -5,9 +5,9 @@ import { supabase } from '../lib/supabase'
 export default function WaliDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [waliProfile, setWaliProfile] = useState(null)
-  const [santriList, setSantriList] = useState([])
+  const [santriList, setSantriList] = useState<any[]>([])
   const [selectedSantri, setSelectedSantri] = useState(null)
-  const [riwayatSetoran, setRiwayatSetoran] = useState([])
+  const [riwayatSetoran, setRiwayatSetoran] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

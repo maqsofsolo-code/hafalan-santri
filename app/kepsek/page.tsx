@@ -4,11 +4,11 @@ import { supabase } from '../lib/supabase'
 
 export default function KepsekDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
-  const [santriList, setSantriList] = useState([])
-  const [guruList, setGuruList] = useState([])
-  const [setoranHariIni, setSetoranHariIni] = useState([])
-  const [rankingKonsistensi, setRankingKonsistensi] = useState([])
-  const [rankingHafalan, setRankingHafalan] = useState([])
+  const [santriList, setSantriList] = useState<any[]>([])
+  const [guruList, setGuruList] = useState<any[]>([])
+  const [setoranHariIni, setSetoranHariIni] = useState<any[]>([])
+  const [rankingKonsistensi, setRankingKonsistensi] = useState<any[]>([])
+  const [rankingHafalan, setRankingHafalan] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

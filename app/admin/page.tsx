@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase'
 
 export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
-  const [guruList, setGuruList] = useState([])
-  const [santriList, setSantriList] = useState([])
-  const [waliList, setWaliList] = useState([])
+const [guruList, setGuruList] = useState<any[]>([])
+const [santriList, setSantriList] = useState<any[]>([])
+const [waliList, setWaliList] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [formType, setFormType] = useState('')

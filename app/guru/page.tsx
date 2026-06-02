@@ -4,12 +4,12 @@ import { supabase } from '../lib/supabase'
 
 export default function GuruDashboard() {
   const [activeMenu, setActiveMenu] = useState('input')
-  const [santriList, setSantriList] = useState([])
+  const [santriList, setSantriList] = useState<any[]>([])
   const [guruProfile, setGuruProfile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
-  const [riwayatList, setRiwayatList] = useState([])
+  const [riwayatList, setRiwayatList] = useState<any[]>([])
 
   // Form states
   const [selectedSantri, setSelectedSantri] = useState('')
