@@ -55,7 +55,7 @@ export default function KepsekDashboard() {
       .from('setoran')
       .select('santri_id, tanggal, santri_nama:santri_id(nama)')
 
-    const konsistensiMap = {}
+    const konsistensiMap: Record<string, {nama: string, total: number}> = {}
     ;(allSetoran || []).forEach(s => {
       if (!konsistensiMap[s.santri_id]) {
         konsistensiMap[s.santri_id] = {
