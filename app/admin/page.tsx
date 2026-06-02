@@ -21,6 +21,7 @@ const [waliList, setWaliList] = useState<any[]>([])
 const [formKelas, setFormKelas] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -118,7 +119,21 @@ const [formKelas, setFormKelas] = useState('')
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
-      <div className="w-64 bg-green-800 text-white flex flex-col">
+      {/* Tombol Hamburger untuk HP */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="fixed top-4 left-4 z-40 md:hidden bg-green-800 text-white p-2 rounded-lg shadow-lg"
+      >
+        ☰
+      </button>
+      {/* Overlay gelap ketika sidebar terbuka di HP */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-green-800 text-white flex flex-col transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
         <div className="p-6 border-b border-green-700">
           <div className="text-2xl mb-1">🕌</div>
           <h1 className="font-bold text-lg">Hafalan Santri</h1>
@@ -141,10 +156,12 @@ const [formKelas, setFormKelas] = useState('')
           <button onClick={handleLogout} className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm">
             🚪 Logout
           </button>
+          <button onClick={() => setSidebarOpen(false)} className="w-full mt-2 bg-green-700 hover:bg-green-600 text-white py-2 rounded-lg text-sm md:hidden">
+            ✕ Tutup Menu
+          </button>
         </div>
-      </div>
 
-      <div className="flex-1 p-8">
+      <div className="flex-1 p-4 md:p-8 w-full">
 
         {activeMenu === 'dashboard' && (
           <div>
