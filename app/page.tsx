@@ -43,24 +43,24 @@ export default function LoginPage() {
 
           {/* Logo Pesantren */}
           <div className="flex justify-center mb-4">
-            <div className="bg-white rounded-full p-2 shadow-lg w-24 h-24 flex items-center justify-center">
-              <Image
-                src="/logo.png"
-                alt="Logo Daarus Salaf"
-                width={80}
-                height={80}
-                className="rounded-full object-contain"
-              />
-            </div>
-          </div>
+  <Image
+    src="/logo.png"
+    alt="Logo Daarus Salaf"
+    width={100}
+    height={100}
+    className="object-contain drop-shadow-lg"
+  />
+</div>
 
-          <h1 className="text-white font-bold text-xl leading-tight">
-            Pondok Pesantren
-          </h1>
-          <h2 className="text-white font-bold text-2xl leading-tight">
-            Daarus Salaf
-          </h2>
-          <p className="text-blue-200 text-sm mt-1">Sukoharjo</p>
+<h1 className="text-white font-bold text-2xl leading-tight tracking-wide">
+  PONDOK PESANTREN
+</h1>
+<h2 className="text-white font-bold text-2xl leading-tight tracking-wide">
+  DAARUS SALAF
+</h2>
+<p className="text-blue-200 text-sm mt-1 tracking-widest uppercase">
+  Sukoharjo
+</p>
 
           <div className="mt-3 border-t border-blue-400 pt-3">
             <p className="text-blue-100 text-sm font-medium">
