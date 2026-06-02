@@ -12,7 +12,6 @@ export default function AdminDashboard() {
   const [formType, setFormType] = useState('')
   const [editSantriId, setEditSantriId] = useState<any>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
   const [formNama, setFormNama] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formPassword, setFormPassword] = useState('')
@@ -22,6 +21,8 @@ export default function AdminDashboard() {
   const [formKelas, setFormKelas] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const [importLoading, setImportLoading] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   useEffect(() => { fetchData() }, [])
 
@@ -106,6 +107,27 @@ export default function AdminDashboard() {
     fetchData()
   }
 
+  const handleDownloadTemplate = () => {
+    window.open('/api/download-template', '_blank')
+  }
+
+  const handleImportExcel = async (e: any) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setImportLoading(true)
+    setImportMsg('')
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch('/api/import-excel', {
+      method: 'POST',
+      body: formData
+    })
+    const result = await res.json()
+    setImportMsg(result.message)
+    setImportLoading(false)
+    fetchData()
+  }
+
   const resetForm = () => {
     setFormNama(''); setFormEmail(''); setFormPassword('')
     setFormNoWa(''); setFormGuruId(''); setFormWaliId('')
@@ -186,8 +208,10 @@ export default function AdminDashboard() {
           {/* DASHBOARD */}
           {activeMenu === 'dashboard' && (
             <div>
-              <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-6">Dashboard Admin</h2>
-              <div className="grid grid-cols-3 gap-3 md:gap-6">
+              <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4">Dashboard Admin</h2>
+
+              {/* Kartu Statistik */}
+              <div className="grid grid-cols-3 gap-3 md:gap-6 mb-6">
                 {[
                   { icon: '👨‍🏫', count: guruList.length, label: 'Total Guru' },
                   { icon: '🧒', count: santriList.length, label: 'Total Santri' },
@@ -199,6 +223,37 @@ export default function AdminDashboard() {
                     <div className="text-gray-500 text-xs md:text-base">{item.label}</div>
                   </div>
                 ))}
+              </div>
+
+              {/* Import Excel */}
+              <div className="bg-white rounded-2xl shadow p-4 mb-6">
+                <h3 className="font-semibold text-gray-800 mb-1">📥 Import Data dari Excel</h3>
+                <p className="text-xs text-gray-400 mb-3">
+                  Download template, isi data, lalu upload kembali
+                </p>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-xl font-semibold hover:bg-blue-700 text-sm"
+                  >
+                    📄 Download Template Excel
+                  </button>
+                  <label className="flex-1 bg-green-700 text-white px-4 py-3 rounded-xl font-semibold hover:bg-green-800 text-sm text-center cursor-pointer">
+                    {importLoading ? '⏳ Mengimport...' : '📤 Upload File Excel'}
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleImportExcel}
+                      className="hidden"
+                      disabled={importLoading}
+                    />
+                  </label>
+                </div>
+                {importMsg && (
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                    ✅ {importMsg}
+                  </div>
+                )}
               </div>
             </div>
           )}
