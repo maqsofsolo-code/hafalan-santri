@@ -9,10 +9,13 @@ export default function AdminDashboard() {
   const [santriList, setSantriList] = useState<any[]>([])
   const [waliList, setWaliList] = useState<any[]>([])
   const [setoranHariIni, setSetoranHariIni] = useState<any[]>([])
+  const [rankingHafalan, setRankingHafalan] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [formType, setFormType] = useState('')
   const [editSantriId, setEditSantriId] = useState<any>(null)
+  const [editGuruId, setEditGuruId] = useState<any>(null)
+  const [editWaliId, setEditWaliId] = useState<any>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [formNama, setFormNama] = useState('')
   const [formEmail, setFormEmail] = useState('')
@@ -33,11 +36,13 @@ export default function AdminDashboard() {
     const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama), wali:wali_id(nama)')
     const { data: wali } = await supabase.from('profiles').select('*').eq('role', 'wali')
     const today = new Date().toISOString().split('T')[0]
-    const { data: setoran } = await supabase.from('setoran').select('*, santri:santri_id(nama)').eq('tanggal', today).order('created_at', { ascending: false }).limit(5)
+    const { data: setoran } = await supabase.from('setoran').select('*, santri:santri_id(nama)').eq('tanggal', today).order('created_at', { ascending: false })
     setGuruList(guru || [])
     setSantriList(santri || [])
     setWaliList(wali || [])
     setSetoranHariIni(setoran || [])
+    const sorted = [...(santri || [])].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
+    setRankingHafalan(sorted)
   }
 
   const handleTambahGuru = async () => {
@@ -53,6 +58,24 @@ export default function AdminDashboard() {
     setShowForm(false); resetForm(); fetchData(); setLoading(false)
   }
 
+  const handleEditGuru = (guru: any) => {
+    setEditGuruId(guru.id)
+    setFormNama(guru.nama)
+    setFormNoWa(guru.no_wa || '')
+    setShowForm(true)
+    setFormType('guru')
+  }
+
+  const handleUpdateGuru = async () => {
+    setLoading(true); setErrorMsg('')
+    const { error } = await supabase.from('profiles')
+      .update({ nama: formNama, no_wa: formNoWa || null })
+      .eq('id', editGuruId)
+    if (error) { setErrorMsg(error.message); setLoading(false); return }
+    setSuccessMsg('Data guru berhasil diupdate!')
+    setShowForm(false); setEditGuruId(null); resetForm(); fetchData(); setLoading(false)
+  }
+
   const handleTambahWali = async () => {
     setLoading(true); setErrorMsg('')
     const res = await fetch('/api/create-user', {
@@ -64,6 +87,24 @@ export default function AdminDashboard() {
     if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     setSuccessMsg('Wali berhasil ditambahkan!')
     setShowForm(false); resetForm(); fetchData(); setLoading(false)
+  }
+
+  const handleEditWali = (wali: any) => {
+    setEditWaliId(wali.id)
+    setFormNama(wali.nama)
+    setFormNoWa(wali.no_wa || '')
+    setShowForm(true)
+    setFormType('wali')
+  }
+
+  const handleUpdateWali = async () => {
+    setLoading(true); setErrorMsg('')
+    const { error } = await supabase.from('profiles')
+      .update({ nama: formNama, no_wa: formNoWa || null })
+      .eq('id', editWaliId)
+    if (error) { setErrorMsg(error.message); setLoading(false); return }
+    setSuccessMsg('Data wali berhasil diupdate!')
+    setShowForm(false); setEditWaliId(null); resetForm(); fetchData(); setLoading(false)
   }
 
   const handleTambahSantri = async () => {
@@ -98,7 +139,13 @@ export default function AdminDashboard() {
   }
 
   const handleHapusGuru = async (id: any) => {
-    if (!confirm('Yakin hapus ini?')) return
+    if (!confirm('Yakin hapus guru ini?')) return
+    await supabase.from('profiles').delete().eq('id', id)
+    fetchData()
+  }
+
+  const handleHapusWali = async (id: any) => {
+    if (!confirm('Yakin hapus wali ini?')) return
     await supabase.from('profiles').delete().eq('id', id)
     fetchData()
   }
@@ -126,7 +173,7 @@ export default function AdminDashboard() {
   const resetForm = () => {
     setFormNama(''); setFormEmail(''); setFormPassword('')
     setFormNoWa(''); setFormGuruId(''); setFormWaliId('')
-    setFormKelas(''); setEditSantriId(null)
+    setFormKelas(''); setEditSantriId(null); setEditGuruId(null); setEditWaliId(null)
   }
 
   const handleLogout = async () => {
@@ -134,14 +181,19 @@ export default function AdminDashboard() {
     window.location.href = '/'
   }
 
-  const today = new Date()
-  const tanggal = today.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const tanggal = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const santriSudahSetor = [...new Set(setoranHariIni.map(s => s.santri_id))]
+  const santriBelumSetor = santriList.filter(s => !santriSudahSetor.includes(s.id))
+  const guruSudahInput = [...new Set(setoranHariIni.map(s => s.guru_id))]
+  const guruBelumInput = guruList.filter(g => !guruSudahInput.includes(g.id))
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '◈' },
-    { id: 'guru', label: 'Data Guru', icon: '◉' },
+    { id: 'monitoring', label: 'Monitoring', icon: '◉' },
+    { id: 'guru', label: 'Data Guru', icon: '▤' },
     { id: 'santri', label: 'Data Santri', icon: '◎' },
     { id: 'wali', label: 'Data Wali', icon: '◍' },
+    { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
   ]
 
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -171,7 +223,6 @@ export default function AdminDashboard() {
       )}
 
       <div className="flex">
-
         {/* SIDEBAR */}
         <div className={`
           fixed inset-y-0 left-0 z-50 w-72 flex flex-col
@@ -180,7 +231,6 @@ export default function AdminDashboard() {
           md:relative md:translate-x-0 md:w-64
         `} style={{ background: 'linear-gradient(180deg, #1a3a5c 0%, #1e4080 100%)' }}>
 
-          {/* Logo */}
           <div className="p-5 border-b border-blue-700">
             <div className="flex items-center gap-3">
               <div className="bg-white rounded-full p-1 shadow-md flex-shrink-0 w-14 h-14 flex items-center justify-center">
@@ -198,8 +248,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Menu */}
-          <nav className="flex-1 p-4 space-y-1">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {menuItems.map(menu => (
               <button key={menu.id}
                 onClick={() => { setActiveMenu(menu.id); setShowForm(false); setSuccessMsg(''); setSidebarOpen(false) }}
@@ -232,11 +281,8 @@ export default function AdminDashboard() {
           {/* DASHBOARD */}
           {activeMenu === 'dashboard' && (
             <div>
-
-              {/* Banner Selamat Datang */}
               <div className="rounded-2xl p-6 mb-6 text-white relative overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
-                {/* Ornamen lingkaran dekoratif */}
                 <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10 bg-white" />
                 <div className="absolute -bottom-10 -right-4 w-48 h-48 rounded-full opacity-10 bg-white" />
                 <div className="absolute top-4 right-20 w-8 h-8 rounded-full opacity-20 bg-white" />
@@ -255,15 +301,15 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Kartu Statistik */}
+              {/* Statistik */}
               <div className="grid grid-cols-3 gap-3 md:gap-5 mb-6">
                 {[
-                  { label: 'Total Guru', count: guruList.length, color: 'from-blue-500 to-blue-700', icon: '◉', sub: 'Musami\' aktif' },
-                  { label: 'Total Santri', count: santriList.length, color: 'from-emerald-500 to-emerald-700', icon: '◎', sub: 'Santri terdaftar' },
-                  { label: 'Total Wali', count: waliList.length, color: 'from-purple-500 to-purple-700', icon: '◍', sub: 'Wali terdaftar' },
+                  { label: 'Total Guru', count: guruList.length, color: 'from-blue-500 to-blue-700', sub: 'Guru musami\'' },
+                  { label: 'Total Santri', count: santriList.length, color: 'from-emerald-500 to-emerald-700', sub: 'Santri terdaftar' },
+                  { label: 'Total Wali', count: waliList.length, color: 'from-purple-500 to-purple-700', sub: 'Wali terdaftar' },
                 ].map((item, i) => (
                   <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-4 md:p-5 shadow-lg text-white relative overflow-hidden`}>
-                    <div className="absolute -bottom-3 -right-3 text-6xl opacity-10 font-bold">{item.icon}</div>
+                    <div className="absolute -bottom-3 -right-3 text-6xl opacity-10 font-bold">◆</div>
                     <div className="text-3xl font-bold">{item.count}</div>
                     <div className="text-white font-semibold text-sm mt-1">{item.label}</div>
                     <div className="text-white text-opacity-70 text-xs mt-0.5">{item.sub}</div>
@@ -271,10 +317,8 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              {/* 2 Kolom: Setoran Terbaru + Import Excel */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-                {/* Setoran Terbaru Hari Ini */}
+                {/* Setoran Terbaru */}
                 <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
@@ -286,11 +330,10 @@ export default function AdminDashboard() {
                   </div>
                   {setoranHariIni.length === 0 && (
                     <div className="text-center py-6">
-                      <div className="text-4xl mb-2">◌</div>
                       <p className="text-gray-400 text-sm">Belum ada setoran hari ini</p>
                     </div>
                   )}
-                  {setoranHariIni.map((item) => (
+                  {setoranHariIni.slice(0, 5).map((item) => (
                     <div key={item.id} className="flex items-center justify-between py-2 border-b last:border-0">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
@@ -316,37 +359,143 @@ export default function AdminDashboard() {
                       style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>⊞</div>
                     <div>
                       <h3 className="font-bold text-gray-800 text-sm">Import Data Excel</h3>
-                      <p className="text-gray-400 text-xs">Upload data guru, santri & wali sekaligus</p>
+                      <p className="text-gray-400 text-xs">Upload data sekaligus</p>
                     </div>
                   </div>
-
                   <div className="space-y-3">
                     <button onClick={handleDownloadTemplate}
-                      className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm shadow flex items-center justify-center gap-2"
+                      className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm shadow"
                       style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
                       ⬇ Download Template
                     </button>
-                    <label className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm text-center cursor-pointer shadow flex items-center justify-center gap-2"
+                    <label className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm text-center cursor-pointer shadow flex items-center justify-center"
                       style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
-                      {importLoading ? '⏳ Mengimport...' : '⬆ Upload File Excel'}
+                      {importLoading ? 'Mengimport...' : '⬆ Upload File Excel'}
                       <input type="file" accept=".xlsx,.xls" onChange={handleImportExcel} className="hidden" disabled={importLoading} />
                     </label>
                   </div>
-
                   {importMsg && (
-                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-xs">
-                      ✓ {importMsg}
-                    </div>
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-xs">✓ {importMsg}</div>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
 
-                  <div className="mt-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                    <p className="text-blue-700 text-xs font-medium mb-1">Urutan import:</p>
-                    <ol className="text-blue-600 text-xs space-y-0.5 list-decimal list-inside">
-                      <li>Download template terlebih dahulu</li>
-                      <li>Isi sheet Guru, Santri, lalu Wali</li>
-                      <li>Upload file yang sudah diisi</li>
-                    </ol>
+          {/* MONITORING */}
+          {activeMenu === 'monitoring' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="text-white font-bold text-xl">Monitoring Harian</h2>
+                  <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
+                </div>
+              </div>
+
+              {/* Statistik Hari Ini */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                {[
+                  { label: 'Sudah Setor', count: santriSudahSetor.length, color: 'from-green-500 to-green-700', sub: 'Santri' },
+                  { label: 'Belum Setor', count: santriBelumSetor.length, color: 'from-red-500 to-red-700', sub: 'Santri' },
+                  { label: 'Guru Hadir', count: guruSudahInput.length, color: 'from-blue-500 to-blue-700', sub: 'Dari ' + guruList.length },
+                  { label: 'Guru Absen', count: guruBelumInput.length, color: 'from-orange-500 to-orange-700', sub: 'Tidak input' },
+                ].map((item, i) => (
+                  <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-4 shadow-lg text-white relative overflow-hidden`}>
+                    <div className="absolute -bottom-2 -right-2 text-5xl opacity-10 font-bold">◆</div>
+                    <div className="text-3xl font-bold">{item.count}</div>
+                    <div className="text-white font-semibold text-xs mt-1">{item.label}</div>
+                    <div className="text-white text-opacity-70 text-xs">{item.sub}</div>
                   </div>
+                ))}
+              </div>
+
+              {/* Progress Setoran */}
+              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-semibold text-gray-700">Progress Setoran Hari Ini</span>
+                  <span className="text-sm font-bold" style={{ color: '#2563a8' }}>
+                    {santriList.length > 0 ? Math.round((santriSudahSetor.length / santriList.length) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-4 mb-1">
+                  <div className="h-4 rounded-full transition-all"
+                    style={{
+                      width: `${santriList.length > 0 ? (santriSudahSetor.length / santriList.length) * 100 : 0}%`,
+                      background: 'linear-gradient(135deg, #166534, #16a34a)',
+                    }} />
+                </div>
+                <p className="text-xs text-gray-400">{santriSudahSetor.length} sudah setor dari {santriList.length} santri</p>
+              </div>
+
+              {/* Kehadiran Guru & Santri */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+                <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                  <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                    <h3 className="text-white font-semibold text-sm">Guru Hadir ({guruSudahInput.length})</h3>
+                  </div>
+                  <div className="p-3">
+                    {guruSudahInput.length === 0 && <p className="text-gray-400 text-sm text-center py-3">Belum ada</p>}
+                    {guruList.filter(g => guruSudahInput.includes(g.id)).map(g => (
+                      <div key={g.id} className="flex items-center gap-2 py-2 border-b last:border-0">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-green-500">
+                          {g.nama?.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-sm text-gray-700">{g.nama}</span>
+                        <span className="ml-auto text-green-500 text-xs font-medium">Hadir</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                  <div className="px-4 py-3 bg-gradient-to-r from-red-500 to-red-700">
+                    <h3 className="text-white font-semibold text-sm">Guru Absen ({guruBelumInput.length})</h3>
+                  </div>
+                  <div className="p-3">
+                    {guruBelumInput.length === 0 && <p className="text-gray-400 text-sm text-center py-3">Semua hadir!</p>}
+                    {guruBelumInput.map(g => (
+                      <div key={g.id} className="flex items-center gap-2 py-2 border-b last:border-0">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-red-400">
+                          {g.nama?.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-sm text-gray-700">{g.nama}</span>
+                        <span className="ml-auto text-red-400 text-xs font-medium">Absen</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Setoran Lengkap Hari Ini */}
+              <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                  <h3 className="text-white font-semibold text-sm">Semua Setoran Hari Ini ({setoranHariIni.length})</h3>
+                </div>
+                <div className="p-3 space-y-2">
+                  {setoranHariIni.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Belum ada setoran</p>}
+                  {setoranHariIni.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                          style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                          {item.santri?.nama?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm text-gray-800">{item.santri?.nama}</div>
+                          <div className="text-xs text-gray-400">{item.surah} ayat {item.ayat_mulai}-{item.ayat_selesai}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                          {item.jenis === 'baru' ? 'Baru' : 'Lama'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -360,29 +509,32 @@ export default function AdminDashboard() {
                   <h2 className="text-xl font-bold text-gray-800">Data Guru</h2>
                   <p className="text-gray-400 text-xs">{guruList.length} guru terdaftar</p>
                 </div>
-                <button onClick={() => { setShowForm(true); setFormType('guru') }}
-                  className={btnPrimary}
-                  style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                <button onClick={() => { resetForm(); setShowForm(true); setFormType('guru') }}
+                  className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
                   + Tambah Guru
                 </button>
               </div>
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
               {showForm && formType === 'guru' && (
                 <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
-                  <h3 className="font-bold text-base mb-4 text-gray-800">Form Tambah Guru</h3>
+                  <h3 className="font-bold text-base mb-4 text-gray-800">
+                    {editGuruId ? 'Edit Data Guru' : 'Form Tambah Guru'}
+                  </h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Guru" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
-                    <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
-                    <input placeholder="Password" type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} className={inputClass} />
+                    {!editGuruId && <>
+                      <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
+                      <input placeholder="Password" type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} className={inputClass} />
+                    </>}
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
-                    <button onClick={handleTambahGuru} disabled={loading} className={btnPrimary}
-                      style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-                      {loading ? 'Menyimpan...' : 'Simpan'}
+                    <button onClick={editGuruId ? handleUpdateGuru : handleTambahGuru} disabled={loading}
+                      className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                      {loading ? 'Menyimpan...' : editGuruId ? 'Update' : 'Simpan'}
                     </button>
-                    <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm hover:bg-gray-200">Batal</button>
+                    <button onClick={() => { setShowForm(false); resetForm() }} className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm hover:bg-gray-200">Batal</button>
                   </div>
                 </div>
               )}
@@ -400,7 +552,10 @@ export default function AdminDashboard() {
                         <div className="text-xs text-gray-400 mt-0.5">{guru.no_wa || 'No WA belum diisi'}</div>
                       </div>
                     </div>
-                    <button onClick={() => handleHapusGuru(guru.id)} className="text-red-400 hover:text-red-600 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 transition">Hapus</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEditGuru(guru)} className="text-blue-500 hover:text-blue-700 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">Edit</button>
+                      <button onClick={() => handleHapusGuru(guru.id)} className="text-red-400 hover:text-red-600 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 transition">Hapus</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -416,8 +571,7 @@ export default function AdminDashboard() {
                   <p className="text-gray-400 text-xs">{santriList.length} santri terdaftar</p>
                 </div>
                 <button onClick={() => { resetForm(); setShowForm(true); setFormType('santri') }}
-                  className={btnPrimary}
-                  style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                  className={btnPrimary} style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
                   + Tambah Santri
                 </button>
               </div>
@@ -485,29 +639,32 @@ export default function AdminDashboard() {
                   <h2 className="text-xl font-bold text-gray-800">Data Wali Santri</h2>
                   <p className="text-gray-400 text-xs">{waliList.length} wali terdaftar</p>
                 </div>
-                <button onClick={() => { setShowForm(true); setFormType('wali') }}
-                  className={btnPrimary}
-                  style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
+                <button onClick={() => { resetForm(); setShowForm(true); setFormType('wali') }}
+                  className={btnPrimary} style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
                   + Tambah Wali
                 </button>
               </div>
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
               {showForm && formType === 'wali' && (
                 <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
-                  <h3 className="font-bold text-base mb-4 text-gray-800">Form Tambah Wali</h3>
+                  <h3 className="font-bold text-base mb-4 text-gray-800">
+                    {editWaliId ? 'Edit Data Wali' : 'Form Tambah Wali'}
+                  </h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Wali" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
-                    <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
-                    <input placeholder="Password" type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} className={inputClass} />
+                    {!editWaliId && <>
+                      <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
+                      <input placeholder="Password" type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} className={inputClass} />
+                    </>}
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
-                    <button onClick={handleTambahWali} disabled={loading}
+                    <button onClick={editWaliId ? handleUpdateWali : handleTambahWali} disabled={loading}
                       className={btnPrimary} style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
-                      {loading ? 'Menyimpan...' : 'Simpan'}
+                      {loading ? 'Menyimpan...' : editWaliId ? 'Update' : 'Simpan'}
                     </button>
-                    <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm hover:bg-gray-200">Batal</button>
+                    <button onClick={() => { setShowForm(false); resetForm() }} className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm hover:bg-gray-200">Batal</button>
                   </div>
                 </div>
               )}
@@ -525,9 +682,68 @@ export default function AdminDashboard() {
                         <div className="text-xs text-gray-400 mt-0.5">{wali.no_wa || 'No WA belum diisi'}</div>
                       </div>
                     </div>
-                    <button onClick={() => handleHapusGuru(wali.id)} className="text-red-400 hover:text-red-600 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 transition">Hapus</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEditWali(wali)} className="text-blue-500 hover:text-blue-700 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">Edit</button>
+                      <button onClick={() => handleHapusWali(wali.id)} className="text-red-400 hover:text-red-600 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 transition">Hapus</button>
+                    </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* RANKING SANTRI */}
+          {activeMenu === 'ranking' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="text-white font-bold text-xl">Ranking Santri</h2>
+                  <p className="text-blue-200 text-sm mt-1">Berdasarkan total hafalan</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                  <h3 className="text-white font-bold">Ranking Total Hafalan</h3>
+                  <p className="text-green-200 text-xs mt-0.5">Diurutkan dari hafalan terbanyak</p>
+                </div>
+                <div className="p-4 space-y-2">
+                  {rankingHafalan.map((santri, i) => (
+                    <div key={santri.id} className={`flex items-center gap-3 p-3 rounded-xl ${i < 3 ? 'bg-gray-50' : ''}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                        i === 0 ? 'bg-yellow-400 text-white' :
+                        i === 1 ? 'bg-gray-300 text-white' :
+                        i === 2 ? 'bg-orange-400 text-white' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {santri.kelas && <span className="bg-blue-100 text-blue-600 text-xs px-1.5 py-0.5 rounded-full">Kelas {santri.kelas}</span>}
+                          <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5">
+                          <div className="h-1.5 rounded-full"
+                            style={{
+                              width: `${Math.min(((santri.total_hafalan_juz || 0) / 30) * 100, 100)}%`,
+                              background: 'linear-gradient(135deg, #166534, #16a34a)'
+                            }} />
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="font-bold text-sm text-green-700">{santri.total_hafalan_juz || 0}</div>
+                        <div className="text-xs text-gray-400">Juz</div>
+                      </div>
+                    </div>
+                  ))}
+                  {rankingHafalan.length === 0 && (
+                    <p className="text-gray-400 text-sm text-center py-6">Belum ada data hafalan</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
