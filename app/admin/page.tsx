@@ -72,7 +72,7 @@ const [formKelas, setFormKelas] = useState('')
     setShowForm(false); resetForm(); fetchData(); setLoading(false)
   }
 
-  const handleEditSantri = (santri) => {
+  const handleEditSantri = (santri: any) => {
     setEditSantriId(santri.id)
     setFormNama(santri.nama)
     setFormKelas(santri.kelas || '')
@@ -93,13 +93,13 @@ const [formKelas, setFormKelas] = useState('')
     setShowForm(false); setEditSantriId(null); resetForm(); fetchData(); setLoading(false)
   }
 
-  const handleHapusGuru = async (id) => {
+  const handleHapusGuru = async (id: any) => {
     if (!confirm('Yakin hapus ini?')) return
     await supabase.from('profiles').delete().eq('id', id)
     fetchData()
   }
 
-  const handleHapusSantri = async (id) => {
+  const handleHapusSantri = async (id: any) => {
     if (!confirm('Yakin hapus santri ini?')) return
     await supabase.from('santri').delete().eq('id', id)
     fetchData()
