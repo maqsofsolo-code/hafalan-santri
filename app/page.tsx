@@ -35,24 +35,37 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4"
       style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 50%, #1a3a5c 100%)' }}>
 
-      {/* Card Login */}
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
 
-        {/* Header Card */}
+        {/* Header Biru */}
         <div className="px-8 py-8 text-center"
           style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
+
+          {/* Logo Pesantren */}
           <div className="flex justify-center mb-4">
-            <div className="bg-white rounded-full p-2 shadow-lg">
-              <Image src="/logo.png" alt="Logo Daarus Salaf" width={80} height={80} className="rounded-full" />
+            <div className="bg-white rounded-full p-2 shadow-lg w-24 h-24 flex items-center justify-center">
+              <Image
+                src="/logo.png"
+                alt="Logo Daarus Salaf"
+                width={80}
+                height={80}
+                className="rounded-full object-contain"
+              />
             </div>
           </div>
+
           <h1 className="text-white font-bold text-xl leading-tight">
             Pondok Pesantren
           </h1>
-          <h2 className="text-white font-bold text-2xl">Daarus Salaf</h2>
+          <h2 className="text-white font-bold text-2xl leading-tight">
+            Daarus Salaf
+          </h2>
           <p className="text-blue-200 text-sm mt-1">Sukoharjo</p>
+
           <div className="mt-3 border-t border-blue-400 pt-3">
-            <p className="text-blue-100 text-sm">Sistem Informasi Santri</p>
+            <p className="text-blue-100 text-sm font-medium">
+              Sistem Informasi Santri
+            </p>
           </div>
         </div>
 
@@ -64,34 +77,31 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Email</label>
-              <div className="relative">
-                <span className="absolute left-3 top-3 text-gray-400">✉</span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                  placeholder="Masukkan email"
-                  className="w-full border border-gray-200 rounded-xl px-10 py-3 focus:outline-none focus:ring-2 focus:border-transparent text-base bg-gray-50"
-                  style={{ focusRingColor: '#2563a8' }}
-                />
-              </div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                placeholder="Masukkan email"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-300 text-base bg-gray-50"
+              />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Password</label>
-              <div className="relative">
-                <span className="absolute left-3 top-3 text-gray-400">🔒</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                  placeholder="Masukkan password"
-                  className="w-full border border-gray-200 rounded-xl px-10 py-3 focus:outline-none focus:ring-2 focus:border-transparent text-base bg-gray-50"
-                />
-              </div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                placeholder="Masukkan password"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-300 text-base bg-gray-50"
+              />
             </div>
 
             {error && (
@@ -103,7 +113,7 @@ export default function LoginPage() {
             <button
               onClick={handleLogin}
               disabled={loading}
-              className="w-full text-white py-4 rounded-xl font-semibold transition disabled:opacity-50 text-base mt-2 shadow-lg"
+              className="w-full text-white py-4 rounded-xl font-semibold transition disabled:opacity-50 text-base shadow-lg active:opacity-90"
               style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}
             >
               {loading ? 'Memproses...' : 'Masuk'}
