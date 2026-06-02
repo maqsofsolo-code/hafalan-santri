@@ -53,13 +53,13 @@ export default function KepsekDashboard() {
     // Ranking konsistensi (hitung jumlah setoran per santri)
     const { data: allSetoran } = await supabase
       .from('setoran')
-      .select('santri_id, tanggal, santri:santri_id(nama)')
+      .select('santri_id, tanggal, santri_nama:santri_id(nama)')
 
     const konsistensiMap = {}
     ;(allSetoran || []).forEach(s => {
       if (!konsistensiMap[s.santri_id]) {
         konsistensiMap[s.santri_id] = {
-          nama: s.santri?.nama,
+          nama: (s as any).santri_nama?.nama,
           total: 0
         }
       }
