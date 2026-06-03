@@ -33,6 +33,7 @@ export default function AdminDashboard() {
   const [formAyatAwal, setFormAyatAwal] = useState('1')
   const [formSurahAkhir, setFormSurahAkhir] = useState('')
   const [formAyatAkhir, setFormAyatAkhir] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [importLoading, setImportLoading] = useState(false)
@@ -60,29 +61,18 @@ export default function AdminDashboard() {
     setRankingHafalan(sorted)
   }
 
-  // Hitung total juz dari surah awal sampai akhir
   const hitungTotalJuzAwal = () => {
     if (!formSurahAwal || !formSurahAkhir) return 0
-    const surahAwalNum = parseInt(formSurahAwal)
-    const surahAkhirNum = parseInt(formSurahAkhir)
-
-    // Tentukan surah dengan nomor lebih kecil dan lebih besar
-    const nomorKecil = Math.min(surahAwalNum, surahAkhirNum)
-    const nomorBesar = Math.max(surahAwalNum, surahAkhirNum)
-
+    const nomorKecil = Math.min(parseInt(formSurahAwal), parseInt(formSurahAkhir))
+    const nomorBesar = Math.max(parseInt(formSurahAwal), parseInt(formSurahAkhir))
     const surahKecil = surahList.find(s => s.nomor === nomorKecil)
     const surahBesar = surahList.find(s => s.nomor === nomorBesar)
-
     if (!surahKecil || !surahBesar) return 0
-
-    // Hitung rentang halaman (bukan penjumlahan)
-    const halamanAwal = surahKecil.halaman_mulai
-    const halamanAkhir = surahBesar.halaman_selesai
-
-    const totalHalaman = halamanAkhir - halamanAwal + 1
+    const totalHalaman = surahBesar.halaman_selesai - surahKecil.halaman_mulai + 1
     return Math.max(0, totalHalaman / 20)
   }
 
+  // ===== GURU =====
   const handleTambahGuru = async () => {
     setLoading(true); setErrorMsg('')
     const res = await fetch('/api/create-user', {
@@ -97,18 +87,45 @@ export default function AdminDashboard() {
   }
 
   const handleEditGuru = (guru: any) => {
-    setEditGuruId(guru.id); setFormNama(guru.nama); setFormNoWa(guru.no_wa || '')
-    setShowForm(true); setFormType('guru')
+    setEditGuruId(guru.id)
+    setFormNama(guru.nama)
+    setFormNoWa(guru.no_wa || '')
+    setFormEmail('')
+    setFormPassword('')
+    setShowPassword(false)
+    setShowForm(true)
+    setFormType('guru')
   }
 
   const handleUpdateGuru = async () => {
     setLoading(true); setErrorMsg('')
-    const { error } = await supabase.from('profiles').update({ nama: formNama, no_wa: formNoWa || null }).eq('id', editGuruId)
+    // Update profil
+    const { error } = await supabase.from('profiles')
+      .update({ nama: formNama, no_wa: formNoWa || null })
+      .eq('id', editGuruId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
+
+    // Update email/password jika diisi
+    if (formEmail || formPassword) {
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isUpdate: true,
+          userId: editGuruId,
+          email: formEmail || undefined,
+          password: formPassword || undefined
+        })
+      })
+      const result = await res.json()
+      if (result.error) { setErrorMsg(result.error); setLoading(false); return }
+    }
+
     setSuccessMsg('Data guru berhasil diupdate!')
     setShowForm(false); setEditGuruId(null); resetForm(); fetchData(); setLoading(false)
   }
 
+  // ===== WALI =====
   const handleTambahWali = async () => {
     setLoading(true); setErrorMsg('')
     const res = await fetch('/api/create-user', {
@@ -123,18 +140,43 @@ export default function AdminDashboard() {
   }
 
   const handleEditWali = (wali: any) => {
-    setEditWaliId(wali.id); setFormNama(wali.nama); setFormNoWa(wali.no_wa || '')
-    setShowForm(true); setFormType('wali')
+    setEditWaliId(wali.id)
+    setFormNama(wali.nama)
+    setFormNoWa(wali.no_wa || '')
+    setFormEmail('')
+    setFormPassword('')
+    setShowPassword(false)
+    setShowForm(true)
+    setFormType('wali')
   }
 
   const handleUpdateWali = async () => {
     setLoading(true); setErrorMsg('')
-    const { error } = await supabase.from('profiles').update({ nama: formNama, no_wa: formNoWa || null }).eq('id', editWaliId)
+    const { error } = await supabase.from('profiles')
+      .update({ nama: formNama, no_wa: formNoWa || null })
+      .eq('id', editWaliId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
+
+    if (formEmail || formPassword) {
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isUpdate: true,
+          userId: editWaliId,
+          email: formEmail || undefined,
+          password: formPassword || undefined
+        })
+      })
+      const result = await res.json()
+      if (result.error) { setErrorMsg(result.error); setLoading(false); return }
+    }
+
     setSuccessMsg('Data wali berhasil diupdate!')
     setShowForm(false); setEditWaliId(null); resetForm(); fetchData(); setLoading(false)
   }
 
+  // ===== SANTRI =====
   const handleTambahSantri = async () => {
     setLoading(true); setErrorMsg('')
     if (!formNama || !formJenjang || !formKelasNum) {
@@ -145,7 +187,7 @@ export default function AdminDashboard() {
       nama: formNama,
       jenjang: formJenjang,
       kelas_num: parseInt(formKelasNum),
-      kelas: `Kelas ${formKelasNum} ${formJenjang.charAt(0).toUpperCase() + formJenjang.slice(1)}`,
+      kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
       guru_id: formGuruId || null,
       wali_id: formWaliId || null,
       total_hafalan_juz: totalJuz,
@@ -158,24 +200,46 @@ export default function AdminDashboard() {
   }
 
   const handleEditSantri = (santri: any) => {
-    setEditSantriId(santri.id); setFormNama(santri.nama)
-    setFormJenjang(santri.jenjang || ''); setFormKelasNum(santri.kelas_num?.toString() || '')
-    setFormGuruId(santri.guru_id || ''); setFormWaliId(santri.wali_id || '')
-    setShowForm(true); setFormType('santri')
+    setEditSantriId(santri.id)
+    setFormNama(santri.nama)
+    setFormJenjang(santri.jenjang || '')
+    setFormKelasNum(santri.kelas_num?.toString() || '')
+    setFormGuruId(santri.guru_id || '')
+    setFormWaliId(santri.wali_id || '')
+    setFormSurahAwal('')
+    setFormAyatAwal('1')
+    setFormSurahAkhir(santri.surah_terakhir_nomor?.toString() || '')
+    setFormAyatAkhir(santri.ayat_terakhir?.toString() || '')
+    setShowForm(true)
+    setFormType('santri')
   }
 
   const handleUpdateSantri = async () => {
     setLoading(true); setErrorMsg('')
-    const { error } = await supabase.from('santri')
-      .update({
-        nama: formNama,
-        jenjang: formJenjang,
-        kelas_num: parseInt(formKelasNum),
-        kelas: `Kelas ${formKelasNum} ${formJenjang.charAt(0).toUpperCase() + formJenjang.slice(1)}`,
-        guru_id: formGuruId || null,
-        wali_id: formWaliId || null
-      })
-      .eq('id', editSantriId)
+    let updateData: any = {
+      nama: formNama,
+      jenjang: formJenjang,
+      kelas_num: parseInt(formKelasNum),
+      kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
+      guru_id: formGuruId || null,
+      wali_id: formWaliId || null
+    }
+    if (formSurahAwal && formSurahAkhir) {
+      const totalJuz = hitungTotalJuzAwal()
+      updateData = {
+        ...updateData,
+        total_hafalan_juz: totalJuz,
+        surah_terakhir_nomor: parseInt(formSurahAkhir),
+        ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null
+      }
+    } else if (formSurahAkhir && !formSurahAwal) {
+      updateData = {
+        ...updateData,
+        surah_terakhir_nomor: parseInt(formSurahAkhir),
+        ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null
+      }
+    }
+    const { error } = await supabase.from('santri').update(updateData).eq('id', editSantriId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
     setSuccessMsg('Santri berhasil diupdate!')
     setShowForm(false); setEditSantriId(null); resetForm(); fetchData(); setLoading(false)
@@ -214,7 +278,7 @@ export default function AdminDashboard() {
     setFormNama(''); setFormEmail(''); setFormPassword(''); setFormNoWa('')
     setFormGuruId(''); setFormWaliId(''); setFormKelas(''); setFormJenjang('')
     setFormKelasNum(''); setFormSurahAwal(''); setFormAyatAwal('1')
-    setFormSurahAkhir(''); setFormAyatAkhir('')
+    setFormSurahAkhir(''); setFormAyatAkhir(''); setShowPassword(false)
     setEditSantriId(null); setEditGuruId(null); setEditWaliId(null)
   }
 
@@ -242,7 +306,6 @@ export default function AdminDashboard() {
     return j
   }
 
-  // Filter ranking
   const rankingFiltered = rankingHafalan.filter(s => {
     if (filterJenjang !== 'semua' && s.jenjang !== filterJenjang) return false
     if (filterKelas !== 'semua' && s.kelas_num?.toString() !== filterKelas) return false
@@ -260,6 +323,45 @@ export default function AdminDashboard() {
 
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
   const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
+
+  // Form Email & Password (reusable untuk guru & wali)
+  const FormEmailPassword = ({ isEdit }: { isEdit: boolean }) => (
+    <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+      <p className="text-xs font-semibold text-yellow-800 mb-3">
+        {isEdit ? '✏️ Ubah Email / Password (kosongkan jika tidak ingin diubah)' : '🔐 Akun Login'}
+      </p>
+      <div className="space-y-2">
+        <input
+          placeholder="Email"
+          type="email"
+          value={formEmail}
+          onChange={e => setFormEmail(e.target.value)}
+          className={inputClass}
+        />
+        <div className="relative">
+          <input
+            placeholder={isEdit ? "Password baru (kosongkan jika tidak diubah)" : "Password"}
+            type={showPassword ? 'text' : 'password'}
+            value={formPassword}
+            onChange={e => setFormPassword(e.target.value)}
+            className={inputClass + ' pr-12'}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 text-sm px-1"
+          >
+            {showPassword ? '🙈' : '👁'}
+          </button>
+        </div>
+        {showPassword && formPassword && (
+          <div className="p-2 bg-white rounded-lg border border-yellow-200">
+            <p className="text-xs text-gray-500">Password: <span className="font-bold text-gray-800">{formPassword}</span></p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -519,14 +621,11 @@ export default function AdminDashboard() {
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
               {showForm && formType === 'guru' && (
                 <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
-                  <h3 className="font-bold text-base mb-4">{editGuruId ? 'Edit Guru' : 'Tambah Guru'}</h3>
+                  <h3 className="font-bold text-base mb-4">{editGuruId ? 'Edit Data Guru' : 'Tambah Guru Baru'}</h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Guru" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
-                    {!editGuruId && <>
-                      <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
-                      <input placeholder="Password" type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} className={inputClass} />
-                    </>}
+                    <FormEmailPassword isEdit={!!editGuruId} />
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
@@ -541,7 +640,7 @@ export default function AdminDashboard() {
               <div className="space-y-3">
                 {guruList.length === 0 && <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Belum ada data guru</div>}
                 {guruList.map((guru) => (
-                  <div key={guru.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center border border-gray-100">
+                  <div key={guru.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center border border-gray-100 hover:shadow-md transition">
                     <div className="flex items-center gap-3">
                       <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
                         style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
@@ -578,11 +677,10 @@ export default function AdminDashboard() {
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
               {showForm && formType === 'santri' && (
                 <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
-                  <h3 className="font-bold text-base mb-4">{editSantriId ? 'Edit Santri' : 'Tambah Santri'}</h3>
+                  <h3 className="font-bold text-base mb-4">{editSantriId ? 'Edit Data Santri' : 'Tambah Santri Baru'}</h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Santri" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
 
-                    {/* Jenjang */}
                     <select value={formJenjang} onChange={e => { setFormJenjang(e.target.value); setFormKelasNum('') }} className={inputClass}>
                       <option value="">-- Pilih Jenjang --</option>
                       <option value="ula">Ula</option>
@@ -590,7 +688,6 @@ export default function AdminDashboard() {
                       <option value="ulya">Ulya</option>
                     </select>
 
-                    {/* Kelas */}
                     {formJenjang && (
                       <select value={formKelasNum} onChange={e => setFormKelasNum(e.target.value)} className={inputClass}>
                         <option value="">-- Pilih Kelas --</option>
@@ -604,45 +701,55 @@ export default function AdminDashboard() {
                       <option value="">-- Pilih Guru --</option>
                       {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
                     </select>
+
                     <select value={formWaliId} onChange={e => setFormWaliId(e.target.value)} className={inputClass}>
                       <option value="">-- Pilih Wali --</option>
                       {waliList.map(w => <option key={w.id} value={w.id}>{w.nama}</option>)}
                     </select>
 
-                    {/* Hafalan Awal - hanya saat tambah baru */}
-                    {!editSantriId && (
-                      <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                        <p className="text-sm font-semibold text-gray-700 mb-3">Hafalan Awal Santri</p>
-                        <p className="text-xs text-gray-500 mb-3">Dari surah mana sampai surah mana yang sudah dihafal</p>
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <select value={formSurahAwal} onChange={e => setFormSurahAwal(e.target.value)} className={inputClass}>
-                              <option value="">Surah Awal</option>
-                              {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
-                            </select>
-                            <input type="number" placeholder="Ayat mulai" value={formAyatAwal}
-                              onChange={e => setFormAyatAwal(e.target.value)} className={inputClass} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <select value={formSurahAkhir} onChange={e => {
-                              setFormSurahAkhir(e.target.value)
-                              const s = surahList.find(s => s.nomor === parseInt(e.target.value))
-                              if (s) setFormAyatAkhir(String(s.jumlah_ayat))
-                            }} className={inputClass}>
-                              <option value="">Surah Akhir</option>
-                              {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
-                            </select>
-                            <input type="number" placeholder="Ayat selesai" value={formAyatAkhir}
-                              onChange={e => setFormAyatAkhir(e.target.value)} className={inputClass} />
-                          </div>
+                    {/* Form Hafalan — tampil saat tambah DAN edit */}
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                      <p className="text-sm font-semibold text-gray-700 mb-1">
+                        {editSantriId ? 'Update Data Hafalan' : 'Hafalan Awal Santri'}
+                      </p>
+                      <p className="text-xs text-gray-500 mb-3">
+                        {editSantriId
+                          ? 'Isi untuk mengubah total hafalan. Kosongkan jika tidak ingin mengubah.'
+                          : 'Dari surah mana sampai surah mana yang sudah dihafal'}
+                      </p>
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <select value={formSurahAwal} onChange={e => setFormSurahAwal(e.target.value)} className={inputClass}>
+                            <option value="">Surah Awal</option>
+                            {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
+                          </select>
+                          <input type="number" placeholder="Ayat mulai" value={formAyatAwal}
+                            onChange={e => setFormAyatAwal(e.target.value)} className={inputClass} />
                         </div>
-                        {formSurahAwal && formSurahAkhir && formAyatAwal && formAyatAkhir && (
-                          <div className="mt-2 p-2 bg-white rounded-lg text-xs text-blue-700 font-semibold">
-                            Total hafalan awal: ≈ {hitungTotalJuzAwal().toFixed(2)} Juz
-                          </div>
-                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          <select value={formSurahAkhir} onChange={e => {
+                            setFormSurahAkhir(e.target.value)
+                            const s = surahList.find(s => s.nomor === parseInt(e.target.value))
+                            if (s) setFormAyatAkhir(String(s.jumlah_ayat))
+                          }} className={inputClass}>
+                            <option value="">Surah Akhir</option>
+                            {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
+                          </select>
+                          <input type="number" placeholder="Ayat selesai" value={formAyatAkhir}
+                            onChange={e => setFormAyatAkhir(e.target.value)} className={inputClass} />
+                        </div>
                       </div>
-                    )}
+                      {formSurahAwal && formSurahAkhir && (
+                        <div className="mt-2 p-2 bg-white rounded-lg text-xs text-blue-700 font-semibold">
+                          Total hafalan: ≈ {hitungTotalJuzAwal().toFixed(2)} Juz
+                        </div>
+                      )}
+                      {editSantriId && !formSurahAwal && !formSurahAkhir && (
+                        <div className="mt-2 p-2 bg-gray-50 rounded-lg text-xs text-gray-500">
+                          Hafalan tidak akan diubah
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
@@ -657,7 +764,7 @@ export default function AdminDashboard() {
               <div className="space-y-3">
                 {santriList.length === 0 && <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Belum ada data santri</div>}
                 {santriList.map((santri) => (
-                  <div key={santri.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
+                  <div key={santri.id} className="bg-white rounded-xl shadow p-4 border border-gray-100 hover:shadow-md transition">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
                         <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
@@ -704,14 +811,11 @@ export default function AdminDashboard() {
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
               {showForm && formType === 'wali' && (
                 <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
-                  <h3 className="font-bold text-base mb-4">{editWaliId ? 'Edit Wali' : 'Tambah Wali'}</h3>
+                  <h3 className="font-bold text-base mb-4">{editWaliId ? 'Edit Data Wali' : 'Tambah Wali Baru'}</h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Wali" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
-                    {!editWaliId && <>
-                      <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
-                      <input placeholder="Password" type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} className={inputClass} />
-                    </>}
+                    <FormEmailPassword isEdit={!!editWaliId} />
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
@@ -726,7 +830,7 @@ export default function AdminDashboard() {
               <div className="space-y-3">
                 {waliList.length === 0 && <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Belum ada data wali</div>}
                 {waliList.map((wali) => (
-                  <div key={wali.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center border border-gray-100">
+                  <div key={wali.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center border border-gray-100 hover:shadow-md transition">
                     <div className="flex items-center gap-3">
                       <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
                         style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
@@ -759,7 +863,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Filter */}
               <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -805,9 +908,7 @@ export default function AdminDashboard() {
                         <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           {santri.jenjang && (
-                            <span className="text-xs text-gray-400">
-                              Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}
-                            </span>
+                            <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>
                           )}
                           <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
                         </div>
