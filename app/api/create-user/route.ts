@@ -7,23 +7,27 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(request: Request) {
-  const { email, password, nama, role, no_wa } = await request.json()
+  const { email, password, nama, role, no_wa, userId, isUpdate } = await request.json()
 
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true
-  })
+  if (isUpdate && userId) {
+    // Update password existing user
+    const updateData: any = {}
+    if (email) updateData.email = email
+    if (password) updateData.password = password
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, updateData)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
   }
 
+  // Create new user
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email, password, email_confirm: true
+  })
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
   await supabaseAdmin.from('profiles').insert({
-    id: data.user.id,
-    nama,
-    role,
-    no_wa
+    id: data.user.id, nama, role, no_wa
   })
 
   return NextResponse.json({ success: true, user: data.user })
