@@ -112,9 +112,18 @@ export default function GuruDashboard() {
   const hitungPenambahanJuz = (surahNomor: number, ayatMulai: number, ayatSelesai: number) => {
     const surah = surahList.find(s => s.nomor === surahNomor)
     if (!surah) return 0
-    const jumlahAyat = ayatSelesai - ayatMulai + 1
-    const totalAyatQuran = 6236
-    return (jumlahAyat / totalAyatQuran) * 30
+
+    // Hitung proporsi ayat dari total ayat surah
+    const totalAyatSurah = surah.jumlah_ayat
+    const ayatDiSetor = ayatSelesai - ayatMulai + 1
+    const proporsi = ayatDiSetor / totalAyatSurah
+
+    // Hitung halaman surah ini
+    const halamanSurah = surah.halaman_selesai - surah.halaman_mulai + 1
+
+    // Halaman yang ditambahkan
+    const halamanDitambah = proporsi * halamanSurah
+    return Math.max(0, halamanDitambah / 20)
   }
 
   // Hitung target murojaah hari ini

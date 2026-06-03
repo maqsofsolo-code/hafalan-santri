@@ -62,33 +62,25 @@ export default function AdminDashboard() {
 
   // Hitung total juz dari surah awal sampai akhir
   const hitungTotalJuzAwal = () => {
-    if (!formSurahAwal || !formSurahAkhir || !formAyatAwal || !formAyatAkhir) return 0
+    if (!formSurahAwal || !formSurahAkhir) return 0
     const surahAwalNum = parseInt(formSurahAwal)
     const surahAkhirNum = parseInt(formSurahAkhir)
 
-    let totalAyat = 0
-    // Karena urutan An-Nas ke Al-Fatihah (nomor besar ke kecil)
-    const [nomor1, nomor2] = surahAwalNum > surahAkhirNum
-      ? [surahAkhirNum, surahAwalNum]
-      : [surahAwalNum, surahAkhirNum]
+    // Tentukan surah dengan nomor lebih kecil dan lebih besar
+    const nomorKecil = Math.min(surahAwalNum, surahAkhirNum)
+    const nomorBesar = Math.max(surahAwalNum, surahAkhirNum)
 
-    for (let i = nomor1; i <= nomor2; i++) {
-      const s = surahList.find(s => s.nomor === i)
-      if (s) totalAyat += s.jumlah_ayat
-    }
+    const surahKecil = surahList.find(s => s.nomor === nomorKecil)
+    const surahBesar = surahList.find(s => s.nomor === nomorBesar)
 
-    // Kurangi ayat yang belum dihafal di surah awal dan akhir
-    const surahAwalData = surahList.find(s => s.nomor === surahAwalNum)
-    const surahAkhirData = surahList.find(s => s.nomor === surahAkhirNum)
+    if (!surahKecil || !surahBesar) return 0
 
-    if (surahAwalData && surahAkhirData) {
-      // Ayat yang belum dihafal di surah awal (sebelum ayat mulai)
-      totalAyat -= (parseInt(formAyatAwal) - 1)
-      // Ayat yang belum dihafal di surah akhir (setelah ayat selesai)
-      totalAyat -= (surahAkhirData.jumlah_ayat - parseInt(formAyatAkhir))
-    }
+    // Hitung rentang halaman (bukan penjumlahan)
+    const halamanAwal = surahKecil.halaman_mulai
+    const halamanAkhir = surahBesar.halaman_selesai
 
-    return Math.max(0, (totalAyat / 6236) * 30)
+    const totalHalaman = halamanAkhir - halamanAwal + 1
+    return Math.max(0, totalHalaman / 20)
   }
 
   const handleTambahGuru = async () => {
