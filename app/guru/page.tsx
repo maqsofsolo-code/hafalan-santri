@@ -14,27 +14,28 @@ export default function GuruDashboard() {
   const [errorMsg, setErrorMsg] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [riwayatList, setRiwayatList] = useState<any[]>([])
-  const [sudahAbsen, setSudahAbsen] = useState(false)
-  const [absenLoading, setAbsenLoading] = useState(false)
   const [searchSantri, setSearchSantri] = useState('')
   const [guruPengganti, setGuruPengganti] = useState(false)
+
+  // Absensi 2 sesi
+  const [absenSubuh, setAbsenSubuh] = useState(false)
+  const [absenPagi, setAbsenPagi] = useState(false)
+  const [absenLoading, setAbsenLoading] = useState(false)
+  const [showPopupAbsen, setShowPopupAbsen] = useState(false)
+  const [sesiAbsen, setSesiAbsen] = useState<'subuh' | 'pagi'>('subuh')
+  const [isBatalAbsen, setIsBatalAbsen] = useState(false)
 
   // Form states
   const [selectedSantri, setSelectedSantri] = useState<any>(null)
   const [jenis, setJenis] = useState('baru')
   const [statusKehadiran, setStatusKehadiran] = useState('hadir')
-
-  // Hafalan Baru
   const [surahBaru, setSurahBaru] = useState('')
   const [ayatMulaiBaru, setAyatMulaiBaru] = useState('')
   const [ayatSelesaiBaru, setAyatSelesaiBaru] = useState('')
-
-  // Murojaah
   const [surahMulai, setSurahMulai] = useState('')
   const [ayatMulaiMurojaah, setAyatMulaiMurojaah] = useState('1')
   const [surahSelesai, setSurahSelesai] = useState('')
   const [ayatSelesaiMurojaah, setAyatSelesaiMurojaah] = useState('')
-
   const [status, setStatus] = useState('lancar')
   const [catatan, setCatatan] = useState('')
 
@@ -47,31 +48,26 @@ export default function GuruDashboard() {
     if (profile?.role !== 'guru') { window.location.href = '/'; return }
     setGuruProfile(profile)
 
-    // Santri kelompok sendiri
-    const { data: santri } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)')
-      .eq('guru_id', user.id)
+    const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama)').eq('guru_id', user.id)
     setSantriList(santri || [])
 
-    // Semua santri (untuk guru pengganti)
-    const { data: allSantri } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)')
+    const { data: allSantri } = await supabase.from('santri').select('*, guru:guru_id(nama)')
     setAllSantriList(allSantri || [])
 
-    // Data surah
-    const { data: surah } = await supabase
-      .from('surah').select('*').order('nomor', { ascending: false })
+    const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
     setSurahList(surah || [])
 
-    // Cek absensi hari ini
+    // Cek absensi hari ini — per sesi
     const today = new Date().toISOString().split('T')[0]
-    const { data: absensi } = await supabase
+    const { data: absensiList } = await supabase
       .from('absensi_guru')
       .select('*')
       .eq('guru_id', user.id)
       .eq('tanggal', today)
-      .single()
-    setSudahAbsen(!!absensi)
+
+    const absensiData = absensiList || []
+    setAbsenSubuh(absensiData.some((a: any) => a.sesi === 'subuh'))
+    setAbsenPagi(absensiData.some((a: any) => a.sesi === 'pagi'))
   }
 
   const fetchRiwayat = async () => {
@@ -86,55 +82,64 @@ export default function GuruDashboard() {
     setRiwayatList(data || [])
   }
 
-  const handleToggleAbsen = async () => {
+  // Tentukan sesi yang sedang aktif berdasarkan jam
+  const getSesiAktif = (): 'subuh' | 'pagi' | null => {
+    const now = new Date()
+    const jam = now.getHours()
+    const menit = now.getMinutes()
+    const totalMenit = jam * 60 + menit
+    // Subuh: 04:00 - 05:30
+    if (totalMenit >= 240 && totalMenit <= 330) return 'subuh'
+    // Pagi: 08:00 - 09:45
+    if (totalMenit >= 480 && totalMenit <= 585) return 'pagi'
+    return null
+  }
+
+  const handleKlikAbsen = (sesi: 'subuh' | 'pagi') => {
+    const sudahAbsen = sesi === 'subuh' ? absenSubuh : absenPagi
+    setSesiAbsen(sesi)
+    setIsBatalAbsen(sudahAbsen)
+    setShowPopupAbsen(true)
+  }
+
+  const handleKonfirmasiAbsen = async () => {
     setAbsenLoading(true)
+    setShowPopupAbsen(false)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     const today = new Date().toISOString().split('T')[0]
 
-    if (sudahAbsen) {
-      // Batalkan absensi
+    if (isBatalAbsen) {
       await supabase.from('absensi_guru')
         .delete()
         .eq('guru_id', user.id)
         .eq('tanggal', today)
-      setSudahAbsen(false)
+        .eq('sesi', sesiAbsen)
+      if (sesiAbsen === 'subuh') setAbsenSubuh(false)
+      else setAbsenPagi(false)
     } else {
-      // Absen hadir
       await supabase.from('absensi_guru')
-        .insert({ guru_id: user.id, tanggal: today, status: 'hadir' })
-      setSudahAbsen(true)
+        .insert({ guru_id: user.id, tanggal: today, status: 'hadir', sesi: sesiAbsen })
+      if (sesiAbsen === 'subuh') setAbsenSubuh(true)
+      else setAbsenPagi(true)
     }
     setAbsenLoading(false)
   }
 
-  // Hitung penambahan juz dari hafalan baru
   const hitungPenambahanJuz = (surahNomor: number, ayatMulai: number, ayatSelesai: number) => {
     const surah = surahList.find(s => s.nomor === surahNomor)
     if (!surah) return 0
-
-    // Hitung proporsi ayat dari total ayat surah
-    const totalAyatSurah = surah.jumlah_ayat
-    const ayatDiSetor = ayatSelesai - ayatMulai + 1
-    const proporsi = ayatDiSetor / totalAyatSurah
-
-    // Hitung halaman surah ini
-    const halamanSurah = surah.halaman_selesai - surah.halaman_mulai + 1
-
-    // Halaman yang ditambahkan
-    const halamanDitambah = proporsi * halamanSurah
-    return Math.max(0, halamanDitambah / 20)
+    const proporsi = (ayatSelesai - ayatMulai + 1) / surah.jumlah_ayat
+    const halamanSurah = (surah.halaman_selesai || surah.halaman_mulai) - surah.halaman_mulai + 1
+    return Math.max(0, (proporsi * halamanSurah) / 20)
   }
 
-  // Hitung target murojaah hari ini
   const hitungTargetMurojaah = (santri: any) => {
     if (!santri?.total_hafalan_juz) return null
-    const targetJuz = santri.total_hafalan_juz / 20
-    const targetHalaman = targetJuz * 20 // 1 juz = 20 halaman
-    return { targetJuz: targetJuz.toFixed(3), targetHalaman: targetHalaman.toFixed(1) }
+    const targetHalaman = santri.total_hafalan_juz
+    return { targetJuz: (santri.total_hafalan_juz / 20).toFixed(3), targetHalaman: targetHalaman.toFixed(1) }
   }
 
-  // Auto-isi ayat selesai berdasarkan surah yang dipilih
   const handleSurahSelesaiChange = (nomor: string) => {
     setSurahSelesai(nomor)
     if (nomor) {
@@ -147,19 +152,15 @@ export default function GuruDashboard() {
     if (!selectedSantri) { setErrorMsg('Pilih santri dulu!'); return }
 
     if (statusKehadiran !== 'hadir') {
-      // Santri tidak hadir — simpan status kehadiran saja
       setLoading(true); setErrorMsg('')
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       const { error } = await supabase.from('setoran').insert({
-        santri_id: selectedSantri.id,
-        guru_id: user.id,
-        jenis: 'baru',
-        status: 'tidak_hadir',
+        santri_id: selectedSantri.id, guru_id: user.id,
+        jenis: 'baru', status: 'tidak_hadir',
         status_kehadiran: statusKehadiran,
         tanggal: new Date().toISOString().split('T')[0],
-        guru_pengganti: guruPengganti,
-        perlu_ulang: false
+        guru_pengganti: guruPengganti, perlu_ulang: false, catatan
       })
       if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
       setSuccessMsg(`Data kehadiran ${selectedSantri.nama} berhasil disimpan!`)
@@ -168,15 +169,11 @@ export default function GuruDashboard() {
       return
     }
 
-    // Validasi setoran hadir
-    if (jenis === 'baru') {
-      if (!surahBaru || !ayatMulaiBaru || !ayatSelesaiBaru) {
-        setErrorMsg('Lengkapi data hafalan baru!'); return
-      }
-    } else {
-      if (!surahMulai || !surahSelesai) {
-        setErrorMsg('Lengkapi data murojaah!'); return
-      }
+    if (jenis === 'baru' && (!surahBaru || !ayatMulaiBaru || !ayatSelesaiBaru)) {
+      setErrorMsg('Lengkapi data hafalan baru!'); return
+    }
+    if (jenis === 'lama' && (!surahMulai || !surahSelesai)) {
+      setErrorMsg('Lengkapi data murojaah!'); return
     }
 
     setLoading(true); setErrorMsg('')
@@ -185,12 +182,8 @@ export default function GuruDashboard() {
 
     let penambahanJuz = 0
     let insertData: any = {
-      santri_id: selectedSantri.id,
-      guru_id: user.id,
-      jenis,
-      status,
-      catatan,
-      status_kehadiran: 'hadir',
+      santri_id: selectedSantri.id, guru_id: user.id,
+      jenis, status, catatan, status_kehadiran: 'hadir',
       perlu_ulang: status === 'rosib',
       tanggal: new Date().toISOString().split('T')[0],
       guru_pengganti: guruPengganti
@@ -201,16 +194,13 @@ export default function GuruDashboard() {
       const ayatMulaiNum = parseInt(ayatMulaiBaru)
       const ayatSelesaiNum = parseInt(ayatSelesaiBaru)
       penambahanJuz = hitungPenambahanJuz(surahNomor, ayatMulaiNum, ayatSelesaiNum)
-
       insertData = {
         ...insertData,
         surah_mulai_nomor: surahNomor,
         surah_selesai_nomor: surahNomor,
         surah: surahList.find(s => s.nomor === surahNomor)?.nama_latin || '',
-        ayat_mulai: ayatMulaiNum,
-        ayat_selesai: ayatSelesaiNum,
-        ayat_mulai_baru: ayatMulaiNum,
-        ayat_selesai_baru: ayatSelesaiNum,
+        ayat_mulai: ayatMulaiNum, ayat_selesai: ayatSelesaiNum,
+        ayat_mulai_baru: ayatMulaiNum, ayat_selesai_baru: ayatSelesaiNum,
         penambahan_juz: penambahanJuz
       }
     } else {
@@ -227,16 +217,13 @@ export default function GuruDashboard() {
     const { error } = await supabase.from('setoran').insert(insertData)
     if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
 
-    // Update total hafalan jika hafalan baru
     if (jenis === 'baru' && penambahanJuz > 0) {
       const totalBaru = (selectedSantri.total_hafalan_juz || 0) + penambahanJuz
-      await supabase.from('santri')
-        .update({
-          total_hafalan_juz: totalBaru,
-          surah_terakhir_nomor: parseInt(surahBaru),
-          ayat_terakhir: parseInt(ayatSelesaiBaru)
-        })
-        .eq('id', selectedSantri.id)
+      await supabase.from('santri').update({
+        total_hafalan_juz: totalBaru,
+        surah_terakhir_nomor: parseInt(surahBaru),
+        ayat_terakhir: parseInt(ayatSelesaiBaru)
+      }).eq('id', selectedSantri.id)
     }
 
     setSuccessMsg('Setoran berhasil disimpan!')
@@ -248,8 +235,10 @@ export default function GuruDashboard() {
   const resetForm = () => {
     setSelectedSantri(null); setJenis('baru'); setStatus('lancar')
     setSurahBaru(''); setAyatMulaiBaru(''); setAyatSelesaiBaru('')
-    setSurahMulai(''); setAyatMulaiMurojaah('1'); setSurahSelesai(''); setAyatSelesaiMurojaah('')
-    setCatatan(''); setStatusKehadiran('hadir'); setSearchSantri(''); setGuruPengganti(false)
+    setSurahMulai(''); setAyatMulaiMurojaah('1')
+    setSurahSelesai(''); setAyatSelesaiMurojaah('')
+    setCatatan(''); setStatusKehadiran('hadir')
+    setSearchSantri(''); setGuruPengganti(false)
   }
 
   const handleLogout = async () => {
@@ -258,31 +247,67 @@ export default function GuruDashboard() {
   }
 
   const tanggal = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const sesiAktif = getSesiAktif()
+  const santriTampil = guruPengganti
+    ? allSantriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
+    : santriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
+  const targetMurojaah = selectedSantri ? hitungTargetMurojaah(selectedSantri) : null
+  const getSaranMurojaah = () => surahList.find(s => s.nomor === selectedSantri?.surah_terakhir_nomor)
 
   const menuItems = [
     { id: 'input', label: 'Input Setoran', icon: '✎' },
     { id: 'riwayat', label: 'Riwayat Setoran', icon: '◱' },
     { id: 'santri', label: 'Santri Saya', icon: '◎' },
   ]
-
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
-
-  // Filter santri berdasarkan search
-  const santriTampil = guruPengganti
-    ? allSantriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
-    : santriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
-
-  const targetMurojaah = selectedSantri ? hitungTargetMurojaah(selectedSantri) : null
-
-  // Surah yang disarankan untuk murojaah hari ini
-  const getSaranMurojaah = () => {
-    if (!selectedSantri?.surah_terakhir_nomor) return null
-    const surahTerakhir = surahList.find(s => s.nomor === selectedSantri.surah_terakhir_nomor)
-    return surahTerakhir
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* POPUP KONFIRMASI ABSEN */}
+      {showPopupAbsen && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="text-center mb-5">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
+                style={{ background: isBatalAbsen ? '#fee2e2' : 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                <span className="text-2xl">{isBatalAbsen ? '↩' : '✓'}</span>
+              </div>
+              <h3 className="font-bold text-gray-800 text-lg">
+                {isBatalAbsen ? 'Batalkan Absensi?' : 'Konfirmasi Absensi'}
+              </h3>
+              <p className="text-gray-500 text-sm mt-2">
+                {isBatalAbsen
+                  ? `Anda akan membatalkan absensi sesi ${sesiAbsen === 'subuh' ? 'Subuh' : 'Pagi'}`
+                  : `Anda akan absen hadir sesi ${sesiAbsen === 'subuh' ? 'Subuh' : 'Pagi'}`
+                }
+              </p>
+              <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm text-gray-600">
+                <div>Nama: <span className="font-semibold">{guruProfile?.nama}</span></div>
+                <div>Sesi: <span className="font-semibold">
+                  {sesiAbsen === 'subuh' ? 'Subuh (04.00 - 05.30)' : 'Pagi (08.00 - 09.45)'}
+                </span></div>
+                <div>Tanggal: <span className="font-semibold">
+                  {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </span></div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPopupAbsen(false)}
+                className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-semibold text-sm hover:bg-gray-200">
+                Batal
+              </button>
+              <button
+                onClick={handleKonfirmasiAbsen}
+                className="flex-1 text-white py-3 rounded-xl font-semibold text-sm"
+                style={{ background: isBatalAbsen ? '#dc2626' : 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                {isBatalAbsen ? 'Ya, Batalkan' : 'Ya, Absen Sekarang'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* HEADER MOBILE */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 text-white px-4 py-3 flex items-center justify-between shadow-lg"
@@ -296,23 +321,19 @@ export default function GuruDashboard() {
             <div className="text-blue-200 text-xs">{guruProfile?.nama || 'Guru'}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Tombol Absen */}
-          <button
-            onClick={handleToggleAbsen}
-            disabled={absenLoading}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shadow ${
-              sudahAbsen
-                ? 'bg-green-500 text-white'
-                : 'bg-white bg-opacity-20 text-white border border-white border-opacity-40'
-            }`}>
-            {absenLoading ? '...' : sudahAbsen ? '✓ Hadir' : 'Absen'}
+        <div className="flex items-center gap-1">
+          <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
+            className={`px-2 py-1 rounded-lg text-xs font-bold transition ${absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-40'}`}>
+            {absenSubuh ? '✓ Subuh' : 'Subuh'}
           </button>
-          <button onClick={() => setSidebarOpen(true)} className="text-2xl p-1">☰</button>
+          <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
+            className={`px-2 py-1 rounded-lg text-xs font-bold transition ${absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-40'}`}>
+            {absenPagi ? '✓ Pagi' : 'Pagi'}
+          </button>
+          <button onClick={() => setSidebarOpen(true)} className="text-2xl p-1 ml-1">☰</button>
         </div>
       </div>
 
-      {/* OVERLAY */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -332,8 +353,8 @@ export default function GuruDashboard() {
                 <Image src="/logo.png" alt="Logo" width={48} height={48} className="object-contain" />
               </div>
               <div>
-                <div className="text-white font-bold text-sm leading-tight">Pondok Pesantren</div>
-                <div className="text-white font-bold text-base leading-tight">Daarus Salaf</div>
+                <div className="text-white font-bold text-sm">Pondok Pesantren</div>
+                <div className="text-white font-bold text-base">Daarus Salaf</div>
                 <div className="text-blue-300 text-xs">Sukoharjo</div>
               </div>
             </div>
@@ -342,48 +363,54 @@ export default function GuruDashboard() {
               <div className="text-white font-semibold text-sm">{guruProfile?.nama || 'Guru'}</div>
               <div className="text-blue-300 text-xs">Guru Musami'</div>
             </div>
-            {/* Absen Desktop */}
-            <button
-              onClick={handleToggleAbsen}
-              disabled={absenLoading}
-              className={`w-full mt-3 py-2.5 rounded-xl text-sm font-bold transition ${
-                sudahAbsen
-                  ? 'bg-green-500 hover:bg-green-600 text-white'
-                  : 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white border border-white border-opacity-30'
-              }`}>
-              {absenLoading ? 'Memproses...' : sudahAbsen ? '✓ Sudah Absen Hadir' : 'Klik untuk Absen Hadir'}
-            </button>
+
+            {/* Absen 2 Sesi di Sidebar */}
+            <div className="mt-3 space-y-2">
+              <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
+                className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 ${
+                  absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-30'
+                }`}>
+                <span>Sesi Subuh (04.00-05.30)</span>
+                <span>{absenSubuh ? '✓' : '+'}</span>
+              </button>
+              <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
+                className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 ${
+                  absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-30'
+                }`}>
+                <span>Sesi Pagi (08.00-09.45)</span>
+                <span>{absenPagi ? '✓' : '+'}</span>
+              </button>
+              {sesiAktif && (
+                <div className="text-center text-xs text-green-300 animate-pulse">
+                  Sesi {sesiAktif === 'subuh' ? 'Subuh' : 'Pagi'} sedang berlangsung
+                </div>
+              )}
+              {!sesiAktif && (
+                <div className="text-center text-xs text-blue-300">
+                  Di luar jam sesi — absen tetap bisa dilakukan
+                </div>
+              )}
+            </div>
           </div>
 
           <nav className="flex-1 p-4 space-y-1">
             {menuItems.map(menu => (
               <button key={menu.id}
                 onClick={() => {
-                  setActiveMenu(menu.id)
-                  setSuccessMsg('')
-                  setSidebarOpen(false)
+                  setActiveMenu(menu.id); setSuccessMsg(''); setSidebarOpen(false)
                   if (menu.id === 'riwayat') fetchRiwayat()
                 }}
                 className={`w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${
-                  activeMenu === menu.id
-                    ? 'bg-white text-blue-900 shadow-md font-bold'
-                    : 'text-blue-100 hover:bg-white hover:bg-opacity-10'
+                  activeMenu === menu.id ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'
                 }`}>
-                <span className="text-lg">{menu.icon}</span>
-                {menu.label}
+                <span className="text-lg">{menu.icon}</span>{menu.label}
               </button>
             ))}
           </nav>
 
           <div className="p-4 border-t border-blue-700">
-            <button onClick={handleLogout}
-              className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold transition">
-              Keluar
-            </button>
-            <button onClick={() => setSidebarOpen(false)}
-              className="w-full text-blue-300 py-2 rounded-xl text-xs md:hidden hover:text-white mt-1">
-              ✕ Tutup Menu
-            </button>
+            <button onClick={handleLogout} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold">Keluar</button>
+            <button onClick={() => setSidebarOpen(false)} className="w-full text-blue-300 py-2 rounded-xl text-xs md:hidden mt-1">✕ Tutup</button>
           </div>
         </div>
 
@@ -393,29 +420,33 @@ export default function GuruDashboard() {
           {/* INPUT SETORAN */}
           {activeMenu === 'input' && (
             <div>
-              {/* Banner */}
               <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
                 <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                 <div className="absolute -bottom-8 right-10 w-32 h-32 rounded-full opacity-10 bg-white" />
-                <div className="relative z-10 flex justify-between items-start">
-                  <div>
-                    <h2 className="text-white font-bold text-xl">Input Setoran</h2>
-                    <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
-                    <p className="text-blue-100 text-xs mt-1">{santriList.length} santri dalam kelompok</p>
-                  </div>
-                  {/* Status Absen Desktop */}
-                  <div className="hidden md:block">
-                    <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${sudahAbsen ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white'}`}>
-                      {sudahAbsen ? '✓ Sudah Absen' : 'Belum Absen'}
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-white font-bold text-xl">Input Setoran</h2>
+                      <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
+                      <p className="text-blue-100 text-xs mt-1">{santriList.length} santri dalam kelompok</p>
+                    </div>
+                    {/* Status Absen Desktop di Banner */}
+                    <div className="hidden md:flex flex-col gap-1">
+                      <div className={`px-3 py-1 rounded-lg text-xs font-bold text-center ${absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white'}`}>
+                        {absenSubuh ? '✓ Subuh' : 'Belum Subuh'}
+                      </div>
+                      <div className={`px-3 py-1 rounded-lg text-xs font-bold text-center ${absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white'}`}>
+                        {absenPagi ? '✓ Pagi' : 'Belum Pagi'}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               {successMsg && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm flex items-center gap-2">
-                  <span className="text-lg">✓</span> {successMsg}
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">
+                  ✓ {successMsg}
                 </div>
               )}
 
@@ -424,9 +455,8 @@ export default function GuruDashboard() {
                 {/* Toggle Guru Pengganti */}
                 <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <div
-                      onClick={() => { setGuruPengganti(!guruPengganti); setSelectedSantri(null); setSearchSantri('') }}
-                      className={`w-12 h-6 rounded-full transition-all ${guruPengganti ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                    <div onClick={() => { setGuruPengganti(!guruPengganti); setSelectedSantri(null); setSearchSantri('') }}
+                      className={`w-12 h-6 rounded-full transition-all flex-shrink-0 ${guruPengganti ? 'bg-blue-600' : 'bg-gray-300'}`}>
                       <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-all ${guruPengganti ? 'ml-6' : 'ml-0.5'}`} />
                     </div>
                     <div>
@@ -441,59 +471,47 @@ export default function GuruDashboard() {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Pilih Santri {guruPengganti && <span className="text-blue-500 text-xs">(semua santri)</span>}
                   </label>
-                  <input
-                    type="text"
-                    value={searchSantri}
-                    onChange={e => setSearchSantri(e.target.value)}
-                    placeholder="Cari nama santri..."
-                    className={inputClass + ' mb-2'}
-                  />
+                  <input type="text" value={searchSantri} onChange={e => setSearchSantri(e.target.value)}
+                    placeholder="Cari nama santri..." className={inputClass + ' mb-2'} />
                   {searchSantri && (
                     <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
                       {santriTampil.map(s => (
-                        <button key={s.id}
-                          onClick={() => { setSelectedSantri(s); setSearchSantri(s.nama) }}
+                        <button key={s.id} onClick={() => { setSelectedSantri(s); setSearchSantri(s.nama) }}
                           className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
                           <span className="font-medium">{s.nama}</span>
-                          {s.kelas && <span className="text-gray-400 text-xs ml-2">Kelas {s.kelas}</span>}
+                          {s.kelas && <span className="text-gray-400 text-xs ml-2">{s.kelas}</span>}
                           {guruPengganti && <span className="text-blue-400 text-xs ml-2">({s.guru?.nama || '-'})</span>}
                         </button>
                       ))}
-                      {santriTampil.length === 0 && (
-                        <div className="px-4 py-3 text-sm text-gray-400">Santri tidak ditemukan</div>
-                      )}
+                      {santriTampil.length === 0 && <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
                     </div>
                   )}
 
-                  {/* Info santri terpilih */}
                   {selectedSantri && (
-                    <div className="mt-2 p-3 rounded-xl border"
-                      style={{ background: 'linear-gradient(135deg, #f0f7ff, #e8f4ff)', borderColor: '#bfdbfe' }}>
+                    <div className="mt-2 p-3 rounded-xl border bg-blue-50 border-blue-200">
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="font-bold text-gray-800">{selectedSantri.nama}</div>
                           <div className="text-xs text-gray-500 mt-0.5">
-                            Total Hafalan: <span className="font-semibold text-blue-700">{selectedSantri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
+                            Total: <span className="font-semibold text-blue-700">{selectedSantri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
                           </div>
                           {targetMurojaah && (
                             <div className="text-xs text-green-600 mt-0.5">
-                              Target Murojaah: <span className="font-semibold">{targetMurojaah.targetHalaman} halaman/hari</span>
+                              Target Murojaah: <span className="font-semibold">{targetMurojaah.targetHalaman} hal/hari</span>
                             </div>
                           )}
                           {guruPengganti && (
-                            <div className="text-xs text-orange-500 mt-0.5">
-                              Guru tetap: {selectedSantri.guru?.nama || '-'}
-                            </div>
+                            <div className="text-xs text-orange-500 mt-0.5">Guru tetap: {selectedSantri.guru?.nama || '-'}</div>
                           )}
                         </div>
                         <button onClick={() => { setSelectedSantri(null); setSearchSantri('') }}
-                          className="text-gray-400 hover:text-gray-600 text-lg">×</button>
+                          className="text-gray-400 hover:text-gray-600 text-xl">×</button>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Status Kehadiran Santri */}
+                {/* Status Kehadiran */}
                 <div className="mb-4">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Status Kehadiran Santri</label>
                   <div className="grid grid-cols-4 gap-2">
@@ -503,47 +521,42 @@ export default function GuruDashboard() {
                       { value: 'izin', label: 'Izin', color: 'border-blue-500 bg-blue-50 text-blue-700' },
                       { value: 'alpha', label: 'Alpha', color: 'border-red-500 bg-red-50 text-red-700' },
                     ].map(s => (
-                      <button key={s.value}
-                        onClick={() => setStatusKehadiran(s.value)}
-                        className={`py-2.5 rounded-xl text-xs font-bold border-2 transition ${
-                          statusKehadiran === s.value ? s.color : 'border-gray-200 bg-white text-gray-500'
-                        }`}>
+                      <button key={s.value} onClick={() => setStatusKehadiran(s.value)}
+                        className={`py-2.5 rounded-xl text-xs font-bold border-2 transition ${statusKehadiran === s.value ? s.color : 'border-gray-200 bg-white text-gray-500'}`}>
                         {s.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Form Setoran (hanya jika hadir) */}
                 {statusKehadiran === 'hadir' && (
                   <>
-                    {/* Jenis Hafalan */}
+                    {/* Jenis Setoran */}
                     <div className="mb-4">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Jenis Setoran</label>
                       <div className="grid grid-cols-2 gap-3">
                         <button onClick={() => setJenis('baru')}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
                           <div className="text-sm font-bold text-gray-800">Hafalan Baru</div>
                           <div className="text-xs text-gray-400 mt-0.5">Tambah hafalan baru</div>
                         </button>
                         <button onClick={() => setJenis('lama')}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'lama' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'lama' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
                           <div className="text-sm font-bold text-gray-800">Murojaah</div>
                           <div className="text-xs text-gray-400 mt-0.5">Mengulang hafalan lama</div>
                         </button>
                       </div>
                     </div>
 
-                    {/* FORM HAFALAN BARU */}
+                    {/* Form Hafalan Baru */}
                     {jenis === 'baru' && (
                       <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
                         <label className="block text-sm font-semibold text-gray-700 mb-3">Detail Hafalan Baru</label>
-                        <select value={surahBaru} onChange={e => { setSurahBaru(e.target.value); setAyatMulaiBaru('1') }} className={inputClass + ' mb-3'}>
+                        <select value={surahBaru} onChange={e => { setSurahBaru(e.target.value); setAyatMulaiBaru('1') }}
+                          className={inputClass + ' mb-3'}>
                           <option value="">-- Pilih Surah --</option>
                           {surahList.map(s => (
-                            <option key={s.nomor} value={s.nomor}>
-                              {s.nomor}. {s.nama_latin} ({s.jumlah_ayat} ayat)
-                            </option>
+                            <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin} ({s.jumlah_ayat} ayat)</option>
                           ))}
                         </select>
                         <div className="grid grid-cols-2 gap-3">
@@ -560,24 +573,21 @@ export default function GuruDashboard() {
                         </div>
                         {surahBaru && ayatMulaiBaru && ayatSelesaiBaru && (
                           <div className="mt-2 text-xs text-blue-600 font-medium">
-                            + {hitungPenambahanJuz(parseInt(surahBaru), parseInt(ayatMulaiBaru), parseInt(ayatSelesaiBaru)).toFixed(4)} Juz akan ditambahkan
+                            + {hitungPenambahanJuz(parseInt(surahBaru), parseInt(ayatMulaiBaru), parseInt(ayatSelesaiBaru)).toFixed(4)} Juz
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* FORM MUROJAAH */}
+                    {/* Form Murojaah */}
                     {jenis === 'lama' && (
                       <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-100">
                         <label className="block text-sm font-semibold text-gray-700 mb-3">Detail Murojaah</label>
-
-                        {/* Saran target */}
                         {targetMurojaah && (
                           <div className="mb-3 p-3 bg-white rounded-xl border border-purple-200">
                             <p className="text-xs font-semibold text-purple-700 mb-1">Target Murojaah Hari Ini:</p>
                             <p className="text-xs text-gray-600">
                               ± <span className="font-bold text-purple-700">{targetMurojaah.targetHalaman} halaman</span>
-                              {' '}({targetMurojaah.targetJuz} Juz)
                             </p>
                             {getSaranMurojaah() && (
                               <p className="text-xs text-gray-500 mt-1">
@@ -586,17 +596,12 @@ export default function GuruDashboard() {
                             )}
                           </div>
                         )}
-
-                        <div className="grid grid-cols-1 gap-3">
+                        <div className="space-y-3">
                           <div>
                             <label className="block text-xs text-gray-500 mb-1">Dari Surah</label>
                             <select value={surahMulai} onChange={e => { setSurahMulai(e.target.value); setAyatMulaiMurojaah('1') }} className={inputClass}>
                               <option value="">-- Pilih Surah Mulai --</option>
-                              {surahList.map(s => (
-                                <option key={s.nomor} value={s.nomor}>
-                                  {s.nomor}. {s.nama_latin}
-                                </option>
-                              ))}
+                              {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
                             </select>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
@@ -609,27 +614,22 @@ export default function GuruDashboard() {
                               <label className="block text-xs text-gray-500 mb-1">Surah Selesai</label>
                               <select value={surahSelesai} onChange={e => handleSurahSelesaiChange(e.target.value)} className={inputClass}>
                                 <option value="">-- Pilih --</option>
-                                {surahList.map(s => (
-                                  <option key={s.nomor} value={s.nomor}>
-                                    {s.nomor}. {s.nama_latin}
-                                  </option>
-                                ))}
+                                {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
                               </select>
                             </div>
                           </div>
                           {surahSelesai && (
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">Ayat Selesai</label>
-                              <input type="number" value={ayatSelesaiMurojaah} onChange={e => setAyatSelesaiMurojaah(e.target.value)}
-                                className={inputClass} />
+                              <input type="number" value={ayatSelesaiMurojaah} onChange={e => setAyatSelesaiMurojaah(e.target.value)} className={inputClass} />
                             </div>
                           )}
                         </div>
-
                         {surahMulai && surahSelesai && (
                           <div className="mt-2 p-2 bg-white rounded-lg text-xs text-purple-600">
-                            Murojaah dari <span className="font-bold">{surahList.find(s => s.nomor === parseInt(surahMulai))?.nama_latin}</span>
-                            {' '}sampai <span className="font-bold">{surahList.find(s => s.nomor === parseInt(surahSelesai))?.nama_latin}</span>
+                            {surahList.find(s => s.nomor === parseInt(surahMulai))?.nama_latin}
+                            {' → '}
+                            {surahList.find(s => s.nomor === parseInt(surahSelesai))?.nama_latin}
                           </div>
                         )}
                       </div>
@@ -656,21 +656,13 @@ export default function GuruDashboard() {
 
                 {/* Catatan */}
                 <div className="mb-5">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Catatan {statusKehadiran !== 'hadir' ? '(Opsional)' : '(Opsional)'}
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan (Opsional)</label>
                   <textarea value={catatan} onChange={e => setCatatan(e.target.value)}
-                    placeholder={statusKehadiran !== 'hadir'
-                      ? 'Keterangan tambahan kehadiran...'
-                      : 'Catatan untuk wali santri...'}
+                    placeholder={statusKehadiran !== 'hadir' ? 'Keterangan tambahan...' : 'Catatan untuk wali santri...'}
                     rows={2} className={inputClass} />
                 </div>
 
-                {errorMsg && (
-                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm mb-4">
-                    {errorMsg}
-                  </div>
-                )}
+                {errorMsg && <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm mb-4">{errorMsg}</div>}
 
                 <button onClick={handleInputSetoran} disabled={loading || !selectedSantri}
                   className="w-full text-white py-4 rounded-xl font-bold transition disabled:opacity-50 text-base shadow-lg"
@@ -688,7 +680,7 @@ export default function GuruDashboard() {
                 style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
                 <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                 <div className="relative z-10">
-                  <h2 className="text-white font-bold text-xl">Riwayat Setoran</h2>
+                  <h2 className="font-bold text-xl">Riwayat Setoran</h2>
                   <p className="text-blue-200 text-sm mt-1">{riwayatList.length} setoran tercatat</p>
                 </div>
               </div>
@@ -707,7 +699,7 @@ export default function GuruDashboard() {
                           {item.santri?.nama?.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-semibold text-sm text-gray-800">{item.santri?.nama}</div>
+                          <div className="font-semibold text-sm">{item.santri?.nama}</div>
                           <div className="text-xs text-gray-400">{item.tanggal}</div>
                         </div>
                       </div>
@@ -716,9 +708,7 @@ export default function GuruDashboard() {
                           item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' :
                           item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' :
                           'bg-red-100 text-red-700'
-                        }`}>
-                          {item.status_kehadiran?.toUpperCase()}
-                        </span>
+                        }`}>{item.status_kehadiran?.toUpperCase()}</span>
                       ) : (
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
@@ -726,27 +716,19 @@ export default function GuruDashboard() {
                       )}
                     </div>
                     {item.status_kehadiran === 'hadir' && (
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
                           {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
                         </span>
                         <span className="text-xs text-gray-600">
                           {item.surah_mulai?.nama_latin || item.surah}
-                          {item.surah_selesai && item.surah_mulai_nomor !== item.surah_selesai_nomor && (
-                            <> → {item.surah_selesai?.nama_latin}</>
-                          )}
+                          {item.surah_selesai && item.surah_mulai_nomor !== item.surah_selesai_nomor && <> → {item.surah_selesai?.nama_latin}</>}
                           {' '}ayat {item.ayat_mulai}–{item.ayat_selesai}
                         </span>
-                        {item.guru_pengganti && (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Pengganti</span>
-                        )}
+                        {item.guru_pengganti && <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Pengganti</span>}
                       </div>
                     )}
-                    {item.catatan && (
-                      <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">
-                        {item.catatan}
-                      </div>
-                    )}
+                    {item.catatan && <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>}
                   </div>
                 ))}
               </div>
@@ -760,7 +742,7 @@ export default function GuruDashboard() {
                 style={{ background: 'linear-gradient(135deg, #166534 0%, #16a34a 100%)' }}>
                 <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                 <div className="relative z-10">
-                  <h2 className="text-white font-bold text-xl">Santri Saya</h2>
+                  <h2 className="font-bold text-xl">Santri Saya</h2>
                   <p className="text-green-200 text-sm mt-1">{santriList.length} santri dalam kelompok</p>
                 </div>
               </div>
@@ -780,14 +762,11 @@ export default function GuruDashboard() {
                           {santri.nama?.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <div className="font-semibold text-gray-800">{santri.nama}</div>
+                          <div className="font-semibold">{santri.nama}</div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {santri.kelas && (
-                              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">Kelas {santri.kelas}</span>
-                            )}
+                            {santri.kelas && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{santri.kelas}</span>}
                             <span className="text-xs text-gray-500">{santri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
                           </div>
-                          {/* Progress */}
                           <div className="mt-2">
                             <div className="flex justify-between text-xs text-gray-400 mb-1">
                               <span>Progress 30 Juz</span>
@@ -801,11 +780,7 @@ export default function GuruDashboard() {
                                 }} />
                             </div>
                           </div>
-                          {target && (
-                            <div className="mt-1 text-xs text-purple-600">
-                              Target murojaah: <span className="font-semibold">{target.targetHalaman} hal/hari</span>
-                            </div>
-                          )}
+                          {target && <div className="mt-1 text-xs text-purple-600">Target murojaah: <span className="font-semibold">{target.targetHalaman} hal/hari</span></div>}
                         </div>
                       </div>
                     </div>
