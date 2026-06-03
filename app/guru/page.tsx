@@ -322,17 +322,26 @@ export default function GuruDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
-            className={`px-2 py-1 rounded-lg text-xs font-bold transition ${absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-40'}`}>
-            {absenSubuh ? '✓ Subuh' : 'Subuh'}
-          </button>
-          <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
-            className={`px-2 py-1 rounded-lg text-xs font-bold transition ${absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-40'}`}>
-            {absenPagi ? '✓ Pagi' : 'Pagi'}
-          </button>
-          <button onClick={() => setSidebarOpen(true)} className="text-2xl p-1 ml-1">☰</button>
-        </div>
-      </div>
+  <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
+    className={`flex flex-col items-center px-2 py-1 rounded-lg transition border ${
+      absenSubuh
+        ? 'bg-green-500 border-green-400 text-white'
+        : 'bg-white border-white text-blue-900'
+    }`}>
+    <span className="text-xs font-bold leading-tight">{absenSubuh ? '✓' : '+'}</span>
+    <span className="text-xs font-bold leading-tight">Subuh</span>
+  </button>
+  <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
+    className={`flex flex-col items-center px-2 py-1 rounded-lg transition border ${
+      absenPagi
+        ? 'bg-green-500 border-green-400 text-white'
+        : 'bg-white border-white text-blue-900'
+    }`}>
+    <span className="text-xs font-bold leading-tight">{absenPagi ? '✓' : '+'}</span>
+    <span className="text-xs font-bold leading-tight">Pagi</span>
+  </button>
+  <button onClick={() => setSidebarOpen(true)} className="text-2xl p-1 ml-1 text-white">☰</button>
+</div>
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
