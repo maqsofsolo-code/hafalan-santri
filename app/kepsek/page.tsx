@@ -12,6 +12,7 @@ export default function KepsekDashboard() {
   const [rankingKonsistensi, setRankingKonsistensi] = useState<any[]>([])
   const [rankingSemangat, setRankingSemangat] = useState<any[]>([])
   const [absensiGuru, setAbsensiGuru] = useState<any[]>([])
+  const [setoranMurojaahHariIni, setSetoranMurojaahHariIni] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeRanking, setActiveRanking] = useState('konsistensi')
@@ -27,8 +28,6 @@ export default function KepsekDashboard() {
     if (profile?.role !== 'kepsek') { window.location.href = '/'; return }
 
     const today = new Date().toISOString().split('T')[0]
-
-    // Hitung tanggal 7 hari lalu
     const tujuhHariLalu = new Date()
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
@@ -49,41 +48,40 @@ export default function KepsekDashboard() {
     const sortedHafalan = [...(santri || [])].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
     setRankingHafalan(sortedHafalan)
 
-    // Ambil setoran 7 hari terakhir
+    // Setoran murojaah hari ini
+    const { data: murojaahHariIni } = await supabase
+      .from('setoran')
+      .select('*, santri:santri_id(nama, total_hafalan_juz, kelas, kelas_num, jenjang, guru:guru_id(nama))')
+      .eq('tanggal', today)
+      .eq('jenis', 'lama')
+      .eq('status_kehadiran', 'hadir')
+    setSetoranMurojaahHariIni(murojaahHariIni || [])
+
+    // Setoran 7 hari terakhir
     const { data: setoran7Hari } = await supabase
       .from('setoran')
       .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
       .gte('tanggal', tujuhHariLaluStr)
       .eq('status_kehadiran', 'hadir')
 
-    // ===== RANKING KONSISTENSI (% hari setor dari 7 hari) =====
+    // Ranking Konsistensi
     const konsistensiMap: Record<string, { hariSetor: Set<string> }> = {}
     ;(setoran7Hari || []).forEach(s => {
-      if (!konsistensiMap[s.santri_id]) {
-        konsistensiMap[s.santri_id] = { hariSetor: new Set() }
-      }
+      if (!konsistensiMap[s.santri_id]) konsistensiMap[s.santri_id] = { hariSetor: new Set() }
       konsistensiMap[s.santri_id].hariSetor.add(s.tanggal)
     })
-
     const konsistensiList = (santri || []).map(s => {
-      const data = konsistensiMap[s.id]
-      const hariSetor = data?.hariSetor.size || 0
-      const persentase = Math.round((hariSetor / 7) * 100)
-      return {
-        ...s,
-        hariSetor,
-        persentaseKonsistensi: persentase
-      }
+      const hariSetor = konsistensiMap[s.id]?.hariSetor.size || 0
+      return { ...s, hariSetor, persentaseKonsistensi: Math.round((hariSetor / 7) * 100) }
     }).sort((a, b) => b.hariSetor - a.hariSetor)
     setRankingKonsistensi(konsistensiList)
 
-    // ===== RANKING SEMANGAT HAFALAN BARU (total halaman ditambah 7 hari) =====
+    // Ranking Semangat
     const semangatMap: Record<string, { totalJuz: number }> = {}
     ;(setoran7Hari || []).filter(s => s.jenis === 'baru').forEach(s => {
       if (!semangatMap[s.santri_id]) semangatMap[s.santri_id] = { totalJuz: 0 }
       semangatMap[s.santri_id].totalJuz += (s.penambahan_juz || 0)
     })
-
     const semangatList = (santri || []).map(s => ({
       ...s,
       tambahJuz7Hari: semangatMap[s.id]?.totalJuz || 0,
@@ -101,10 +99,6 @@ export default function KepsekDashboard() {
 
   const santriSudahSetor = [...new Set(setoranHariIni.map(s => s.santri_id))]
   const santriBelumSetor = santriList.filter(s => !santriSudahSetor.includes(s.id))
-  const guruSudahInput = [...new Set(setoranHariIni.map(s => s.guru_id))]
-  const guruBelumInput = guruList.filter(g => !guruSudahInput.includes(g.id))
-
-  // Absensi per sesi
   const guruAbsenSubuh = absensiGuru.filter(a => a.sesi === 'subuh').map(a => a.guru_id)
   const guruAbsenPagi = absensiGuru.filter(a => a.sesi === 'pagi').map(a => a.guru_id)
 
@@ -124,19 +118,46 @@ export default function KepsekDashboard() {
     return j
   }
 
-  // Filter ranking berdasarkan jenjang & kelas
   const filterSantri = (list: any[]) => list.filter(s => {
     if (filterJenjang !== 'semua' && s.jenjang !== filterJenjang) return false
     if (filterKelas !== 'semua' && s.kelas_num?.toString() !== filterKelas) return false
     return true
   })
 
+  // Hitung monitor murojaah
+  const hasilMonitorMurojaah = santriList
+    .filter(s => s.total_hafalan_juz > 0)
+    .map(santri => {
+      const targetHalaman = santri.total_hafalan_juz  // total_hafalan ÷ 20 × 20 = total_hafalan
+      const targetLembar = targetHalaman / 2
+      const setoranSantri = setoranMurojaahHariIni.filter(s => s.santri_id === santri.id)
+      const totalHalamanSetor = setoranSantri.reduce((sum: number, s: any) => sum + (s.jumlah_halaman_murojaah || 0), 0)
+      const totalLembarSetor = totalHalamanSetor / 2
+      const sudahMurojaah = setoranSantri.length > 0
+      const persentase = targetHalaman > 0 ? Math.round((totalHalamanSetor / targetHalaman) * 100) : 0
+
+      let statusLabel = 'Belum Murojaah'
+      let statusColor = 'text-gray-500'
+      let statusBg = 'bg-gray-100'
+      if (sudahMurojaah) {
+        if (persentase >= 80) { statusLabel = 'Sesuai Target'; statusColor = 'text-green-700'; statusBg = 'bg-green-100' }
+        else if (persentase >= 50) { statusLabel = 'Kurang Sedikit'; statusColor = 'text-yellow-700'; statusBg = 'bg-yellow-100' }
+        else { statusLabel = 'Jauh dari Target'; statusColor = 'text-red-700'; statusBg = 'bg-red-100' }
+      }
+
+      return { ...santri, targetHalaman, targetLembar, totalHalamanSetor, totalLembarSetor, persentase, sudahMurojaah, statusLabel, statusColor, statusBg }
+    })
+    .sort((a, b) => a.persentase - b.persentase)
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '◈' },
     { id: 'monitoring', label: 'Monitoring Harian', icon: '◉' },
+    { id: 'murojaah', label: 'Monitor Murojaah', icon: '◎' },
     { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
     { id: 'laporan', label: 'Laporan Setoran', icon: '◱' },
   ]
+
+  const inputClass = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 
   if (loading) {
     return (
@@ -200,7 +221,7 @@ export default function KepsekDashboard() {
             </div>
           </div>
 
-          <nav className="flex-1 p-4 space-y-1">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {menuItems.map(menu => (
               <button key={menu.id}
                 onClick={() => { setActiveMenu(menu.id); setSidebarOpen(false) }}
@@ -213,14 +234,8 @@ export default function KepsekDashboard() {
           </nav>
 
           <div className="p-4 border-t border-blue-700">
-            <button onClick={handleLogout}
-              className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold">
-              Keluar
-            </button>
-            <button onClick={() => setSidebarOpen(false)}
-              className="w-full text-blue-300 py-2 rounded-xl text-xs md:hidden mt-1">
-              ✕ Tutup
-            </button>
+            <button onClick={handleLogout} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold">Keluar</button>
+            <button onClick={() => setSidebarOpen(false)} className="w-full text-blue-300 py-2 rounded-xl text-xs md:hidden mt-1">✕ Tutup</button>
           </div>
         </div>
 
@@ -269,7 +284,6 @@ export default function KepsekDashboard() {
               <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-4">Absensi Guru Hari Ini</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Sesi Subuh */}
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <div className="px-4 py-2.5 flex items-center justify-between"
                       style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
@@ -296,8 +310,6 @@ export default function KepsekDashboard() {
                       {guruList.length === 0 && <p className="text-gray-400 text-xs text-center py-2">Belum ada guru</p>}
                     </div>
                   </div>
-
-                  {/* Sesi Pagi */}
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <div className="px-4 py-2.5 flex items-center justify-between"
                       style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
@@ -359,7 +371,6 @@ export default function KepsekDashboard() {
                 </div>
               </div>
 
-              {/* Statistik */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                 {[
                   { label: 'Sudah Setor', count: santriSudahSetor.length, color: 'from-green-500 to-green-700' },
@@ -375,7 +386,6 @@ export default function KepsekDashboard() {
                 ))}
               </div>
 
-              {/* Progress */}
               <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-semibold text-gray-700">Progress Setoran</span>
@@ -439,6 +449,100 @@ export default function KepsekDashboard() {
             </div>
           )}
 
+          {/* MONITOR MUROJAAH */}
+          {activeMenu === 'murojaah' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #6b21a8 0%, #9333ea 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="font-bold text-xl">Monitor Murojaah</h2>
+                  <p className="text-purple-200 text-sm mt-1">📅 {tanggal}</p>
+                  <p className="text-purple-100 text-xs mt-1">Pantau kesesuaian target murojaah harian</p>
+                </div>
+              </div>
+
+              {/* Statistik */}
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                {[
+                  { label: 'Sesuai Target', count: hasilMonitorMurojaah.filter(s => s.persentase >= 80).length, color: 'from-green-500 to-green-700' },
+                  { label: 'Kurang', count: hasilMonitorMurojaah.filter(s => s.sudahMurojaah && s.persentase < 80).length, color: 'from-yellow-500 to-yellow-700' },
+                  { label: 'Belum Murojaah', count: hasilMonitorMurojaah.filter(s => !s.sudahMurojaah).length, color: 'from-gray-400 to-gray-600' },
+                ].map((item, i) => (
+                  <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-4 shadow text-white relative overflow-hidden`}>
+                    <div className="absolute -bottom-2 -right-2 text-5xl opacity-10">◆</div>
+                    <div className="text-2xl font-bold">{item.count}</div>
+                    <div className="font-semibold text-xs mt-1">{item.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Detail per Santri */}
+              <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
+                  <h3 className="text-white font-bold">Detail Murojaah Per Santri</h3>
+                  <p className="text-purple-200 text-xs mt-0.5">Diurutkan dari yang paling perlu perhatian</p>
+                </div>
+                <div className="p-4 space-y-3">
+                  {hasilMonitorMurojaah.length === 0 && (
+                    <p className="text-gray-400 text-sm text-center py-6">Belum ada data santri</p>
+                  )}
+                  {hasilMonitorMurojaah.map((santri) => (
+                    <div key={santri.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                            style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
+                            {santri.nama?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
+                            <div className="text-xs text-gray-400">
+                              {santri.kelas || '-'} • Guru: {santri.guru?.nama || '-'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${santri.statusBg} ${santri.statusColor}`}>
+                          {santri.statusLabel}
+                        </span>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-500">
+                            Target: <span className="font-semibold">{santri.targetHalaman.toFixed(1)} hal</span>
+                            <span className="text-gray-400 ml-1">(≈ {santri.targetLembar.toFixed(1)} lembar)</span>
+                          </span>
+                          <span className="font-bold" style={{ color: '#9333ea' }}>{santri.persentase}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="h-2 rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(santri.persentase, 100)}%`,
+                              background: santri.persentase >= 80
+                                ? 'linear-gradient(135deg, #166534, #16a34a)'
+                                : santri.persentase >= 50
+                                ? 'linear-gradient(135deg, #d97706, #f59e0b)'
+                                : santri.persentase > 0
+                                ? 'linear-gradient(135deg, #dc2626, #ef4444)'
+                                : '#e5e7eb'
+                            }} />
+                        </div>
+                        {santri.sudahMurojaah && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            Disetor: <span className="font-semibold text-gray-600">{santri.totalHalamanSetor.toFixed(1)} hal</span>
+                            <span className="ml-1">(≈ {santri.totalLembarSetor.toFixed(1)} lembar)</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* RANKING */}
           {activeMenu === 'ranking' && (
             <div>
@@ -451,13 +555,12 @@ export default function KepsekDashboard() {
                 </div>
               </div>
 
-              {/* Filter Jenjang & Kelas */}
+              {/* Filter */}
               <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Filter Jenjang</label>
-                    <select value={filterJenjang} onChange={e => { setFilterJenjang(e.target.value); setFilterKelas('semua') }}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    <select value={filterJenjang} onChange={e => { setFilterJenjang(e.target.value); setFilterKelas('semua') }} className={inputClass}>
                       <option value="semua">Semua Jenjang</option>
                       <option value="ula">Ula</option>
                       <option value="wustha">Wustha</option>
@@ -466,8 +569,7 @@ export default function KepsekDashboard() {
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Filter Kelas</label>
-                    <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)} className={inputClass}>
                       <option value="semua">Semua Kelas</option>
                       {getKelasOptions(filterJenjang).map(k => (
                         <option key={k} value={k}>Kelas {k}</option>
@@ -482,8 +584,8 @@ export default function KepsekDashboard() {
                 </p>
               </div>
 
-              {/* Tab Jenis Ranking */}
-              <div className="flex gap-2 mb-5 overflow-x-auto">
+              {/* Tab */}
+              <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {[
                   { id: 'konsistensi', label: 'Konsistensi Setor', sub: '7 hari terakhir' },
                   { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir' },
@@ -491,9 +593,7 @@ export default function KepsekDashboard() {
                 ].map(tab => (
                   <button key={tab.id} onClick={() => setActiveRanking(tab.id)}
                     className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${
-                      activeRanking === tab.id
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                      activeRanking === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'
                     }`}>
                     <div>{tab.label}</div>
                     <div className="text-xs font-normal opacity-70">{tab.sub}</div>
@@ -506,26 +606,20 @@ export default function KepsekDashboard() {
                 <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                   <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
                     <h3 className="text-white font-bold">Peringkat Konsistensi Setoran</h3>
-                    <p className="text-blue-200 text-xs mt-0.5">Dihitung dari % hari setor dalam 7 hari terakhir</p>
+                    <p className="text-blue-200 text-xs mt-0.5">% hari setor dalam 7 hari terakhir</p>
                   </div>
                   <div className="p-4 space-y-2">
                     {filterSantri(rankingKonsistensi).map((santri, i) => (
                       <div key={santri.id} className={`flex items-center gap-3 p-3 rounded-xl ${i < 3 ? 'bg-gray-50' : ''}`}>
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                          i === 0 ? 'bg-yellow-400 text-white' :
-                          i === 1 ? 'bg-gray-300 text-white' :
-                          i === 2 ? 'bg-orange-400 text-white' :
-                          'bg-gray-100 text-gray-500'
+                          i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-300 text-white' : i === 2 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-500'
                         }`}>{i + 1}</div>
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {santri.jenjang && (
-                              <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>
-                            )}
+                            {santri.jenjang && <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>}
                             <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
                           </div>
-                          {/* Progress bar konsistensi */}
                           <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5">
                             <div className="h-1.5 rounded-full"
                               style={{
@@ -537,17 +631,14 @@ export default function KepsekDashboard() {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className={`font-bold text-sm ${
-                            santri.persentaseKonsistensi >= 80 ? 'text-green-600' :
-                            santri.persentaseKonsistensi >= 50 ? 'text-yellow-600' : 'text-red-500'
-                          }`}>{santri.persentaseKonsistensi}%</div>
+                          <div className={`font-bold text-sm ${santri.persentaseKonsistensi >= 80 ? 'text-green-600' : santri.persentaseKonsistensi >= 50 ? 'text-yellow-600' : 'text-red-500'}`}>
+                            {santri.persentaseKonsistensi}%
+                          </div>
                           <div className="text-xs text-gray-400">{santri.hariSetor}/7 hari</div>
                         </div>
                       </div>
                     ))}
-                    {filterSantri(rankingKonsistensi).length === 0 && (
-                      <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>
-                    )}
+                    {filterSantri(rankingKonsistensi).length === 0 && <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>}
                   </div>
                 </div>
               )}
@@ -557,7 +648,7 @@ export default function KepsekDashboard() {
                 <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                   <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
                     <h3 className="text-white font-bold">Peringkat Semangat Hafalan Baru</h3>
-                    <p className="text-purple-200 text-xs mt-0.5">Total hafalan baru yang ditambah dalam 7 hari terakhir</p>
+                    <p className="text-purple-200 text-xs mt-0.5">Total hafalan baru 7 hari terakhir</p>
                   </div>
                   <div className="p-4 space-y-2">
                     {filterSantri(rankingSemangat).map((santri, i) => {
@@ -565,17 +656,12 @@ export default function KepsekDashboard() {
                       return (
                         <div key={santri.id} className={`flex items-center gap-3 p-3 rounded-xl ${i < 3 ? 'bg-gray-50' : ''}`}>
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                            i === 0 ? 'bg-yellow-400 text-white' :
-                            i === 1 ? 'bg-gray-300 text-white' :
-                            i === 2 ? 'bg-orange-400 text-white' :
-                            'bg-gray-100 text-gray-500'
+                            i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-300 text-white' : i === 2 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-500'
                           }`}>{i + 1}</div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              {santri.jenjang && (
-                                <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>
-                              )}
+                              {santri.jenjang && <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>}
                               <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5">
@@ -584,17 +670,13 @@ export default function KepsekDashboard() {
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <div className="font-bold text-sm text-purple-600">
-                              {santri.tambahHalaman7Hari.toFixed(1)}
-                            </div>
-                            <div className="text-xs text-gray-400">halaman</div>
+                            <div className="font-bold text-sm text-purple-600">{santri.tambahHalaman7Hari.toFixed(1)}</div>
+                            <div className="text-xs text-gray-400">hal ({(santri.tambahHalaman7Hari / 2).toFixed(1)} lembar)</div>
                           </div>
                         </div>
                       )
                     })}
-                    {filterSantri(rankingSemangat).length === 0 && (
-                      <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>
-                    )}
+                    {filterSantri(rankingSemangat).length === 0 && <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>}
                   </div>
                 </div>
               )}
@@ -610,17 +692,12 @@ export default function KepsekDashboard() {
                     {filterSantri(rankingHafalan).map((santri, i) => (
                       <div key={santri.id} className={`flex items-center gap-3 p-3 rounded-xl ${i < 3 ? 'bg-gray-50' : ''}`}>
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                          i === 0 ? 'bg-yellow-400 text-white' :
-                          i === 1 ? 'bg-gray-300 text-white' :
-                          i === 2 ? 'bg-orange-400 text-white' :
-                          'bg-gray-100 text-gray-500'
+                          i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-300 text-white' : i === 2 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-500'
                         }`}>{i + 1}</div>
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {santri.jenjang && (
-                              <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>
-                            )}
+                            {santri.jenjang && <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>}
                             <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
@@ -637,9 +714,7 @@ export default function KepsekDashboard() {
                         </div>
                       </div>
                     ))}
-                    {filterSantri(rankingHafalan).length === 0 && (
-                      <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>
-                    )}
+                    {filterSantri(rankingHafalan).length === 0 && <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>}
                   </div>
                 </div>
               )}
@@ -687,9 +762,7 @@ export default function KepsekDashboard() {
                       {item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}
                     </div>
                     {item.catatan && (
-                      <div className="ml-11 mt-1 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">
-                        {item.catatan}
-                      </div>
+                      <div className="ml-11 mt-1 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>
                     )}
                   </div>
                 ))}
