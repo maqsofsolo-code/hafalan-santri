@@ -9,6 +9,7 @@ export default function WaliDashboard() {
   const [santriList, setSantriList] = useState<any[]>([])
   const [selectedSantri, setSelectedSantri] = useState<any>(null)
   const [riwayatSetoran, setRiwayatSetoran] = useState<any[]>([])
+  const [allSantriKelas, setAllSantriKelas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -20,11 +21,25 @@ export default function WaliDashboard() {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     if (profile?.role !== 'wali') { window.location.href = '/'; return }
     setWaliProfile(profile)
-    const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama)').eq('wali_id', user.id)
+
+    const { data: santri } = await supabase
+      .from('santri').select('*, guru:guru_id(nama)').eq('wali_id', user.id)
     setSantriList(santri || [])
+
     if (santri && santri.length > 0) {
-      setSelectedSantri(santri[0])
-      fetchRiwayat(santri[0].id)
+      const s = santri[0]
+      setSelectedSantri(s)
+      fetchRiwayat(s.id)
+
+      // Ambil semua santri sekelas untuk hitung peringkat
+      if (s.kelas_num && s.jenjang) {
+        const { data: seKelas } = await supabase
+          .from('santri')
+          .select('id, nama, total_hafalan_juz, kelas_num, jenjang')
+          .eq('kelas_num', s.kelas_num)
+          .eq('jenjang', s.jenjang)
+        setAllSantriKelas(seKelas || [])
+      }
     }
     setLoading(false)
   }
@@ -36,14 +51,70 @@ export default function WaliDashboard() {
     setRiwayatSetoran(data || [])
   }
 
+  const fetchSantriKelas = async (santri: any) => {
+    if (santri.kelas_num && santri.jenjang) {
+      const { data: seKelas } = await supabase
+        .from('santri')
+        .select('id, nama, total_hafalan_juz, kelas_num, jenjang')
+        .eq('kelas_num', santri.kelas_num)
+        .eq('jenjang', santri.jenjang)
+      setAllSantriKelas(seKelas || [])
+    }
+  }
+
   const handlePilihSantri = (santri: any) => {
     setSelectedSantri(santri)
     fetchRiwayat(santri.id)
+    fetchSantriKelas(santri)
   }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/'
+  }
+
+  // Hitung peringkat santri di kelasnya
+  const hitungPeringkat = (santriId: string) => {
+    if (allSantriKelas.length === 0) return null
+    const sorted = [...allSantriKelas].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
+    const peringkat = sorted.findIndex(s => s.id === santriId) + 1
+    return { peringkat, total: allSantriKelas.length }
+  }
+
+  // Hitung peringkat konsistensi 7 hari
+  const hitungPeringkatKonsistensi = async () => {
+    if (!selectedSantri || allSantriKelas.length === 0) return null
+    const tujuhHariLalu = new Date()
+    tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
+    const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
+
+    const { data } = await supabase
+      .from('setoran')
+      .select('santri_id, tanggal')
+      .in('santri_id', allSantriKelas.map(s => s.id))
+      .gte('tanggal', tujuhHariLaluStr)
+      .eq('status_kehadiran', 'hadir')
+
+    const map: Record<string, Set<string>> = {}
+    ;(data || []).forEach(s => {
+      if (!map[s.santri_id]) map[s.santri_id] = new Set()
+      map[s.santri_id].add(s.tanggal)
+    })
+
+    const sorted = allSantriKelas
+      .map(s => ({ id: s.id, hari: map[s.id]?.size || 0 }))
+      .sort((a, b) => b.hari - a.hari)
+
+    const peringkat = sorted.findIndex(s => s.id === selectedSantri.id) + 1
+    const hariSaya = map[selectedSantri.id]?.size || 0
+    return { peringkat, total: allSantriKelas.length, hari: hariSaya }
+  }
+
+  const jenjangLabel = (j: string) => {
+    if (j === 'ula') return 'Ula'
+    if (j === 'wustha') return 'Wustha'
+    if (j === 'ulya') return 'Ulya'
+    return j
   }
 
   const totalSetoran = riwayatSetoran.length
@@ -52,8 +123,11 @@ export default function WaliDashboard() {
   const setoranBaru = riwayatSetoran.filter(s => s.jenis === 'baru').length
   const setoranLama = riwayatSetoran.filter(s => s.jenis === 'lama').length
 
+  const peringkatHafalan = selectedSantri ? hitungPeringkat(selectedSantri.id) : null
+
   const menuItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: '◈' },
+    { id: 'peringkat', label: 'Peringkat', icon: '✦' },
     { id: 'riwayat', label: 'Riwayat Setoran', icon: '◱' },
     { id: 'grafik', label: 'Perkembangan', icon: '◆' },
   ]
@@ -90,13 +164,11 @@ export default function WaliDashboard() {
         <button onClick={() => setSidebarOpen(true)} className="text-2xl p-1">☰</button>
       </div>
 
-      {/* OVERLAY */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       <div className="flex">
-
         {/* SIDEBAR */}
         <div className={`
           fixed inset-y-0 left-0 z-50 w-72 flex flex-col
@@ -111,8 +183,8 @@ export default function WaliDashboard() {
                 <Image src="/logo.png" alt="Logo" width={48} height={48} className="object-contain" />
               </div>
               <div>
-                <div className="text-white font-bold text-sm leading-tight">Pondok Pesantren</div>
-                <div className="text-white font-bold text-base leading-tight">Daarus Salaf</div>
+                <div className="text-white font-bold text-sm">Pondok Pesantren</div>
+                <div className="text-white font-bold text-base">Daarus Salaf</div>
                 <div className="text-blue-300 text-xs">Sukoharjo</div>
               </div>
             </div>
@@ -150,24 +222,21 @@ export default function WaliDashboard() {
               <button key={menu.id}
                 onClick={() => { setActiveMenu(menu.id); setSidebarOpen(false) }}
                 className={`w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${
-                  activeMenu === menu.id
-                    ? 'bg-white text-blue-900 shadow-md font-bold'
-                    : 'text-blue-100 hover:bg-white hover:bg-opacity-10'
+                  activeMenu === menu.id ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'
                 }`}>
-                <span className="text-lg">{menu.icon}</span>
-                {menu.label}
+                <span className="text-lg">{menu.icon}</span>{menu.label}
               </button>
             ))}
           </nav>
 
           <div className="p-4 border-t border-blue-700">
             <button onClick={handleLogout}
-              className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold transition">
+              className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold">
               Keluar
             </button>
             <button onClick={() => setSidebarOpen(false)}
-              className="w-full text-blue-300 py-2 rounded-xl text-xs md:hidden hover:text-white mt-1">
-              ✕ Tutup Menu
+              className="w-full text-blue-300 py-2 rounded-xl text-xs md:hidden mt-1">
+              ✕ Tutup
             </button>
           </div>
         </div>
@@ -175,7 +244,6 @@ export default function WaliDashboard() {
         {/* MAIN CONTENT */}
         <div className="flex-1 p-4 md:p-8 mt-14 md:mt-0 min-w-0">
 
-          {/* Tidak ada santri */}
           {santriList.length === 0 && (
             <div className="text-center py-20">
               <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mx-auto mb-4">
@@ -199,22 +267,26 @@ export default function WaliDashboard() {
                       style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
                       {selectedSantri.nama?.charAt(0).toUpperCase()}
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <h2 className="text-white font-bold text-xl">{selectedSantri.nama}</h2>
                       <p className="text-blue-200 text-sm">Guru: {selectedSantri.guru?.nama || '-'}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {selectedSantri.kelas && (
                           <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-0.5 rounded-full">
-                            Kelas {selectedSantri.kelas}
+                            {selectedSantri.kelas}
                           </span>
                         )}
                         <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-0.5 rounded-full">
-                          {selectedSantri.total_hafalan_juz || 0} Juz
+                          {selectedSantri.total_hafalan_juz?.toFixed(2) || 0} Juz
                         </span>
+                        {peringkatHafalan && (
+                          <span className="bg-yellow-400 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
+                            Peringkat {peringkatHafalan.peringkat} di kelas
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  {/* Mini Progress */}
                   <div className="mt-3">
                     <div className="flex justify-between text-xs text-blue-200 mb-1">
                       <span>Progress menuju 30 Juz</span>
@@ -231,6 +303,30 @@ export default function WaliDashboard() {
               {/* RINGKASAN */}
               {activeMenu === 'dashboard' && (
                 <div>
+                  {/* Peringkat Ringkas */}
+                  {peringkatHafalan && (
+                    <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                      <h3 className="font-bold text-gray-800 mb-3">Peringkat di Kelas</h3>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0"
+                          style={{ background: peringkatHafalan.peringkat <= 3 ? 'linear-gradient(135deg, #d97706, #f59e0b)' : 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                          {peringkatHafalan.peringkat}
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-800 text-lg">
+                            Peringkat {peringkatHafalan.peringkat}
+                          </div>
+                          <div className="text-gray-500 text-sm">
+                            dari {peringkatHafalan.total} santri di {selectedSantri.kelas}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            Berdasarkan total hafalan
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Ringkasan 30 Setoran Terakhir</h3>
                   <div className="grid grid-cols-2 gap-3 mb-5">
                     {[
@@ -240,7 +336,7 @@ export default function WaliDashboard() {
                       { count: setoranBaru, label: 'Hafalan Baru', color: 'from-purple-500 to-purple-700' },
                     ].map((item, i) => (
                       <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-4 shadow-lg text-white relative overflow-hidden`}>
-                        <div className="absolute -bottom-2 -right-2 text-4xl opacity-10 font-bold">◆</div>
+                        <div className="absolute -bottom-2 -right-2 text-4xl opacity-10">◆</div>
                         <div className="text-3xl font-bold">{item.count}</div>
                         <div className="text-white text-opacity-80 text-xs mt-1">{item.label}</div>
                       </div>
@@ -250,19 +346,35 @@ export default function WaliDashboard() {
                   <h3 className="text-lg font-bold text-gray-800 mb-3">Setoran Terbaru</h3>
                   <div className="space-y-3">
                     {riwayatSetoran.slice(0, 5).map((item) => (
-                      <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100 hover:shadow-md transition">
+                      <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
                         <div className="flex justify-between items-start mb-1">
-                          <div className="font-semibold text-sm text-gray-800">
-                            {item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}
+                          <div>
+                            {item.status_kehadiran && item.status_kehadiran !== 'hadir' ? (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' :
+                                item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                Tidak Hadir — {item.status_kehadiran.charAt(0).toUpperCase() + item.status_kehadiran.slice(1)}
+                              </span>
+                            ) : (
+                              <div className="font-semibold text-sm text-gray-800">
+                                {item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}
+                              </div>
+                            )}
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
-                          </span>
+                          {item.status_kehadiran === 'hadir' && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                            {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
-                          </span>
+                          {item.status_kehadiran === 'hadir' && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                              {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
+                            </span>
+                          )}
                           <span className="text-xs text-gray-400">{item.tanggal}</span>
                         </div>
                         {item.catatan && (
@@ -274,11 +386,97 @@ export default function WaliDashboard() {
                     ))}
                     {riwayatSetoran.length === 0 && (
                       <div className="bg-white rounded-2xl p-10 text-center shadow border border-gray-100">
-                        <div className="text-4xl mb-2 text-gray-300">◌</div>
                         <p className="text-gray-400 text-sm">Belum ada riwayat setoran</p>
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* PERINGKAT */}
+              {activeMenu === 'peringkat' && (
+                <div>
+                  <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)' }}>
+                    <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                    <div className="relative z-10">
+                      <h2 className="font-bold text-xl">Peringkat Santri</h2>
+                      <p className="text-yellow-100 text-sm mt-1">{selectedSantri.kelas || 'Kelas belum diset'}</p>
+                    </div>
+                  </div>
+
+                  {/* Peringkat Total Hafalan */}
+                  {peringkatHafalan && (
+                    <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                      <h3 className="font-bold text-gray-800 mb-4">Peringkat Total Hafalan di Kelas</h3>
+
+                      {/* Badge peringkat besar */}
+                      <div className="flex items-center justify-center mb-5">
+                        <div className="text-center">
+                          <div className="w-24 h-24 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto shadow-lg"
+                            style={{ background: peringkatHafalan.peringkat === 1 ? 'linear-gradient(135deg, #d97706, #f59e0b)' :
+                              peringkatHafalan.peringkat === 2 ? 'linear-gradient(135deg, #6b7280, #9ca3af)' :
+                              peringkatHafalan.peringkat === 3 ? 'linear-gradient(135deg, #b45309, #d97706)' :
+                              'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                            {peringkatHafalan.peringkat}
+                          </div>
+                          <div className="mt-2 font-bold text-gray-800">{selectedSantri.nama}</div>
+                          <div className="text-gray-500 text-sm">
+                            Peringkat {peringkatHafalan.peringkat} dari {peringkatHafalan.total} santri
+                          </div>
+                          <div className="mt-1 text-xs text-gray-400">{selectedSantri.kelas}</div>
+                        </div>
+                      </div>
+
+                      {/* Daftar semua santri sekelas */}
+                      <div className="space-y-2">
+                        {[...allSantriKelas]
+                          .sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
+                          .map((s, i) => (
+                            <div key={s.id}
+                              className={`flex items-center gap-3 p-3 rounded-xl ${s.id === selectedSantri.id ? 'border-2 border-yellow-400 bg-yellow-50' : 'bg-gray-50'}`}>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                                i === 0 ? 'bg-yellow-400 text-white' :
+                                i === 1 ? 'bg-gray-300 text-white' :
+                                i === 2 ? 'bg-orange-400 text-white' :
+                                'bg-gray-100 text-gray-500'
+                              }`}>{i + 1}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-gray-800 flex items-center gap-1">
+                                  {s.nama}
+                                  {s.id === selectedSantri.id && (
+                                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full font-normal">Anak Anda</span>
+                                  )}
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                                  <div className="h-1.5 rounded-full"
+                                    style={{
+                                      width: `${Math.min(((s.total_hafalan_juz || 0) / 30) * 100, 100)}%`,
+                                      background: s.id === selectedSantri.id
+                                        ? 'linear-gradient(135deg, #d97706, #f59e0b)'
+                                        : 'linear-gradient(135deg, #166534, #16a34a)'
+                                    }} />
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <div className={`font-bold text-sm ${s.id === selectedSantri.id ? 'text-yellow-600' : 'text-green-700'}`}>
+                                  {s.total_hafalan_juz?.toFixed(2) || 0}
+                                </div>
+                                <div className="text-xs text-gray-400">Juz</div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Info jika kelas belum diset */}
+                  {!peringkatHafalan && (
+                    <div className="bg-white rounded-2xl p-8 text-center shadow border border-gray-100">
+                      <p className="text-gray-400 text-sm">Data kelas belum tersedia</p>
+                      <p className="text-gray-300 text-xs mt-1">Hubungi admin untuk mengatur data kelas</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -289,33 +487,46 @@ export default function WaliDashboard() {
                     style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
                     <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                     <div className="relative z-10">
-                      <h2 className="text-white font-bold text-xl">Riwayat Setoran</h2>
+                      <h2 className="font-bold text-xl">Riwayat Setoran</h2>
                       <p className="text-blue-200 text-sm mt-1">{riwayatSetoran.length} setoran tercatat</p>
                     </div>
                   </div>
                   <div className="space-y-3">
                     {riwayatSetoran.length === 0 && (
                       <div className="bg-white rounded-2xl p-10 text-center shadow border border-gray-100">
-                        <div className="text-4xl mb-2 text-gray-300">◌</div>
                         <p className="text-gray-400 text-sm">Belum ada riwayat setoran</p>
                       </div>
                     )}
                     {riwayatSetoran.map((item) => (
-                      <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100 hover:shadow-md transition">
+                      <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                              {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
-                            </span>
+                            {item.status_kehadiran && item.status_kehadiran !== 'hadir' ? (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' :
+                                item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {item.status_kehadiran.charAt(0).toUpperCase() + item.status_kehadiran.slice(1)}
+                              </span>
+                            ) : (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
+                              </span>
+                            )}
                             <span className="text-xs text-gray-400">{item.tanggal}</span>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
-                          </span>
+                          {item.status_kehadiran === 'hadir' && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
+                            </span>
+                          )}
                         </div>
-                        <div className="font-semibold text-sm text-gray-800">
-                          {item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}
-                        </div>
+                        {item.status_kehadiran === 'hadir' && (
+                          <div className="font-semibold text-sm text-gray-800">
+                            {item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}
+                          </div>
+                        )}
                         {item.catatan && (
                           <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">
                             Catatan guru: {item.catatan}
@@ -334,7 +545,7 @@ export default function WaliDashboard() {
                     style={{ background: 'linear-gradient(135deg, #166534 0%, #16a34a 100%)' }}>
                     <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                     <div className="relative z-10">
-                      <h2 className="text-white font-bold text-xl">Perkembangan Hafalan</h2>
+                      <h2 className="font-bold text-xl">Perkembangan Hafalan</h2>
                       <p className="text-green-200 text-sm mt-1">{selectedSantri.nama}</p>
                     </div>
                   </div>
@@ -344,7 +555,7 @@ export default function WaliDashboard() {
                     <h4 className="font-bold text-gray-800 mb-4">Progress Menuju 30 Juz</h4>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-gray-600">Hafalan saat ini</span>
-                      <span className="font-bold text-green-700">{selectedSantri.total_hafalan_juz || 0} / 30 Juz</span>
+                      <span className="font-bold text-green-700">{selectedSantri.total_hafalan_juz?.toFixed(2) || 0} / 30 Juz</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-6 mb-2">
                       <div className="h-6 rounded-full flex items-center justify-center text-white text-xs font-bold transition-all"
@@ -357,13 +568,13 @@ export default function WaliDashboard() {
                       </div>
                     </div>
                     <p className="text-xs text-gray-400">
-                      Sisa {(30 - (selectedSantri.total_hafalan_juz || 0)).toFixed(1)} Juz lagi untuk khatam 30 Juz
+                      Sisa {(30 - (selectedSantri.total_hafalan_juz || 0)).toFixed(1)} Juz lagi untuk khatam
                     </p>
                   </div>
 
                   {/* Statistik Setoran */}
                   <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
-                    <h4 className="font-bold text-gray-800 mb-4">Statistik Setoran</h4>
+                    <h4 className="font-bold text-gray-800 mb-4">Statistik Setoran (30 terakhir)</h4>
                     <div className="space-y-4">
                       <div>
                         <div className="flex justify-between text-sm mb-1">
@@ -384,12 +595,12 @@ export default function WaliDashboard() {
 
                       <div>
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-600">Hafalan Baru</span>
+                          <span className="text-gray-600">Hafalan Baru vs Murojaah</span>
                           <span className="font-bold text-blue-700">
-                            {totalSetoran > 0 ? Math.round((setoranBaru / totalSetoran) * 100) : 0}%
+                            {totalSetoran > 0 ? Math.round((setoranBaru / totalSetoran) * 100) : 0}% Baru
                           </span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div className="w-full bg-purple-200 rounded-full h-3">
                           <div className="h-3 rounded-full transition-all"
                             style={{
                               width: `${totalSetoran > 0 ? Math.round((setoranBaru / totalSetoran) * 100) : 0}%`,
@@ -400,7 +611,6 @@ export default function WaliDashboard() {
                       </div>
                     </div>
 
-                    {/* Ringkasan Angka */}
                     <div className="grid grid-cols-3 gap-3 mt-5">
                       {[
                         { count: totalSetoran, label: 'Total Setoran', color: 'text-blue-700' },
