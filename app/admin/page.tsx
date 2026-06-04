@@ -11,12 +11,14 @@ export default function AdminDashboard() {
   const [surahList, setSurahList] = useState<any[]>([])
   const [setoranHariIni, setSetoranHariIni] = useState<any[]>([])
   const [rankingHafalan, setRankingHafalan] = useState<any[]>([])
+  const [kalenderList, setKalenderList] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [formType, setFormType] = useState('')
   const [editSantriId, setEditSantriId] = useState<any>(null)
   const [editGuruId, setEditGuruId] = useState<any>(null)
   const [editWaliId, setEditWaliId] = useState<any>(null)
+  const [editKalenderId, setEditKalenderId] = useState<any>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Form states
@@ -34,12 +36,19 @@ export default function AdminDashboard() {
   const [formSurahAkhir, setFormSurahAkhir] = useState('')
   const [formAyatAkhir, setFormAyatAkhir] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+
+  // Form kalender
+  const [formKalNama, setFormKalNama] = useState('')
+  const [formKalTipe, setFormKalTipe] = useState('libur')
+  const [formKalSemester, setFormKalSemester] = useState('1')
+  const [formKalMulai, setFormKalMulai] = useState('')
+  const [formKalSelesai, setFormKalSelesai] = useState('')
+  const [formKalKeterangan, setFormKalKeterangan] = useState('')
+
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [importLoading, setImportLoading] = useState(false)
   const [importMsg, setImportMsg] = useState('')
-
-  // Filter ranking
   const [filterJenjang, setFilterJenjang] = useState('semua')
   const [filterKelas, setFilterKelas] = useState('semua')
 
@@ -50,12 +59,14 @@ export default function AdminDashboard() {
     const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama), wali:wali_id(nama)')
     const { data: wali } = await supabase.from('profiles').select('*').eq('role', 'wali')
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
+    const { data: kalender } = await supabase.from('kalender_akademik').select('*').order('tanggal_mulai', { ascending: true })
     const today = new Date().toISOString().split('T')[0]
     const { data: setoran } = await supabase.from('setoran').select('*, santri:santri_id(nama)').eq('tanggal', today).order('created_at', { ascending: false })
     setGuruList(guru || [])
     setSantriList(santri || [])
     setWaliList(wali || [])
     setSurahList(surah || [])
+    setKalenderList(kalender || [])
     setSetoranHariIni(setoran || [])
     const sorted = [...(santri || [])].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
     setRankingHafalan(sorted)
@@ -70,6 +81,67 @@ export default function AdminDashboard() {
     if (!surahKecil || !surahBesar) return 0
     const totalHalaman = surahBesar.halaman_selesai - surahKecil.halaman_mulai + 1
     return Math.max(0, totalHalaman / 20)
+  }
+
+  // Cek status hari ini
+  const today = new Date().toISOString().split('T')[0]
+  const hariIni = new Date()
+  const hariMinggu = hariIni.getDay() // 0=Ahad, 5=Jumat
+  const isLiburMingguan = hariMinggu === 0 || hariMinggu === 5
+  const kalenderAktif = kalenderList.find(k => today >= k.tanggal_mulai && today <= k.tanggal_selesai)
+  const isLiburAkademik = isLiburMingguan || (kalenderAktif?.tipe === 'libur')
+  const isUjian = kalenderAktif && (kalenderAktif.tipe === 'mid_semester' || kalenderAktif.tipe === 'semester')
+
+  // ===== KALENDER =====
+  const handleTambahKalender = async () => {
+    setLoading(true); setErrorMsg('')
+    if (!formKalNama || !formKalMulai || !formKalSelesai) {
+      setErrorMsg('Nama, tanggal mulai dan selesai wajib diisi!'); setLoading(false); return
+    }
+    const { error } = await supabase.from('kalender_akademik').insert({
+      nama: formKalNama,
+      tipe: formKalTipe,
+      semester: formKalTipe !== 'libur' ? parseInt(formKalSemester) : null,
+      tanggal_mulai: formKalMulai,
+      tanggal_selesai: formKalSelesai,
+      keterangan: formKalKeterangan || null
+    })
+    if (error) { setErrorMsg(error.message); setLoading(false); return }
+    setSuccessMsg('Kalender berhasil ditambahkan!')
+    setShowForm(false); resetForm(); fetchData(); setLoading(false)
+  }
+
+  const handleEditKalender = (kal: any) => {
+    setEditKalenderId(kal.id)
+    setFormKalNama(kal.nama)
+    setFormKalTipe(kal.tipe)
+    setFormKalSemester(kal.semester?.toString() || '1')
+    setFormKalMulai(kal.tanggal_mulai)
+    setFormKalSelesai(kal.tanggal_selesai)
+    setFormKalKeterangan(kal.keterangan || '')
+    setShowForm(true)
+    setFormType('kalender')
+  }
+
+  const handleUpdateKalender = async () => {
+    setLoading(true); setErrorMsg('')
+    const { error } = await supabase.from('kalender_akademik').update({
+      nama: formKalNama,
+      tipe: formKalTipe,
+      semester: formKalTipe !== 'libur' ? parseInt(formKalSemester) : null,
+      tanggal_mulai: formKalMulai,
+      tanggal_selesai: formKalSelesai,
+      keterangan: formKalKeterangan || null
+    }).eq('id', editKalenderId)
+    if (error) { setErrorMsg(error.message); setLoading(false); return }
+    setSuccessMsg('Kalender berhasil diupdate!')
+    setShowForm(false); setEditKalenderId(null); resetForm(); fetchData(); setLoading(false)
+  }
+
+  const handleHapusKalender = async (id: any) => {
+    if (!confirm('Yakin hapus jadwal ini?')) return
+    await supabase.from('kalender_akademik').delete().eq('id', id)
+    fetchData()
   }
 
   // ===== GURU =====
@@ -87,40 +159,23 @@ export default function AdminDashboard() {
   }
 
   const handleEditGuru = (guru: any) => {
-    setEditGuruId(guru.id)
-    setFormNama(guru.nama)
-    setFormNoWa(guru.no_wa || '')
-    setFormEmail('')
-    setFormPassword('')
-    setShowPassword(false)
-    setShowForm(true)
-    setFormType('guru')
+    setEditGuruId(guru.id); setFormNama(guru.nama); setFormNoWa(guru.no_wa || '')
+    setFormEmail(''); setFormPassword(''); setShowPassword(false)
+    setShowForm(true); setFormType('guru')
   }
 
   const handleUpdateGuru = async () => {
     setLoading(true); setErrorMsg('')
-    // Update profil
-    const { error } = await supabase.from('profiles')
-      .update({ nama: formNama, no_wa: formNoWa || null })
-      .eq('id', editGuruId)
+    const { error } = await supabase.from('profiles').update({ nama: formNama, no_wa: formNoWa || null }).eq('id', editGuruId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
-
-    // Update email/password jika diisi
     if (formEmail || formPassword) {
       const res = await fetch('/api/create-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isUpdate: true,
-          userId: editGuruId,
-          email: formEmail || undefined,
-          password: formPassword || undefined
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isUpdate: true, userId: editGuruId, email: formEmail || undefined, password: formPassword || undefined })
       })
       const result = await res.json()
       if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     }
-
     setSuccessMsg('Data guru berhasil diupdate!')
     setShowForm(false); setEditGuruId(null); resetForm(); fetchData(); setLoading(false)
   }
@@ -140,38 +195,23 @@ export default function AdminDashboard() {
   }
 
   const handleEditWali = (wali: any) => {
-    setEditWaliId(wali.id)
-    setFormNama(wali.nama)
-    setFormNoWa(wali.no_wa || '')
-    setFormEmail('')
-    setFormPassword('')
-    setShowPassword(false)
-    setShowForm(true)
-    setFormType('wali')
+    setEditWaliId(wali.id); setFormNama(wali.nama); setFormNoWa(wali.no_wa || '')
+    setFormEmail(''); setFormPassword(''); setShowPassword(false)
+    setShowForm(true); setFormType('wali')
   }
 
   const handleUpdateWali = async () => {
     setLoading(true); setErrorMsg('')
-    const { error } = await supabase.from('profiles')
-      .update({ nama: formNama, no_wa: formNoWa || null })
-      .eq('id', editWaliId)
+    const { error } = await supabase.from('profiles').update({ nama: formNama, no_wa: formNoWa || null }).eq('id', editWaliId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
-
     if (formEmail || formPassword) {
       const res = await fetch('/api/create-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isUpdate: true,
-          userId: editWaliId,
-          email: formEmail || undefined,
-          password: formPassword || undefined
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isUpdate: true, userId: editWaliId, email: formEmail || undefined, password: formPassword || undefined })
       })
       const result = await res.json()
       if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     }
-
     setSuccessMsg('Data wali berhasil diupdate!')
     setShowForm(false); setEditWaliId(null); resetForm(); fetchData(); setLoading(false)
   }
@@ -184,12 +224,9 @@ export default function AdminDashboard() {
     }
     const totalJuz = hitungTotalJuzAwal()
     const { error } = await supabase.from('santri').insert({
-      nama: formNama,
-      jenjang: formJenjang,
-      kelas_num: parseInt(formKelasNum),
+      nama: formNama, jenjang: formJenjang, kelas_num: parseInt(formKelasNum),
       kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
-      guru_id: formGuruId || null,
-      wali_id: formWaliId || null,
+      guru_id: formGuruId || null, wali_id: formWaliId || null,
       total_hafalan_juz: totalJuz,
       surah_terakhir_nomor: formSurahAkhir ? parseInt(formSurahAkhir) : null,
       ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null
@@ -200,44 +237,26 @@ export default function AdminDashboard() {
   }
 
   const handleEditSantri = (santri: any) => {
-    setEditSantriId(santri.id)
-    setFormNama(santri.nama)
-    setFormJenjang(santri.jenjang || '')
-    setFormKelasNum(santri.kelas_num?.toString() || '')
-    setFormGuruId(santri.guru_id || '')
-    setFormWaliId(santri.wali_id || '')
-    setFormSurahAwal('')
-    setFormAyatAwal('1')
+    setEditSantriId(santri.id); setFormNama(santri.nama)
+    setFormJenjang(santri.jenjang || ''); setFormKelasNum(santri.kelas_num?.toString() || '')
+    setFormGuruId(santri.guru_id || ''); setFormWaliId(santri.wali_id || '')
+    setFormSurahAwal(''); setFormAyatAwal('1')
     setFormSurahAkhir(santri.surah_terakhir_nomor?.toString() || '')
     setFormAyatAkhir(santri.ayat_terakhir?.toString() || '')
-    setShowForm(true)
-    setFormType('santri')
+    setShowForm(true); setFormType('santri')
   }
 
   const handleUpdateSantri = async () => {
     setLoading(true); setErrorMsg('')
     let updateData: any = {
-      nama: formNama,
-      jenjang: formJenjang,
-      kelas_num: parseInt(formKelasNum),
+      nama: formNama, jenjang: formJenjang, kelas_num: parseInt(formKelasNum),
       kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
-      guru_id: formGuruId || null,
-      wali_id: formWaliId || null
+      guru_id: formGuruId || null, wali_id: formWaliId || null
     }
     if (formSurahAwal && formSurahAkhir) {
-      const totalJuz = hitungTotalJuzAwal()
-      updateData = {
-        ...updateData,
-        total_hafalan_juz: totalJuz,
-        surah_terakhir_nomor: parseInt(formSurahAkhir),
-        ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null
-      }
+      updateData = { ...updateData, total_hafalan_juz: hitungTotalJuzAwal(), surah_terakhir_nomor: parseInt(formSurahAkhir), ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null }
     } else if (formSurahAkhir && !formSurahAwal) {
-      updateData = {
-        ...updateData,
-        surah_terakhir_nomor: parseInt(formSurahAkhir),
-        ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null
-      }
+      updateData = { ...updateData, surah_terakhir_nomor: parseInt(formSurahAkhir), ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null }
     }
     const { error } = await supabase.from('santri').update(updateData).eq('id', editSantriId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
@@ -246,30 +265,20 @@ export default function AdminDashboard() {
   }
 
   const handleHapusGuru = async (id: any) => {
-  if (!confirm('Yakin hapus guru ini? Data tidak bisa dikembalikan.')) return
-  const res = await fetch('/api/create-user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isDelete: true, userId: id })
-  })
-  const result = await res.json()
-  if (result.error) { alert('Gagal hapus: ' + result.error); return }
-  setSuccessMsg('Guru berhasil dihapus!')
-  fetchData()
-}
+    if (!confirm('Yakin hapus guru ini?')) return
+    const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isDelete: true, userId: id }) })
+    const result = await res.json()
+    if (result.error) { alert('Gagal hapus: ' + result.error); return }
+    setSuccessMsg('Guru berhasil dihapus!'); fetchData()
+  }
 
   const handleHapusWali = async (id: any) => {
-  if (!confirm('Yakin hapus wali ini? Data tidak bisa dikembalikan.')) return
-  const res = await fetch('/api/create-user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isDelete: true, userId: id })
-  })
-  const result = await res.json()
-  if (result.error) { alert('Gagal hapus: ' + result.error); return }
-  setSuccessMsg('Wali berhasil dihapus!')
-  fetchData()
-}
+    if (!confirm('Yakin hapus wali ini?')) return
+    const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isDelete: true, userId: id }) })
+    const result = await res.json()
+    if (result.error) { alert('Gagal hapus: ' + result.error); return }
+    setSuccessMsg('Wali berhasil dihapus!'); fetchData()
+  }
 
   const handleHapusSantri = async (id: any) => {
     if (!confirm('Yakin hapus santri ini?')) return
@@ -295,12 +304,12 @@ export default function AdminDashboard() {
     setFormGuruId(''); setFormWaliId(''); setFormKelas(''); setFormJenjang('')
     setFormKelasNum(''); setFormSurahAwal(''); setFormAyatAwal('1')
     setFormSurahAkhir(''); setFormAyatAkhir(''); setShowPassword(false)
-    setEditSantriId(null); setEditGuruId(null); setEditWaliId(null)
+    setFormKalNama(''); setFormKalTipe('libur'); setFormKalSemester('1')
+    setFormKalMulai(''); setFormKalSelesai(''); setFormKalKeterangan('')
+    setEditSantriId(null); setEditGuruId(null); setEditWaliId(null); setEditKalenderId(null)
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut(); window.location.href = '/'
-  }
+  const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/' }
 
   const tanggal = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const santriSudahSetor = [...new Set(setoranHariIni.map(s => s.santri_id))]
@@ -322,6 +331,20 @@ export default function AdminDashboard() {
     return j
   }
 
+  const tipeKalenderLabel = (t: string) => {
+    if (t === 'libur') return 'Libur'
+    if (t === 'mid_semester') return 'Mid Semester'
+    if (t === 'semester') return 'Ujian Semester'
+    return t
+  }
+
+  const tipeKalenderColor = (t: string) => {
+    if (t === 'libur') return 'bg-gray-100 text-gray-700'
+    if (t === 'mid_semester') return 'bg-orange-100 text-orange-700'
+    if (t === 'semester') return 'bg-red-100 text-red-700'
+    return 'bg-blue-100 text-blue-700'
+  }
+
   const rankingFiltered = rankingHafalan.filter(s => {
     if (filterJenjang !== 'semua' && s.jenjang !== filterJenjang) return false
     if (filterKelas !== 'semua' && s.kelas_num?.toString() !== filterKelas) return false
@@ -331,6 +354,7 @@ export default function AdminDashboard() {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '◈' },
     { id: 'monitoring', label: 'Monitoring', icon: '◉' },
+    { id: 'kalender', label: 'Kalender Akademik', icon: '📅' },
     { id: 'guru', label: 'Data Guru', icon: '▤' },
     { id: 'santri', label: 'Data Santri', icon: '◎' },
     { id: 'wali', label: 'Data Wali', icon: '◍' },
@@ -340,33 +364,21 @@ export default function AdminDashboard() {
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
   const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
 
-  // Form Email & Password (reusable untuk guru & wali)
   const FormEmailPassword = ({ isEdit }: { isEdit: boolean }) => (
     <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
       <p className="text-xs font-semibold text-yellow-800 mb-3">
         {isEdit ? '✏️ Ubah Email / Password (kosongkan jika tidak ingin diubah)' : '🔐 Akun Login'}
       </p>
       <div className="space-y-2">
-        <input
-          placeholder="Email"
-          type="email"
-          value={formEmail}
-          onChange={e => setFormEmail(e.target.value)}
-          className={inputClass}
-        />
+        <input placeholder="Email" type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
         <div className="relative">
           <input
             placeholder={isEdit ? "Password baru (kosongkan jika tidak diubah)" : "Password"}
             type={showPassword ? 'text' : 'password'}
-            value={formPassword}
-            onChange={e => setFormPassword(e.target.value)}
-            className={inputClass + ' pr-12'}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 text-sm px-1"
-          >
+            value={formPassword} onChange={e => setFormPassword(e.target.value)}
+            className={inputClass + ' pr-12'} />
+          <button type="button" onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 text-sm px-1">
             {showPassword ? '🙈' : '👁'}
           </button>
         </div>
@@ -470,6 +482,32 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* Banner status hari ini */}
+              {isLiburAkademik && (
+                <div className="mb-5 p-4 rounded-2xl border-2 border-orange-300 bg-orange-50 flex items-center gap-3">
+                  <span className="text-2xl">🏖</span>
+                  <div>
+                    <div className="font-bold text-orange-800">
+                      {isLiburMingguan
+                        ? hariMinggu === 0 ? 'Hari ini Ahad — Libur Mingguan' : 'Hari ini Jumat — Libur Mingguan'
+                        : kalenderAktif?.nama}
+                    </div>
+                    <div className="text-orange-600 text-xs mt-0.5">Tidak ada setoran hari ini</div>
+                  </div>
+                </div>
+              )}
+              {isUjian && (
+                <div className="mb-5 p-4 rounded-2xl border-2 border-red-300 bg-red-50 flex items-center gap-3">
+                  <span className="text-2xl">📝</span>
+                  <div>
+                    <div className="font-bold text-red-800">{kalenderAktif?.nama}</div>
+                    <div className="text-red-600 text-xs mt-0.5">
+                      {kalenderAktif?.tipe === 'mid_semester' ? 'Mode Ujian Mid Semester' : 'Mode Ujian Semester'} aktif
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-3 md:gap-5 mb-6">
                 {[
                   { label: 'Total Guru', count: guruList.length, color: 'from-blue-500 to-blue-700', sub: 'Guru musami\'' },
@@ -553,7 +591,6 @@ export default function AdminDashboard() {
                   <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                 {[
                   { label: 'Sudah Setor', count: santriSudahSetor.length, color: 'from-green-500 to-green-700', sub: 'Santri' },
@@ -569,7 +606,6 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
-
               <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-semibold text-gray-700">Progress Setoran</span>
@@ -585,7 +621,6 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-xs text-gray-400 mt-1">{santriSudahSetor.length} dari {santriList.length} santri</p>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
@@ -615,6 +650,160 @@ export default function AdminDashboard() {
                       </div>
                     ))}
                     {guruBelumInput.length === 0 && <p className="text-gray-400 text-sm text-center py-3">Semua hadir!</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* KALENDER AKADEMIK */}
+          {activeMenu === 'kalender' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="font-bold text-xl">Kalender Akademik</h2>
+                  <p className="text-teal-100 text-sm mt-1">Kelola jadwal libur dan ujian</p>
+                  <p className="text-teal-200 text-xs mt-0.5">Jumat & Ahad = libur otomatis</p>
+                </div>
+              </div>
+
+              {/* Info hari ini */}
+              {(isLiburMingguan || kalenderAktif) && (
+                <div className={`mb-5 p-4 rounded-2xl border-2 flex items-center gap-3 ${
+                  isUjian ? 'border-red-300 bg-red-50' : 'border-orange-300 bg-orange-50'
+                }`}>
+                  <span className="text-2xl">{isUjian ? '📝' : '🏖'}</span>
+                  <div>
+                    <div className={`font-bold text-sm ${isUjian ? 'text-red-800' : 'text-orange-800'}`}>
+                      Status Hari Ini: {isLiburMingguan ? (hariMinggu === 0 ? 'Ahad — Libur' : 'Jumat — Libur') : kalenderAktif?.nama}
+                    </div>
+                    <div className={`text-xs mt-0.5 ${isUjian ? 'text-red-600' : 'text-orange-600'}`}>
+                      {isUjian ? 'Mode ujian aktif' : 'Hari libur'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-gray-800">Jadwal Akademik 2026/2027</h3>
+                <button onClick={() => { resetForm(); setShowForm(true); setFormType('kalender') }}
+                  className={btnPrimary} style={{ background: 'linear-gradient(135deg, #0f766e, #14b8a6)' }}>
+                  + Tambah Jadwal
+                </button>
+              </div>
+
+              {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
+
+              {/* Form Kalender */}
+              {showForm && formType === 'kalender' && (
+                <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
+                  <h3 className="font-bold text-base mb-4">{editKalenderId ? 'Edit Jadwal' : 'Tambah Jadwal Baru'}</h3>
+                  <div className="space-y-3">
+                    <input placeholder="Nama Jadwal (contoh: Libur Maulid Nabi)" value={formKalNama}
+                      onChange={e => setFormKalNama(e.target.value)} className={inputClass} />
+
+                    <select value={formKalTipe} onChange={e => setFormKalTipe(e.target.value)} className={inputClass}>
+                      <option value="libur">Libur</option>
+                      <option value="mid_semester">Ujian Mid Semester</option>
+                      <option value="semester">Ujian Akhir Semester</option>
+                    </select>
+
+                    {formKalTipe !== 'libur' && (
+                      <select value={formKalSemester} onChange={e => setFormKalSemester(e.target.value)} className={inputClass}>
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                      </select>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Tanggal Mulai</label>
+                        <input type="date" value={formKalMulai} onChange={e => setFormKalMulai(e.target.value)} className={inputClass} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Tanggal Selesai</label>
+                        <input type="date" value={formKalSelesai} onChange={e => setFormKalSelesai(e.target.value)} className={inputClass} />
+                      </div>
+                    </div>
+
+                    <textarea placeholder="Keterangan (opsional)" value={formKalKeterangan}
+                      onChange={e => setFormKalKeterangan(e.target.value)} rows={2} className={inputClass} />
+                  </div>
+                  {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
+                  <div className="flex gap-2 mt-4">
+                    <button onClick={editKalenderId ? handleUpdateKalender : handleTambahKalender} disabled={loading}
+                      className={btnPrimary} style={{ background: 'linear-gradient(135deg, #0f766e, #14b8a6)' }}>
+                      {loading ? 'Menyimpan...' : editKalenderId ? 'Update' : 'Simpan'}
+                    </button>
+                    <button onClick={() => { setShowForm(false); resetForm() }} className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm">Batal</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Daftar Kalender */}
+              <div className="space-y-3">
+                {kalenderList.length === 0 && (
+                  <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Belum ada jadwal akademik</div>
+                )}
+                {kalenderList.map((kal) => {
+                  const isAktif = today >= kal.tanggal_mulai && today <= kal.tanggal_selesai
+                  const isLewat = today > kal.tanggal_selesai
+                  return (
+                    <div key={kal.id} className={`bg-white rounded-xl shadow p-4 border-2 transition ${
+                      isAktif ? 'border-teal-400 bg-teal-50' : isLewat ? 'border-gray-100 opacity-60' : 'border-gray-100'
+                    }`}>
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-start gap-3">
+                          <div className="text-2xl mt-0.5">
+                            {kal.tipe === 'libur' ? '🏖' : kal.tipe === 'mid_semester' ? '📋' : '📝'}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                              {kal.nama}
+                              {isAktif && <span className="text-xs bg-teal-500 text-white px-2 py-0.5 rounded-full">Aktif Sekarang</span>}
+                              {isLewat && <span className="text-xs bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full">Selesai</span>}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipeKalenderColor(kal.tipe)}`}>
+                                {tipeKalenderLabel(kal.tipe)}
+                              </span>
+                              {kal.semester && (
+                                <span className="text-xs text-gray-400">Semester {kal.semester}</span>
+                              )}
+                              <span className="text-xs text-gray-400">
+                                {new Date(kal.tanggal_mulai).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                {' — '}
+                                {new Date(kal.tanggal_selesai).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
+                            {kal.keterangan && (
+                              <p className="text-xs text-gray-400 mt-0.5">{kal.keterangan}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => handleEditKalender(kal)} className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50">Edit</button>
+                          <button onClick={() => handleHapusKalender(kal.id)} className="text-red-400 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50">Hapus</button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Keterangan libur mingguan */}
+              <div className="mt-5 p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                <p className="text-xs font-semibold text-gray-600 mb-2">📌 Aturan Libur Otomatis:</p>
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-orange-400"></div>
+                    <span className="text-xs text-gray-600">Jumat = libur mingguan</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-orange-400"></div>
+                    <span className="text-xs text-gray-600">Ahad = libur mingguan</span>
                   </div>
                 </div>
               </div>
@@ -696,14 +885,12 @@ export default function AdminDashboard() {
                   <h3 className="font-bold text-base mb-4">{editSantriId ? 'Edit Data Santri' : 'Tambah Santri Baru'}</h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Santri" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
-
                     <select value={formJenjang} onChange={e => { setFormJenjang(e.target.value); setFormKelasNum('') }} className={inputClass}>
                       <option value="">-- Pilih Jenjang --</option>
                       <option value="ula">Ula</option>
                       <option value="wustha">Wustha</option>
                       <option value="ulya">Ulya</option>
                     </select>
-
                     {formJenjang && (
                       <select value={formKelasNum} onChange={e => setFormKelasNum(e.target.value)} className={inputClass}>
                         <option value="">-- Pilih Kelas --</option>
@@ -712,26 +899,20 @@ export default function AdminDashboard() {
                         ))}
                       </select>
                     )}
-
                     <select value={formGuruId} onChange={e => setFormGuruId(e.target.value)} className={inputClass}>
                       <option value="">-- Pilih Guru --</option>
                       {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
                     </select>
-
                     <select value={formWaliId} onChange={e => setFormWaliId(e.target.value)} className={inputClass}>
                       <option value="">-- Pilih Wali --</option>
                       {waliList.map(w => <option key={w.id} value={w.id}>{w.nama}</option>)}
                     </select>
-
-                    {/* Form Hafalan — tampil saat tambah DAN edit */}
                     <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                       <p className="text-sm font-semibold text-gray-700 mb-1">
                         {editSantriId ? 'Update Data Hafalan' : 'Hafalan Awal Santri'}
                       </p>
                       <p className="text-xs text-gray-500 mb-3">
-                        {editSantriId
-                          ? 'Isi untuk mengubah total hafalan. Kosongkan jika tidak ingin mengubah.'
-                          : 'Dari surah mana sampai surah mana yang sudah dihafal'}
+                        {editSantriId ? 'Kosongkan jika tidak ingin mengubah.' : 'Dari surah mana sampai surah mana yang sudah dihafal'}
                       </p>
                       <div className="space-y-2">
                         <div className="grid grid-cols-2 gap-2">
@@ -761,9 +942,7 @@ export default function AdminDashboard() {
                         </div>
                       )}
                       {editSantriId && !formSurahAwal && !formSurahAkhir && (
-                        <div className="mt-2 p-2 bg-gray-50 rounded-lg text-xs text-gray-500">
-                          Hafalan tidak akan diubah
-                        </div>
+                        <div className="mt-2 p-2 bg-gray-50 rounded-lg text-xs text-gray-500">Hafalan tidak akan diubah</div>
                       )}
                     </div>
                   </div>
@@ -878,7 +1057,6 @@ export default function AdminDashboard() {
                   <p className="text-blue-200 text-sm mt-1">Berdasarkan total hafalan</p>
                 </div>
               </div>
-
               <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -902,7 +1080,6 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-xs text-gray-400 mt-2">Menampilkan {rankingFiltered.length} santri</p>
               </div>
-
               <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                 <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
                   <h3 className="text-white font-bold">Peringkat Total Hafalan</h3>
@@ -915,25 +1092,17 @@ export default function AdminDashboard() {
                   {rankingFiltered.map((santri, i) => (
                     <div key={santri.id} className={`flex items-center gap-3 p-3 rounded-xl ${i < 3 ? 'bg-gray-50' : ''}`}>
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                        i === 0 ? 'bg-yellow-400 text-white' :
-                        i === 1 ? 'bg-gray-300 text-white' :
-                        i === 2 ? 'bg-orange-400 text-white' :
-                        'bg-gray-100 text-gray-500'
+                        i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-300 text-white' : i === 2 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-500'
                       }`}>{i + 1}</div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          {santri.jenjang && (
-                            <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>
-                          )}
+                          {santri.jenjang && <span className="text-xs text-gray-400">Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}</span>}
                           <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                           <div className="h-1.5 rounded-full"
-                            style={{
-                              width: `${Math.min(((santri.total_hafalan_juz || 0) / 30) * 100, 100)}%`,
-                              background: 'linear-gradient(135deg, #166534, #16a34a)'
-                            }} />
+                            style={{ width: `${Math.min(((santri.total_hafalan_juz || 0) / 30) * 100, 100)}%`, background: 'linear-gradient(135deg, #166534, #16a34a)' }} />
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
@@ -942,9 +1111,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   ))}
-                  {rankingFiltered.length === 0 && (
-                    <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>
-                  )}
+                  {rankingFiltered.length === 0 && <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>}
                 </div>
               </div>
             </div>
