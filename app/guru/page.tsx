@@ -57,14 +57,10 @@ export default function GuruDashboard() {
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
     setSurahList(surah || [])
 
-    // Cek absensi hari ini — per sesi
     const today = new Date().toISOString().split('T')[0]
     const { data: absensiList } = await supabase
-      .from('absensi_guru')
-      .select('*')
-      .eq('guru_id', user.id)
-      .eq('tanggal', today)
-
+      .from('absensi_guru').select('*')
+      .eq('guru_id', user.id).eq('tanggal', today)
     const absensiData = absensiList || []
     setAbsenSubuh(absensiData.some((a: any) => a.sesi === 'subuh'))
     setAbsenPagi(absensiData.some((a: any) => a.sesi === 'pagi'))
@@ -82,23 +78,17 @@ export default function GuruDashboard() {
     setRiwayatList(data || [])
   }
 
-  // Tentukan sesi yang sedang aktif berdasarkan jam
   const getSesiAktif = (): 'subuh' | 'pagi' | null => {
     const now = new Date()
-    const jam = now.getHours()
-    const menit = now.getMinutes()
-    const totalMenit = jam * 60 + menit
-    // Subuh: 04:00 - 05:30
-    if (totalMenit >= 240 && totalMenit <= 330) return 'subuh'
-    // Pagi: 08:00 - 09:45
-    if (totalMenit >= 480 && totalMenit <= 585) return 'pagi'
+    const total = now.getHours() * 60 + now.getMinutes()
+    if (total >= 240 && total <= 330) return 'subuh'
+    if (total >= 480 && total <= 585) return 'pagi'
     return null
   }
 
   const handleKlikAbsen = (sesi: 'subuh' | 'pagi') => {
-    const sudahAbsen = sesi === 'subuh' ? absenSubuh : absenPagi
     setSesiAbsen(sesi)
-    setIsBatalAbsen(sudahAbsen)
+    setIsBatalAbsen(sesi === 'subuh' ? absenSubuh : absenPagi)
     setShowPopupAbsen(true)
   }
 
@@ -108,13 +98,9 @@ export default function GuruDashboard() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     const today = new Date().toISOString().split('T')[0]
-
     if (isBatalAbsen) {
-      await supabase.from('absensi_guru')
-        .delete()
-        .eq('guru_id', user.id)
-        .eq('tanggal', today)
-        .eq('sesi', sesiAbsen)
+      await supabase.from('absensi_guru').delete()
+        .eq('guru_id', user.id).eq('tanggal', today).eq('sesi', sesiAbsen)
       if (sesiAbsen === 'subuh') setAbsenSubuh(false)
       else setAbsenPagi(false)
     } else {
@@ -150,7 +136,6 @@ export default function GuruDashboard() {
 
   const handleInputSetoran = async () => {
     if (!selectedSantri) { setErrorMsg('Pilih santri dulu!'); return }
-
     if (statusKehadiran !== 'hadir') {
       setLoading(true); setErrorMsg('')
       const { data: { user } } = await supabase.auth.getUser()
@@ -168,18 +153,15 @@ export default function GuruDashboard() {
       setTimeout(() => setSuccessMsg(''), 3000)
       return
     }
-
     if (jenis === 'baru' && (!surahBaru || !ayatMulaiBaru || !ayatSelesaiBaru)) {
       setErrorMsg('Lengkapi data hafalan baru!'); return
     }
     if (jenis === 'lama' && (!surahMulai || !surahSelesai)) {
       setErrorMsg('Lengkapi data murojaah!'); return
     }
-
     setLoading(true); setErrorMsg('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     let penambahanJuz = 0
     let insertData: any = {
       santri_id: selectedSantri.id, guru_id: user.id,
@@ -188,7 +170,6 @@ export default function GuruDashboard() {
       tanggal: new Date().toISOString().split('T')[0],
       guru_pengganti: guruPengganti
     }
-
     if (jenis === 'baru') {
       const surahNomor = parseInt(surahBaru)
       const ayatMulaiNum = parseInt(ayatMulaiBaru)
@@ -196,8 +177,7 @@ export default function GuruDashboard() {
       penambahanJuz = hitungPenambahanJuz(surahNomor, ayatMulaiNum, ayatSelesaiNum)
       insertData = {
         ...insertData,
-        surah_mulai_nomor: surahNomor,
-        surah_selesai_nomor: surahNomor,
+        surah_mulai_nomor: surahNomor, surah_selesai_nomor: surahNomor,
         surah: surahList.find(s => s.nomor === surahNomor)?.nama_latin || '',
         ayat_mulai: ayatMulaiNum, ayat_selesai: ayatSelesaiNum,
         ayat_mulai_baru: ayatMulaiNum, ayat_selesai_baru: ayatSelesaiNum,
@@ -206,17 +186,13 @@ export default function GuruDashboard() {
     } else {
       insertData = {
         ...insertData,
-        surah_mulai_nomor: parseInt(surahMulai),
-        surah_selesai_nomor: parseInt(surahSelesai),
+        surah_mulai_nomor: parseInt(surahMulai), surah_selesai_nomor: parseInt(surahSelesai),
         surah: surahList.find(s => s.nomor === parseInt(surahMulai))?.nama_latin || '',
-        ayat_mulai: parseInt(ayatMulaiMurojaah),
-        ayat_selesai: parseInt(ayatSelesaiMurojaah)
+        ayat_mulai: parseInt(ayatMulaiMurojaah), ayat_selesai: parseInt(ayatSelesaiMurojaah)
       }
     }
-
     const { error } = await supabase.from('setoran').insert(insertData)
     if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
-
     if (jenis === 'baru' && penambahanJuz > 0) {
       const totalBaru = (selectedSantri.total_hafalan_juz || 0) + penambahanJuz
       await supabase.from('santri').update({
@@ -225,7 +201,6 @@ export default function GuruDashboard() {
         ayat_terakhir: parseInt(ayatSelesaiBaru)
       }).eq('id', selectedSantri.id)
     }
-
     setSuccessMsg('Setoran berhasil disimpan!')
     resetForm(); setLoading(false)
     setTimeout(() => setSuccessMsg(''), 3000)
@@ -261,6 +236,75 @@ export default function GuruDashboard() {
   ]
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 
+  // Komponen tombol absen — dipakai di header mobile DAN sidebar desktop
+  const TombolAbsen = ({ mode }: { mode: 'mobile' | 'sidebar' }) => {
+    if (mode === 'mobile') {
+      return (
+        <div className="flex items-center gap-1.5">
+          {/* Tombol Subuh */}
+          <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 transition shadow-sm ${
+              absenSubuh
+                ? 'bg-green-500 border-green-400 text-white'
+                : 'bg-white border-gray-200 text-gray-700'
+            }`}>
+            <span>{absenSubuh ? '✓' : '○'}</span>
+            <span>Subuh</span>
+          </button>
+          {/* Tombol Pagi */}
+          <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 transition shadow-sm ${
+              absenPagi
+                ? 'bg-green-500 border-green-400 text-white'
+                : 'bg-white border-gray-200 text-gray-700'
+            }`}>
+            <span>{absenPagi ? '✓' : '○'}</span>
+            <span>Pagi</span>
+          </button>
+        </div>
+      )
+    }
+    return (
+      <div className="mt-3 space-y-2">
+        <p className="text-blue-300 text-xs font-medium mb-1">Absensi Kehadiran:</p>
+        <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
+          className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 border ${
+            absenSubuh
+              ? 'bg-green-500 border-green-400 text-white'
+              : 'bg-white bg-opacity-10 border-white border-opacity-20 text-white hover:bg-opacity-20'
+          }`}>
+          <div className="text-left">
+            <div>{absenSubuh ? '✓ Sudah Absen Subuh' : 'Klik untuk Absen Subuh'}</div>
+            <div className={`text-xs ${absenSubuh ? 'text-green-100' : 'text-blue-300'}`}>Sesi 04.00 — 05.30</div>
+          </div>
+          <span className="text-lg">{absenSubuh ? '✓' : '+'}</span>
+        </button>
+        <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
+          className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 border ${
+            absenPagi
+              ? 'bg-green-500 border-green-400 text-white'
+              : 'bg-white bg-opacity-10 border-white border-opacity-20 text-white hover:bg-opacity-20'
+          }`}>
+          <div className="text-left">
+            <div>{absenPagi ? '✓ Sudah Absen Pagi' : 'Klik untuk Absen Pagi'}</div>
+            <div className={`text-xs ${absenPagi ? 'text-green-100' : 'text-blue-300'}`}>Sesi 08.00 — 09.45</div>
+          </div>
+          <span className="text-lg">{absenPagi ? '✓' : '+'}</span>
+        </button>
+        {sesiAktif && (
+          <div className="text-center text-xs text-green-300 font-medium">
+            Sesi {sesiAktif === 'subuh' ? 'Subuh' : 'Pagi'} sedang berlangsung
+          </div>
+        )}
+        {!sesiAktif && (
+          <div className="text-center text-xs text-blue-300">
+            Di luar jam sesi — absen tetap bisa dilakukan
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
 
@@ -271,18 +315,17 @@ export default function GuruDashboard() {
             <div className="text-center mb-5">
               <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
                 style={{ background: isBatalAbsen ? '#fee2e2' : 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-                <span className="text-2xl">{isBatalAbsen ? '↩' : '✓'}</span>
+                <span className="text-2xl text-white">{isBatalAbsen ? '↩' : '✓'}</span>
               </div>
               <h3 className="font-bold text-gray-800 text-lg">
                 {isBatalAbsen ? 'Batalkan Absensi?' : 'Konfirmasi Absensi'}
               </h3>
-              <p className="text-gray-500 text-sm mt-2">
+              <p className="text-gray-500 text-sm mt-1">
                 {isBatalAbsen
-                  ? `Anda akan membatalkan absensi sesi ${sesiAbsen === 'subuh' ? 'Subuh' : 'Pagi'}`
-                  : `Anda akan absen hadir sesi ${sesiAbsen === 'subuh' ? 'Subuh' : 'Pagi'}`
-                }
+                  ? `Batalkan absensi sesi ${sesiAbsen === 'subuh' ? 'Subuh' : 'Pagi'}?`
+                  : `Konfirmasi absen hadir sesi ${sesiAbsen === 'subuh' ? 'Subuh' : 'Pagi'}`}
               </p>
-              <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm text-gray-600">
+              <div className="mt-3 p-3 bg-gray-50 rounded-xl text-left text-sm space-y-1">
                 <div>Nama: <span className="font-semibold">{guruProfile?.nama}</span></div>
                 <div>Sesi: <span className="font-semibold">
                   {sesiAbsen === 'subuh' ? 'Subuh (04.00 - 05.30)' : 'Pagi (08.00 - 09.45)'}
@@ -293,13 +336,11 @@ export default function GuruDashboard() {
               </div>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowPopupAbsen(false)}
+              <button onClick={() => setShowPopupAbsen(false)}
                 className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-semibold text-sm hover:bg-gray-200">
                 Batal
               </button>
-              <button
-                onClick={handleKonfirmasiAbsen}
+              <button onClick={handleKonfirmasiAbsen}
                 className="flex-1 text-white py-3 rounded-xl font-semibold text-sm"
                 style={{ background: isBatalAbsen ? '#dc2626' : 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
                 {isBatalAbsen ? 'Ya, Batalkan' : 'Ya, Absen Sekarang'}
@@ -310,39 +351,24 @@ export default function GuruDashboard() {
       )}
 
       {/* HEADER MOBILE */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 text-white px-4 py-3 flex items-center justify-between shadow-lg"
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 text-white px-3 py-2.5 flex items-center justify-between shadow-lg"
         style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
         <div className="flex items-center gap-2">
-          <div className="bg-white rounded-full p-0.5 w-9 h-9 flex items-center justify-center shadow">
+          <div className="bg-white rounded-full p-0.5 w-9 h-9 flex items-center justify-center shadow flex-shrink-0">
             <Image src="/logo.png" alt="Logo" width={30} height={30} className="object-contain" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="font-bold text-sm leading-tight">Daarus Salaf</div>
-            <div className="text-blue-200 text-xs">{guruProfile?.nama || 'Guru'}</div>
+            <div className="text-blue-200 text-xs truncate">{guruProfile?.nama || 'Guru'}</div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-  <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
-    className={`flex flex-col items-center px-2 py-1 rounded-lg transition border ${
-      absenSubuh
-        ? 'bg-green-500 border-green-400 text-white'
-        : 'bg-white border-white text-blue-900'
-    }`}>
-    <span className="text-xs font-bold leading-tight">{absenSubuh ? '✓' : '+'}</span>
-    <span className="text-xs font-bold leading-tight">Subuh</span>
-  </button>
-  <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
-    className={`flex flex-col items-center px-2 py-1 rounded-lg transition border ${
-      absenPagi
-        ? 'bg-green-500 border-green-400 text-white'
-        : 'bg-white border-white text-blue-900'
-    }`}>
-    <span className="text-xs font-bold leading-tight">{absenPagi ? '✓' : '+'}</span>
-    <span className="text-xs font-bold leading-tight">Pagi</span>
-  </button>
-  <button onClick={() => setSidebarOpen(true)} className="text-2xl p-1 ml-1 text-white">☰</button>
-</div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <TombolAbsen mode="mobile" />
+          <button onClick={() => setSidebarOpen(true)} className="text-white text-2xl p-1">☰</button>
+        </div>
+      </div>
 
+      {/* OVERLAY */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -372,37 +398,11 @@ export default function GuruDashboard() {
               <div className="text-white font-semibold text-sm">{guruProfile?.nama || 'Guru'}</div>
               <div className="text-blue-300 text-xs">Guru Musami'</div>
             </div>
-
-            {/* Absen 2 Sesi di Sidebar */}
-            <div className="mt-3 space-y-2">
-              <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
-                className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 ${
-                  absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-30'
-                }`}>
-                <span>Sesi Subuh (04.00-05.30)</span>
-                <span>{absenSubuh ? '✓' : '+'}</span>
-              </button>
-              <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
-                className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 ${
-                  absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white border border-white border-opacity-30'
-                }`}>
-                <span>Sesi Pagi (08.00-09.45)</span>
-                <span>{absenPagi ? '✓' : '+'}</span>
-              </button>
-              {sesiAktif && (
-                <div className="text-center text-xs text-green-300 animate-pulse">
-                  Sesi {sesiAktif === 'subuh' ? 'Subuh' : 'Pagi'} sedang berlangsung
-                </div>
-              )}
-              {!sesiAktif && (
-                <div className="text-center text-xs text-blue-300">
-                  Di luar jam sesi — absen tetap bisa dilakukan
-                </div>
-              )}
-            </div>
+            {/* Tombol absen di sidebar */}
+            <TombolAbsen mode="sidebar" />
           </div>
 
-          <nav className="flex-1 p-4 space-y-1">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {menuItems.map(menu => (
               <button key={menu.id}
                 onClick={() => {
@@ -440,23 +440,27 @@ export default function GuruDashboard() {
                       <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
                       <p className="text-blue-100 text-xs mt-1">{santriList.length} santri dalam kelompok</p>
                     </div>
-                    {/* Status Absen Desktop di Banner */}
-                    <div className="hidden md:flex flex-col gap-1">
-                      <div className={`px-3 py-1 rounded-lg text-xs font-bold text-center ${absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white'}`}>
-                        {absenSubuh ? '✓ Subuh' : 'Belum Subuh'}
-                      </div>
-                      <div className={`px-3 py-1 rounded-lg text-xs font-bold text-center ${absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white'}`}>
-                        {absenPagi ? '✓ Pagi' : 'Belum Pagi'}
-                      </div>
+                    {/* Status absen di banner desktop */}
+                    <div className="hidden md:flex flex-col gap-1.5">
+                      <button onClick={() => handleKlikAbsen('subuh')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold text-center transition ${
+                          absenSubuh ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
+                        }`}>
+                        {absenSubuh ? '✓ Absen Subuh' : 'Klik — Absen Subuh'}
+                      </button>
+                      <button onClick={() => handleKlikAbsen('pagi')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold text-center transition ${
+                          absenPagi ? 'bg-green-500 text-white' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
+                        }`}>
+                        {absenPagi ? '✓ Absen Pagi' : 'Klik — Absen Pagi'}
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
               {successMsg && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">
-                  ✓ {successMsg}
-                </div>
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>
               )}
 
               <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
@@ -495,7 +499,6 @@ export default function GuruDashboard() {
                       {santriTampil.length === 0 && <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
                     </div>
                   )}
-
                   {selectedSantri && (
                     <div className="mt-2 p-3 rounded-xl border bg-blue-50 border-blue-200">
                       <div className="flex justify-between items-start">
@@ -540,7 +543,6 @@ export default function GuruDashboard() {
 
                 {statusKehadiran === 'hadir' && (
                   <>
-                    {/* Jenis Setoran */}
                     <div className="mb-4">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Jenis Setoran</label>
                       <div className="grid grid-cols-2 gap-3">
@@ -557,7 +559,6 @@ export default function GuruDashboard() {
                       </div>
                     </div>
 
-                    {/* Form Hafalan Baru */}
                     {jenis === 'baru' && (
                       <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
                         <label className="block text-sm font-semibold text-gray-700 mb-3">Detail Hafalan Baru</label>
@@ -571,13 +572,11 @@ export default function GuruDashboard() {
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs text-gray-500 mb-1">Ayat Mulai</label>
-                            <input type="number" value={ayatMulaiBaru} onChange={e => setAyatMulaiBaru(e.target.value)}
-                              placeholder="1" className={inputClass} />
+                            <input type="number" value={ayatMulaiBaru} onChange={e => setAyatMulaiBaru(e.target.value)} placeholder="1" className={inputClass} />
                           </div>
                           <div>
                             <label className="block text-xs text-gray-500 mb-1">Ayat Selesai</label>
-                            <input type="number" value={ayatSelesaiBaru} onChange={e => setAyatSelesaiBaru(e.target.value)}
-                              placeholder="5" className={inputClass} />
+                            <input type="number" value={ayatSelesaiBaru} onChange={e => setAyatSelesaiBaru(e.target.value)} placeholder="5" className={inputClass} />
                           </div>
                         </div>
                         {surahBaru && ayatMulaiBaru && ayatSelesaiBaru && (
@@ -588,20 +587,15 @@ export default function GuruDashboard() {
                       </div>
                     )}
 
-                    {/* Form Murojaah */}
                     {jenis === 'lama' && (
                       <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-100">
                         <label className="block text-sm font-semibold text-gray-700 mb-3">Detail Murojaah</label>
                         {targetMurojaah && (
                           <div className="mb-3 p-3 bg-white rounded-xl border border-purple-200">
                             <p className="text-xs font-semibold text-purple-700 mb-1">Target Murojaah Hari Ini:</p>
-                            <p className="text-xs text-gray-600">
-                              ± <span className="font-bold text-purple-700">{targetMurojaah.targetHalaman} halaman</span>
-                            </p>
+                            <p className="text-xs text-gray-600">± <span className="font-bold text-purple-700">{targetMurojaah.targetHalaman} halaman</span></p>
                             {getSaranMurojaah() && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Posisi terakhir: <span className="font-semibold">{getSaranMurojaah()?.nama_latin}</span>
-                              </p>
+                              <p className="text-xs text-gray-500 mt-1">Posisi terakhir: <span className="font-semibold">{getSaranMurojaah()?.nama_latin}</span></p>
                             )}
                           </div>
                         )}
@@ -616,8 +610,7 @@ export default function GuruDashboard() {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">Ayat Mulai</label>
-                              <input type="number" value={ayatMulaiMurojaah} onChange={e => setAyatMulaiMurojaah(e.target.value)}
-                                placeholder="1" className={inputClass} />
+                              <input type="number" value={ayatMulaiMurojaah} onChange={e => setAyatMulaiMurojaah(e.target.value)} placeholder="1" className={inputClass} />
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">Surah Selesai</label>
@@ -644,7 +637,6 @@ export default function GuruDashboard() {
                       </div>
                     )}
 
-                    {/* Status Hafalan */}
                     <div className="mb-4">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Status Hafalan</label>
                       <div className="grid grid-cols-2 gap-3">
@@ -663,7 +655,6 @@ export default function GuruDashboard() {
                   </>
                 )}
 
-                {/* Catatan */}
                 <div className="mb-5">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan (Opsional)</label>
                   <textarea value={catatan} onChange={e => setCatatan(e.target.value)}
