@@ -17,7 +17,6 @@ export default function GuruDashboard() {
   const [searchSantri, setSearchSantri] = useState('')
   const [guruPengganti, setGuruPengganti] = useState(false)
 
-  // Absensi 2 sesi
   const [absenSubuh, setAbsenSubuh] = useState(false)
   const [absenPagi, setAbsenPagi] = useState(false)
   const [absenLoading, setAbsenLoading] = useState(false)
@@ -25,7 +24,6 @@ export default function GuruDashboard() {
   const [sesiAbsen, setSesiAbsen] = useState<'subuh' | 'pagi'>('subuh')
   const [isBatalAbsen, setIsBatalAbsen] = useState(false)
 
-  // Form states
   const [selectedSantri, setSelectedSantri] = useState<any>(null)
   const [jenis, setJenis] = useState('baru')
   const [statusKehadiran, setStatusKehadiran] = useState('hadir')
@@ -79,8 +77,7 @@ export default function GuruDashboard() {
   }
 
   const getSesiAktif = (): 'subuh' | 'pagi' | null => {
-    const now = new Date()
-    const total = now.getHours() * 60 + now.getMinutes()
+    const total = new Date().getHours() * 60 + new Date().getMinutes()
     if (total >= 240 && total <= 330) return 'subuh'
     if (total >= 480 && total <= 585) return 'pagi'
     return null
@@ -120,10 +117,18 @@ export default function GuruDashboard() {
     return Math.max(0, (proporsi * halamanSurah) / 20)
   }
 
+  // RUMUS BENAR: target = total_hafalan ÷ 20 (dalam juz)
+  // Lalu konversi ke halaman dan lembar untuk tampilan
   const hitungTargetMurojaah = (santri: any) => {
     if (!santri?.total_hafalan_juz) return null
-    const targetHalaman = santri.total_hafalan_juz
-    return { targetJuz: (santri.total_hafalan_juz / 20).toFixed(3), targetHalaman: targetHalaman.toFixed(1) }
+    const targetJuz = santri.total_hafalan_juz / 20       // misal 4.35 ÷ 20 = 0.2175 juz
+    const targetHalaman = targetJuz * 20                   // 0.2175 × 20 = 4.35 halaman
+    const targetLembar = targetHalaman / 2                 // 4.35 ÷ 2 = 2.18 lembar
+    return {
+      targetJuz: targetJuz.toFixed(3),
+      targetHalaman: targetHalaman.toFixed(1),
+      targetLembar: targetLembar.toFixed(2)
+    }
   }
 
   const handleSurahSelesaiChange = (nomor: string) => {
@@ -236,27 +241,20 @@ export default function GuruDashboard() {
   ]
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 
-  // Komponen tombol absen — dipakai di header mobile DAN sidebar desktop
   const TombolAbsen = ({ mode }: { mode: 'mobile' | 'sidebar' }) => {
     if (mode === 'mobile') {
       return (
         <div className="flex items-center gap-1.5">
-          {/* Tombol Subuh */}
           <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 transition shadow-sm ${
-              absenSubuh
-                ? 'bg-green-500 border-green-400 text-white'
-                : 'bg-white border-gray-200 text-gray-700'
+              absenSubuh ? 'bg-green-500 border-green-400 text-white' : 'bg-white border-gray-200 text-gray-700'
             }`}>
             <span>{absenSubuh ? '✓' : '○'}</span>
             <span>Subuh</span>
           </button>
-          {/* Tombol Pagi */}
           <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 transition shadow-sm ${
-              absenPagi
-                ? 'bg-green-500 border-green-400 text-white'
-                : 'bg-white border-gray-200 text-gray-700'
+              absenPagi ? 'bg-green-500 border-green-400 text-white' : 'bg-white border-gray-200 text-gray-700'
             }`}>
             <span>{absenPagi ? '✓' : '○'}</span>
             <span>Pagi</span>
@@ -269,9 +267,7 @@ export default function GuruDashboard() {
         <p className="text-blue-300 text-xs font-medium mb-1">Absensi Kehadiran:</p>
         <button onClick={() => handleKlikAbsen('subuh')} disabled={absenLoading}
           className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 border ${
-            absenSubuh
-              ? 'bg-green-500 border-green-400 text-white'
-              : 'bg-white bg-opacity-10 border-white border-opacity-20 text-white hover:bg-opacity-20'
+            absenSubuh ? 'bg-green-500 border-green-400 text-white' : 'bg-white bg-opacity-10 border-white border-opacity-20 text-white hover:bg-opacity-20'
           }`}>
           <div className="text-left">
             <div>{absenSubuh ? '✓ Sudah Absen Subuh' : 'Klik untuk Absen Subuh'}</div>
@@ -281,9 +277,7 @@ export default function GuruDashboard() {
         </button>
         <button onClick={() => handleKlikAbsen('pagi')} disabled={absenLoading}
           className={`w-full py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-between px-3 border ${
-            absenPagi
-              ? 'bg-green-500 border-green-400 text-white'
-              : 'bg-white bg-opacity-10 border-white border-opacity-20 text-white hover:bg-opacity-20'
+            absenPagi ? 'bg-green-500 border-green-400 text-white' : 'bg-white bg-opacity-10 border-white border-opacity-20 text-white hover:bg-opacity-20'
           }`}>
           <div className="text-left">
             <div>{absenPagi ? '✓ Sudah Absen Pagi' : 'Klik untuk Absen Pagi'}</div>
@@ -297,9 +291,7 @@ export default function GuruDashboard() {
           </div>
         )}
         {!sesiAktif && (
-          <div className="text-center text-xs text-blue-300">
-            Di luar jam sesi — absen tetap bisa dilakukan
-          </div>
+          <div className="text-center text-xs text-blue-300">Di luar jam sesi — absen tetap bisa dilakukan</div>
         )}
       </div>
     )
@@ -368,7 +360,6 @@ export default function GuruDashboard() {
         </div>
       </div>
 
-      {/* OVERLAY */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -398,7 +389,6 @@ export default function GuruDashboard() {
               <div className="text-white font-semibold text-sm">{guruProfile?.nama || 'Guru'}</div>
               <div className="text-blue-300 text-xs">Guru Musami'</div>
             </div>
-            {/* Tombol absen di sidebar */}
             <TombolAbsen mode="sidebar" />
           </div>
 
@@ -440,7 +430,6 @@ export default function GuruDashboard() {
                       <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
                       <p className="text-blue-100 text-xs mt-1">{santriList.length} santri dalam kelompok</p>
                     </div>
-                    {/* Status absen di banner desktop */}
                     <div className="hidden md:flex flex-col gap-1.5">
                       <button onClick={() => handleKlikAbsen('subuh')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold text-center transition ${
@@ -510,6 +499,7 @@ export default function GuruDashboard() {
                           {targetMurojaah && (
                             <div className="text-xs text-green-600 mt-0.5">
                               Target Murojaah: <span className="font-semibold">{targetMurojaah.targetHalaman} hal/hari</span>
+                              <span className="text-gray-400 ml-1">(≈ {targetMurojaah.targetLembar} lembar)</span>
                             </div>
                           )}
                           {guruPengganti && (
@@ -593,9 +583,14 @@ export default function GuruDashboard() {
                         {targetMurojaah && (
                           <div className="mb-3 p-3 bg-white rounded-xl border border-purple-200">
                             <p className="text-xs font-semibold text-purple-700 mb-1">Target Murojaah Hari Ini:</p>
-                            <p className="text-xs text-gray-600">± <span className="font-bold text-purple-700">{targetMurojaah.targetHalaman} halaman</span></p>
+                            <p className="text-xs text-gray-600">
+                              ± <span className="font-bold text-purple-700">{targetMurojaah.targetHalaman} halaman</span>
+                              <span className="text-gray-400 ml-1">(≈ {targetMurojaah.targetLembar} lembar)</span>
+                            </p>
                             {getSaranMurojaah() && (
-                              <p className="text-xs text-gray-500 mt-1">Posisi terakhir: <span className="font-semibold">{getSaranMurojaah()?.nama_latin}</span></p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Posisi terakhir: <span className="font-semibold">{getSaranMurojaah()?.nama_latin}</span>
+                              </p>
                             )}
                           </div>
                         )}
@@ -780,7 +775,12 @@ export default function GuruDashboard() {
                                 }} />
                             </div>
                           </div>
-                          {target && <div className="mt-1 text-xs text-purple-600">Target murojaah: <span className="font-semibold">{target.targetHalaman} hal/hari</span></div>}
+                          {target && (
+                            <div className="mt-1 text-xs text-purple-600">
+                              Target murojaah: <span className="font-semibold">{target.targetHalaman} hal/hari</span>
+                              <span className="text-gray-400 ml-1">(≈ {target.targetLembar} lembar)</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
