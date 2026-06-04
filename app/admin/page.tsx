@@ -246,14 +246,30 @@ export default function AdminDashboard() {
   }
 
   const handleHapusGuru = async (id: any) => {
-    if (!confirm('Yakin hapus guru ini?')) return
-    await supabase.from('profiles').delete().eq('id', id); fetchData()
-  }
+  if (!confirm('Yakin hapus guru ini? Data tidak bisa dikembalikan.')) return
+  const res = await fetch('/api/create-user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isDelete: true, userId: id })
+  })
+  const result = await res.json()
+  if (result.error) { alert('Gagal hapus: ' + result.error); return }
+  setSuccessMsg('Guru berhasil dihapus!')
+  fetchData()
+}
 
   const handleHapusWali = async (id: any) => {
-    if (!confirm('Yakin hapus wali ini?')) return
-    await supabase.from('profiles').delete().eq('id', id); fetchData()
-  }
+  if (!confirm('Yakin hapus wali ini? Data tidak bisa dikembalikan.')) return
+  const res = await fetch('/api/create-user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isDelete: true, userId: id })
+  })
+  const result = await res.json()
+  if (result.error) { alert('Gagal hapus: ' + result.error); return }
+  setSuccessMsg('Wali berhasil dihapus!')
+  fetchData()
+}
 
   const handleHapusSantri = async (id: any) => {
     if (!confirm('Yakin hapus santri ini?')) return

@@ -7,20 +7,33 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(request: Request) {
-  const { email, password, nama, role, no_wa, userId, isUpdate } = await request.json()
+  const body = await request.json()
+  const { email, password, nama, role, no_wa, userId, isUpdate, isDelete } = body
 
+  // ===== HAPUS USER =====
+  if (isDelete && userId) {
+    // Hapus dari profiles dulu
+    await supabaseAdmin.from('profiles').delete().eq('id', userId)
+    // Hapus dari auth
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  }
+
+  // ===== UPDATE USER =====
   if (isUpdate && userId) {
-    // Update password existing user
     const updateData: any = {}
     if (email) updateData.email = email
     if (password) updateData.password = password
-
     const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, updateData)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ success: true })
   }
 
-  // Create new user
+  // ===== BUAT USER BARU =====
+  if (!email || !password) {
+    return NextResponse.json({ error: 'Email dan password wajib diisi' }, { status: 400 })
+  }
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email, password, email_confirm: true
   })
