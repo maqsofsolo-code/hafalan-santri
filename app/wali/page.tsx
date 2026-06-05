@@ -328,12 +328,16 @@ setRankingKonsistensiKelas(konsistensiList)
                       <h2 className="text-white font-bold text-xl">{selectedSantri.nama}</h2>
                       <p className="text-blue-200 text-sm">Guru: {selectedSantri.guru?.nama || '-'}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {selectedSantri.kelas && (
-                          <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-0.5 rounded-full">{selectedSantri.kelas}</span>
-                        )}
-                        <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-0.5 rounded-full">
-                          {selectedSantri.total_hafalan_juz?.toFixed(2) || 0} Juz
-                        </span>
+                        {selectedSantri.kelas && selectedSantri.kelas.trim() !== '' && (
+  <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-0.5 rounded-full">
+    {selectedSantri.kelas}
+  </span>
+)}
+{(selectedSantri.total_hafalan_juz || 0) > 0 && (
+  <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-0.5 rounded-full">
+    {selectedSantri.total_hafalan_juz?.toFixed(2)} Juz
+  </span>
+)}
                         {peringkatHafalan && (
   <span className="bg-yellow-400 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
     🏆 {peringkatHafalan.peringkat} Hafalan
