@@ -301,15 +301,25 @@ export default function WaliDashboard() {
                           {selectedSantri.total_hafalan_juz?.toFixed(2) || 0} Juz
                         </span>
                         {peringkatHafalan && (
-                          <span className="bg-yellow-400 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
-                            🏆 Peringkat {peringkatHafalan.peringkat}
-                          </span>
-                        )}
-                        {rataUjian !== null && (
-                          <span className="bg-orange-400 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-                            Nilai ujian: {rataUjian}
-                          </span>
-                        )}
+  <span className="bg-yellow-400 text-yellow-900 text-xs px-2 py-0.5 rounded-full font-bold">
+    🏆 {peringkatHafalan.peringkat} Hafalan
+  </span>
+)}
+{peringkatKonsistensi ? (
+  <span className="bg-blue-400 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+    📅 {peringkatKonsistensi} Konsistensi
+  </span>
+) : null}
+{peringkatSemangat ? (
+  <span className="bg-purple-400 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+    ✨ {peringkatSemangat} Semangat
+  </span>
+) : null}
+{rataUjian !== null && (
+  <span className="bg-orange-400 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+    📝 Nilai ujian: {rataUjian}
+  </span>
+)}
                       </div>
                     </div>
                   </div>
