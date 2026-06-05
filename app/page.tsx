@@ -74,7 +74,7 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-4 mx-4 bg-white bg-opacity-15 rounded-2xl px-4 py-2.5 border border-white border-opacity-20">
-              <p className="text-white text-sm font-semibold tracking-wide">
+              <p className="text-blue-900 text-sm font-semibold tracking-wide">
                 Sistem Informasi Hafalan Santri
               </p>
             </div>
