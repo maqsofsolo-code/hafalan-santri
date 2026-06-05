@@ -5,21 +5,27 @@ export async function GET(request: Request) {
   const jadwal = searchParams.get('jadwal')
   const secret = searchParams.get('secret')
 
-  // Keamanan: cek secret key
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!jadwal || !['baru', 'lama'].includes(jadwal)) {
+  const jadwalValid = [
+    'reminder-guru-subuh',
+    'reminder-guru-pagi', 
+    'reminder-guru-sore',
+    'notif-wali'
+  ]
+
+  if (!jadwal || !jadwalValid.includes(jadwal)) {
     return NextResponse.json({ error: 'Parameter jadwal tidak valid' }, { status: 400 })
   }
 
-  // Panggil API notifikasi
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hafalan-santri-qjf3.vercel.app'
+
   const response = await fetch(`${baseUrl}/api/send-notif`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jenis_jadwal: jadwal })
+    body: JSON.stringify({ jenis: jadwal })
   })
 
   const result = await response.json()
