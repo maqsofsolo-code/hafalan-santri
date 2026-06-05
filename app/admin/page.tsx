@@ -94,20 +94,53 @@ export default function AdminDashboard() {
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
     const { data: setoran7Hari } = await supabase
-      .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
-      .gte('tanggal', tujuhHariLaluStr).eq('status_kehadiran', 'hadir')
+  .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
+  .gte('tanggal', tujuhHariLaluStr).eq('status_kehadiran', 'hadir')
 
-    const konsistensiMap: Record<string, Set<string>> = {}
-    ;(setoran7Hari || []).forEach(s => {
-      if (!konsistensiMap[s.santri_id]) konsistensiMap[s.santri_id] = new Set()
-      konsistensiMap[s.santri_id].add(s.tanggal)
-    })
-    const konsistensiList = (santri || []).map(s => ({
-      ...s,
-      hariSetor: konsistensiMap[s.id]?.size || 0,
-      persentaseKonsistensi: Math.round(((konsistensiMap[s.id]?.size || 0) / 7) * 100)
-    })).sort((a, b) => b.hariSetor - a.hariSetor)
-    setRankingKonsistensi(konsistensiList)
+// Ambil semua libur akademik
+const { data: semuaLibur } = await supabase
+  .from('kalender_akademik').select('*').eq('tipe', 'libur')
+const liburAkademik = semuaLibur || []
+
+// Hitung hari aktif (skip Jumat, Ahad, libur akademik)
+const hitungHariAktif = (mulai: string, selesai: string) => {
+  const aktif: string[] = []
+  const cur = new Date(mulai)
+  const end = new Date(selesai)
+  while (cur <= end) {
+    const hari = cur.getDay()
+    const tgl = cur.toISOString().split('T')[0]
+    if (hari !== 0 && hari !== 5) {
+      const isLibur = liburAkademik.some((l: any) =>
+        tgl >= l.tanggal_mulai && tgl <= l.tanggal_selesai
+      )
+      if (!isLibur) aktif.push(tgl)
+    }
+    cur.setDate(cur.getDate() + 1)
+  }
+  return aktif
+}
+
+const hariAktif7Hari = hitungHariAktif(tujuhHariLaluStr, today)
+const totalHariAktif = hariAktif7Hari.length || 1
+
+const konsistensiMap: Record<string, Set<string>> = {}
+;(setoran7Hari || []).forEach(s => {
+  if (!konsistensiMap[s.santri_id]) konsistensiMap[s.santri_id] = new Set()
+  if (hariAktif7Hari.includes(s.tanggal)) {
+    konsistensiMap[s.santri_id].add(s.tanggal)
+  }
+})
+const konsistensiList = (santri || []).map(s => {
+  const hariSetor = konsistensiMap[s.id]?.size || 0
+  return {
+    ...s,
+    hariSetor,
+    totalHariAktif,
+    persentaseKonsistensi: Math.round((hariSetor / totalHariAktif) * 100)
+  }
+}).sort((a, b) => b.hariSetor - a.hariSetor)
+setRankingKonsistensi(konsistensiList)
 
     const semangatMap: Record<string, number> = {}
     ;(setoran7Hari || []).filter(s => s.jenis === 'baru').forEach(s => {
@@ -1233,7 +1266,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="text-right flex-shrink-0">
                           <div className={`font-bold text-sm ${santri.persentaseKonsistensi >= 80 ? 'text-green-600' : santri.persentaseKonsistensi >= 50 ? 'text-yellow-600' : 'text-red-500'}`}>{santri.persentaseKonsistensi}%</div>
-                          <div className="text-xs text-gray-400">{santri.hariSetor}/7 hari</div>
+                          <div className="text-xs text-gray-400">{santri.hariSetor}/{santri.totalHariAktif} hari aktif</div>
                         </div>
                       </div>
                     ))}
