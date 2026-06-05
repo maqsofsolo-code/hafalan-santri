@@ -304,7 +304,7 @@ export async function GET(req: NextRequest) {
   const namaBulanFile = new Date(tahun, bln - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }).replace(' ', '_')
   const filename = `Laporan_Hafalan_${namaBulanFile}.xlsx`
 
-  return new NextResponse(buffer as Buffer, {
+  return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
