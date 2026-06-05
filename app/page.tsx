@@ -54,15 +54,13 @@ export default function LoginPage() {
 
           <div className="relative z-10">
             <div className="flex justify-center mb-4">
-              <div className="bg-white bg-opacity-20 rounded-full p-3 shadow-lg">
-                <Image
-                  src="/logo.png"
-                  alt="Logo Daarus Salaf"
-                  width={80}
-                  height={80}
-                  className="object-contain drop-shadow-lg"
-                />
-              </div>
+              <Image
+                src="/logo.png"
+                alt="Logo Daarus Salaf"
+                width={100}
+                height={100}
+                className="object-contain drop-shadow-lg"
+              />
             </div>
 
             <h1 className="text-white font-bold text-xl leading-tight tracking-wide">
@@ -147,24 +145,6 @@ export default function LoginPage() {
                 </span>
               ) : 'Masuk →'}
             </button>
-          </div>
-
-          {/* Info roles */}
-          <div className="mt-5 p-3 bg-blue-50 rounded-xl border border-blue-100">
-            <p className="text-xs text-blue-600 font-semibold mb-1.5 text-center">Akses Tersedia:</p>
-            <div className="grid grid-cols-4 gap-1 text-center">
-              {[
-                { icon: '👨‍💼', label: 'Admin' },
-                { icon: '👨‍🏫', label: 'Guru' },
-                { icon: '🏫', label: 'Kepsek' },
-                { icon: '👨‍👩‍👦', label: 'Wali' },
-              ].map((item, i) => (
-                <div key={i} className="bg-white rounded-lg py-1.5 border border-blue-100">
-                  <div className="text-base">{item.icon}</div>
-                  <div className="text-xs text-gray-500 font-medium">{item.label}</div>
-                </div>
-              ))}
-            </div>
           </div>
 
           <p className="text-center text-gray-300 text-xs mt-5">
