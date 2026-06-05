@@ -24,7 +24,11 @@ export default function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeRanking, setActiveRanking] = useState('total')
   const [downloadLoading, setDownloadLoading] = useState(false)
-  const [laporanBulan, setLaporanBulan] = useState(new Date().toISOString().slice(0, 7))
+  const [laporanBulan, setLaporanBulan] = useState('')
+
+useEffect(() => {
+  setLaporanBulan(new Date().toISOString().slice(0, 7))
+}, [])
   const [laporanJenjang, setLaporanJenjang] = useState('semua')
   const [laporanKelas, setLaporanKelas] = useState('semua')
   const [laporanSantriId, setLaporanSantriId] = useState('semua')
