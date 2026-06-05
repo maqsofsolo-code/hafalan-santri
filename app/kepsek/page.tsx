@@ -43,6 +43,15 @@ export default function KepsekDashboard() {
   const [murojaahTanggal, setMurojaahTanggal] = useState(new Date().toISOString().split('T')[0])
   const [setoranMurojaahTanggal, setSetoranMurojaahTanggal] = useState<any[]>([])
   const [loadingMurojaah, setLoadingMurojaah] = useState(false)
+  const [laporanBulan, setLaporanBulan] = useState('')
+const [laporanJenjang, setLaporanJenjang] = useState('semua')
+const [laporanKelas, setLaporanKelas] = useState('semua')
+const [laporanSantriId, setLaporanSantriId] = useState('semua')
+const [laporanLoading, setLaporanLoading] = useState('')
+
+useEffect(() => {
+  setLaporanBulan(new Date().toISOString().slice(0, 7))
+}, [])
 
   useEffect(() => { fetchAllData() }, [])
 
@@ -184,7 +193,20 @@ setRankingKonsistensi(konsistensiList)
     setMonitoringTanggal(tgl)
     fetchMonitoringTanggal(tgl)
   }
-
+const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
+  setLaporanLoading(format)
+  const params = new URLSearchParams({
+    bulan: laporanBulan,
+    jenjang: laporanJenjang,
+    kelas: laporanKelas,
+    santri_id: laporanSantriId,
+  })
+  const url = format === 'excel'
+    ? `/api/laporan-bulanan-excel?${params}`
+    : `/api/laporan-bulanan-pdf?${params}`
+  window.open(url, '_blank')
+  setTimeout(() => setLaporanLoading(''), 3000)
+}
   const handleUbahTanggalMurojaah = (tgl: string) => {
     setMurojaahTanggal(tgl)
     fetchMurojaahTanggal(tgl)
@@ -291,7 +313,7 @@ setRankingKonsistensi(konsistensiList)
     { id: 'murojaah', label: 'Monitor Murojaah', icon: '◎' },
     { id: 'ujian', label: 'Rekap Nilai Ujian', icon: '📝' },
     { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
-    { id: 'laporan', label: 'Laporan Setoran', icon: '◱' },
+    { id: 'laporan', label: 'Laporan Bulanan', icon: '📊' },
   ]
 
   const inputClass = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -997,51 +1019,108 @@ setRankingKonsistensi(konsistensiList)
             </div>
           )}
 
-          {/* LAPORAN */}
+          {/* LAPORAN BULANAN */}
           {activeMenu === 'laporan' && (
             <div>
               <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
-                style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
+                style={{ background: 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)' }}>
                 <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                 <div className="relative z-10">
-                  <h2 className="font-bold text-xl">Laporan Setoran</h2>
-                  <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
-                  <p className="text-blue-100 text-xs mt-1">{setoranHariIni.length} setoran hari ini</p>
+                  <h2 className="font-bold text-xl">Laporan Bulanan</h2>
+                  <p className="text-teal-100 text-sm mt-1">Rekap setoran hafalan per santri</p>
                 </div>
               </div>
-              <div className="space-y-3">
-                {setoranHariIni.length === 0 && (
-                  <div className="bg-white rounded-2xl p-10 text-center shadow border border-gray-100">
-                    <p className="text-gray-400">Belum ada setoran hari ini</p>
+
+              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4">Filter Laporan</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">📅 Bulan</label>
+                    <input type="month" value={laporanBulan}
+                      onChange={e => setLaporanBulan(e.target.value)}
+                      className={inputClass} />
                   </div>
-                )}
-                {setoranHariIni.map((item) => (
-                  <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                          style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-                          {item.santri?.nama?.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-sm">{item.santri?.nama}</div>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                            {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
-                          </span>
-                        </div>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
-                      </span>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                    <select value={laporanJenjang}
+                      onChange={e => { setLaporanJenjang(e.target.value); setLaporanKelas('semua'); setLaporanSantriId('semua') }}
+                      className={inputClass}>
+                      <option value="semua">Semua Jenjang</option>
+                      <option value="ula">Ula</option>
+                      <option value="wustha">Wustha</option>
+                      <option value="ulya">Ulya</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                    <select value={laporanKelas}
+                      onChange={e => { setLaporanKelas(e.target.value); setLaporanSantriId('semua') }}
+                      className={inputClass}>
+                      <option value="semua">Semua Kelas</option>
+                      {getKelasOptions(laporanJenjang).map(k => (
+                        <option key={k} value={k}>Kelas {k}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Santri Tertentu</label>
+                    <select value={laporanSantriId} onChange={e => setLaporanSantriId(e.target.value)} className={inputClass}>
+                      <option value="semua">Semua Santri</option>
+                      {santriList
+                        .filter(s => laporanJenjang === 'semua' || s.jenjang === laporanJenjang)
+                        .filter(s => laporanKelas === 'semua' || s.kelas_num?.toString() === laporanKelas)
+                        .map(s => (<option key={s.id} value={s.id}>{s.nama}</option>))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-teal-50 rounded-xl border border-teal-200 mb-4">
+                  <p className="text-xs text-teal-700">
+                    📋 Laporan bulan <span className="font-semibold">
+                      {laporanBulan ? new Date(laporanBulan + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : '-'}
+                    </span>
+                    {laporanJenjang !== 'semua' && ` • Jenjang ${jenjangLabel(laporanJenjang)}`}
+                    {laporanKelas !== 'semua' && ` • Kelas ${laporanKelas}`}
+                    {laporanSantriId !== 'semua' && ` • ${santriList.find(s => s.id === laporanSantriId)?.nama || ''}`}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => handleDownloadLaporan('excel')} disabled={laporanLoading !== '' || !laporanBulan}
+                    className="flex items-center justify-center gap-2 text-white py-3 px-4 rounded-xl font-semibold text-sm shadow disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                    {laporanLoading === 'excel' ? 'Menyiapkan...' : '📥 Download Excel'}
+                  </button>
+                  <button onClick={() => handleDownloadLaporan('pdf')} disabled={laporanLoading !== '' || !laporanBulan}
+                    className="flex items-center justify-center gap-2 text-white py-3 px-4 rounded-xl font-semibold text-sm shadow disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
+                    {laporanLoading === 'pdf' ? 'Menyiapkan...' : '📄 Download PDF'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow p-4 border border-gray-100">
+                <p className="text-xs font-semibold text-gray-600 mb-3">📌 Isi Laporan:</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                  {[
+                    'Detail setoran per hari',
+                    'Status lancar / rosib',
+                    'Hafalan baru & murojaah',
+                    'Catatan guru',
+                    'Rekap kehadiran lengkap',
+                    'Penambahan hafalan bulan ini',
+                    'Tanda tangan kepala sekolah & guru',
+                    'Kop surat pesantren',
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500 flex-shrink-0" />
+                      {item}
                     </div>
-                    <div className="ml-11 text-sm text-gray-600">{item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}</div>
-                    {item.catatan && <div className="ml-11 mt-1 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
