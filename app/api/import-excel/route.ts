@@ -23,6 +23,35 @@ async function hitungJuzDariSurah(supabase: any, surahAwalNomor: number, surahAk
   return Math.max(0, totalHalaman / 20)
 }
 
+// Helper: konversi tanggal Excel (angka serial) ke string YYYY-MM-DD
+function parseTanggal(val: any): string | null {
+  if (!val) return null
+  // Kalau sudah string format YYYY-MM-DD atau DD/MM/YYYY
+  if (typeof val === 'string') {
+    // Format DD/MM/YYYY
+    if (val.includes('/')) {
+      const parts = val.split('/')
+      if (parts.length === 3) {
+        const [d, m, y] = parts
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+      }
+    }
+    // Format YYYY-MM-DD langsung
+    if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return val
+    return null
+  }
+  // Kalau angka serial Excel
+  if (typeof val === 'number') {
+    const date = XLSX.SSF.parse_date_code(val)
+    if (!date) return null
+    const y = date.y
+    const m = String(date.m).padStart(2, '0')
+    const d = String(date.d).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+  return null
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData()
   const file = formData.get('file') as File
@@ -75,7 +104,7 @@ export async function POST(request: Request) {
 
       // Cek duplikat
       const { data: existing } = await supabaseAdmin
-        .from('santri').select('id').eq('nama', row.nama).single()
+        .from('santri').select('id').eq('nama', row.nama).maybeSingle()
       if (existing) { hasil.skip++; continue }
 
       // Cari guru
@@ -108,6 +137,9 @@ export async function POST(request: Request) {
       const jenjangLabel = jenjang === 'ula' ? 'Ula' : jenjang === 'wustha' ? 'Wustha' : jenjang === 'ulya' ? 'Ulya' : ''
       const kelasLabel = kelasNum && jenjangLabel ? `Kelas ${kelasNum} ${jenjangLabel}` : null
 
+      // Parse tanggal lahir
+      const tanggalLahir = parseTanggal(row.tanggal_lahir)
+
       await supabaseAdmin.from('santri').insert({
         nama: row.nama,
         jenjang: jenjang,
@@ -116,6 +148,12 @@ export async function POST(request: Request) {
         guru_id: guruId,
         total_hafalan_juz: totalJuz,
         surah_terakhir_nomor: surahTerakhirNomor,
+        // Kolom baru
+        nik: row.nik?.toString() || null,
+        nisn: row.nisn?.toString() || null,
+        tempat_lahir: row.tempat_lahir?.toString() || null,
+        tanggal_lahir: tanggalLahir,
+        alamat: row.alamat?.toString() || null,
       })
       hasil.santri++
     }

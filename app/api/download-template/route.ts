@@ -19,6 +19,11 @@ export async function GET() {
     { petunjuk: '  kelas_num diisi angka: Ula=1-6, Wustha=7-9, Ulya=10-12' },
     { petunjuk: '  surah_awal_nomor: nomor surah awal hafalan (An-Nas=114, Al-Fatihah=1)' },
     { petunjuk: '  surah_akhir_nomor: nomor surah akhir hafalan' },
+    { petunjuk: '  nik: Nomor Induk Kependudukan (opsional)' },
+    { petunjuk: '  nisn: Nomor Induk Siswa Nasional (opsional)' },
+    { petunjuk: '  tempat_lahir: kota/kabupaten tempat lahir (opsional)' },
+    { petunjuk: '  tanggal_lahir: format DD/MM/YYYY contoh: 15/03/2010 (opsional)' },
+    { petunjuk: '  alamat: alamat lengkap santri (opsional)' },
     { petunjuk: 'SHEET WALI: nama_santri harus sama persis dengan nama di sheet Santri' },
     { petunjuk: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' },
     { petunjuk: 'CONTOH NOMOR SURAH JUZ 30:' },
@@ -47,6 +52,11 @@ export async function GET() {
       email_guru: 'ahmad@daarus.com',
       surah_awal_nomor: 114,
       surah_akhir_nomor: 78,
+      nik: '3371234567890001',
+      nisn: '0012345678',
+      tempat_lahir: 'Sukoharjo',
+      tanggal_lahir: '15/03/2010',
+      alamat: 'Jl. Pandawa No. 1, Grogol, Sukoharjo',
       keterangan_hafalan: 'Hafal Juz 30 (An-Nas sampai An-Naba)'
     },
     {
@@ -56,6 +66,11 @@ export async function GET() {
       email_guru: 'siti@daarus.com',
       surah_awal_nomor: 114,
       surah_akhir_nomor: 93,
+      nik: '3371234567890002',
+      nisn: '0012345679',
+      tempat_lahir: 'Solo',
+      tanggal_lahir: '20/07/2012',
+      alamat: 'Jl. Melati No. 5, Sukoharjo',
       keterangan_hafalan: 'Hafal An-Nas sampai Ad-Duha'
     },
     {
@@ -65,6 +80,11 @@ export async function GET() {
       email_guru: 'ahmad@daarus.com',
       surah_awal_nomor: 114,
       surah_akhir_nomor: 107,
+      nik: '',
+      nisn: '',
+      tempat_lahir: '',
+      tanggal_lahir: '',
+      alamat: '',
       keterangan_hafalan: 'Hafal An-Nas sampai Al-Maun'
     },
   ]
@@ -91,7 +111,6 @@ export async function GET() {
     },
   ]
 
-  // Buat workbook
   const wb = XLSX.utils.book_new()
 
   const wsPetunjuk = XLSX.utils.json_to_sheet(petunjukData)
@@ -99,10 +118,13 @@ export async function GET() {
   const wsSantri = XLSX.utils.json_to_sheet(santriData)
   const wsWali = XLSX.utils.json_to_sheet(waliData)
 
-  // Lebar kolom otomatis
   wsPetunjuk['!cols'] = [{ wch: 70 }]
   wsGuru['!cols'] = [{ wch: 25 }, { wch: 25 }, { wch: 15 }]
-  wsSantri['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 35 }]
+  wsSantri['!cols'] = [
+    { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 25 },
+    { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 14 },
+    { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 35 }
+  ]
   wsWali['!cols'] = [{ wch: 25 }, { wch: 25 }, { wch: 15 }, { wch: 20 }]
 
   XLSX.utils.book_append_sheet(wb, wsPetunjuk, 'PETUNJUK')
