@@ -60,7 +60,7 @@ export default function WaliDashboard() {
 
     const { data: setoran7Hari } = await supabase
   .from('setoran')
-  .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
+  .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
   .in('santri_id', seKelas.map(s => s.id))
   .gte('tanggal', tujuhHariLaluStr)
   .eq('status_kehadiran', 'hadir')
@@ -93,36 +93,86 @@ const hitungHariAktif = (mulai: string, selesai: string) => {
 const hariAktif7Hari = hitungHariAktif(tujuhHariLaluStr, today)
 const totalHariAktif = hariAktif7Hari.length || 1
 
-// Ranking Konsistensi per kelas
-const konsistensiMap: Record<string, Set<string>> = {}
-;(setoran7Hari || []).forEach(s => {
-  if (!konsistensiMap[s.santri_id]) konsistensiMap[s.santri_id] = new Set()
-  if (hariAktif7Hari.includes(s.tanggal)) {
-    konsistensiMap[s.santri_id].add(s.tanggal)
+// ===== RANKING KONSISTENSI PER KELAS =====
+const statsKonsistensi: Record<string, {
+  hariSetorLama: Set<string>, hariSetorBaru: Set<string>,
+  najihLama: number, najihBaru: number
+}> = {}
+
+;(setoran7Hari || []).forEach((s: any) => {
+  if (!statsKonsistensi[s.santri_id]) statsKonsistensi[s.santri_id] = {
+    hariSetorLama: new Set(), hariSetorBaru: new Set(),
+    najihLama: 0, najihBaru: 0
+  }
+  if (!hariAktif7Hari.includes(s.tanggal)) return
+  if (s.jenis === 'lama') {
+    statsKonsistensi[s.santri_id].hariSetorLama.add(s.tanggal)
+    if (s.status === 'lancar') statsKonsistensi[s.santri_id].najihLama++
+  } else if (s.jenis === 'baru') {
+    statsKonsistensi[s.santri_id].hariSetorBaru.add(s.tanggal)
+    if (s.status === 'lancar') statsKonsistensi[s.santri_id].najihBaru++
   }
 })
-const konsistensiList = seKelas.map(s => {
-  const hariSetor = konsistensiMap[s.id]?.size || 0
+
+const konsistensiList = seKelas.map((s: any) => {
+  const st = statsKonsistensi[s.id] || {
+    hariSetorLama: new Set(), hariSetorBaru: new Set(),
+    najihLama: 0, najihBaru: 0
+  }
+  const isUlya = s.jenjang === 'ulya'
+  const hariSetor = isUlya ? st.hariSetorBaru.size : st.hariSetorLama.size
   return {
     ...s,
     hariSetor,
+    hariSetorBaru: st.hariSetorBaru.size,
+    najihLama: st.najihLama,
+    najihBaru: st.najihBaru,
     totalHariAktif,
     persentaseKonsistensi: Math.round((hariSetor / totalHariAktif) * 100)
   }
-}).sort((a, b) => b.hariSetor - a.hariSetor)
+}).sort((a: any, b: any) => {
+  const aUlya = a.jenjang === 'ulya'
+  const bUlya = b.jenjang === 'ulya'
+  const aHari = aUlya ? a.hariSetorBaru : a.hariSetor
+  const bHari = bUlya ? b.hariSetorBaru : b.hariSetor
+  if (bHari !== aHari) return bHari - aHari
+  const aNajih = aUlya ? a.najihBaru : a.najihLama
+  const bNajih = bUlya ? b.najihBaru : b.najihLama
+  if (bNajih !== aNajih) return bNajih - aNajih
+  if (b.hariSetorBaru !== a.hariSetorBaru) return b.hariSetorBaru - a.hariSetorBaru
+  if (b.najihBaru !== a.najihBaru) return b.najihBaru - a.najihBaru
+  return 0
+})
 setRankingKonsistensiKelas(konsistensiList)
 
-    // Ranking Semangat per kelas
-    const semangatMap: Record<string, number> = {}
-    ;(setoran7Hari || []).filter(s => s.jenis === 'baru').forEach(s => {
-      semangatMap[s.santri_id] = (semangatMap[s.santri_id] || 0) + (s.penambahan_juz || 0)
-    })
-    const semangatList = seKelas.map(s => ({
-      ...s,
-      tambahJuz7Hari: semangatMap[s.id] || 0,
-      tambahHalaman7Hari: (semangatMap[s.id] || 0) * 20
-    })).sort((a, b) => b.tambahJuz7Hari - a.tambahJuz7Hari)
-    setRankingSemangatKelas(semangatList)
+// ===== RANKING SEMANGAT PER KELAS =====
+const semangatStats: Record<string, {
+  totalJuz: number, hariSetor: Set<string>, najih: number
+}> = {}
+;(setoran7Hari || []).filter((s: any) => s.jenis === 'baru').forEach((s: any) => {
+  if (!semangatStats[s.santri_id]) semangatStats[s.santri_id] = {
+    totalJuz: 0, hariSetor: new Set(), najih: 0
+  }
+  semangatStats[s.santri_id].totalJuz += (s.penambahan_juz || 0)
+  if (hariAktif7Hari.includes(s.tanggal)) semangatStats[s.santri_id].hariSetor.add(s.tanggal)
+  if (s.status === 'lancar') semangatStats[s.santri_id].najih++
+})
+const semangatList = seKelas.map((s: any) => {
+  const st = semangatStats[s.id] || { totalJuz: 0, hariSetor: new Set(), najih: 0 }
+  return {
+    ...s,
+    tambahJuz7Hari: st.totalJuz,
+    tambahHalaman7Hari: st.totalJuz * 20,
+    hariSetorBaru7Hari: st.hariSetor.size,
+    najihBaru7Hari: st.najih
+  }
+}).sort((a: any, b: any) => {
+  if (b.tambahJuz7Hari !== a.tambahJuz7Hari) return b.tambahJuz7Hari - a.tambahJuz7Hari
+  if (b.hariSetorBaru7Hari !== a.hariSetorBaru7Hari) return b.hariSetorBaru7Hari - a.hariSetorBaru7Hari
+  if (b.najihBaru7Hari !== a.najihBaru7Hari) return b.najihBaru7Hari - a.najihBaru7Hari
+  return 0
+})
+setRankingSemangatKelas(semangatList)
   }
 
   const fetchRiwayat = async (santriId: any) => {
