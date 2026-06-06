@@ -248,7 +248,181 @@ async function reminderGuru(sesi: string) {
 
   return { message: `Reminder guru ${sesi} selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
 }
+// ===== NOTIF NAIK PERINGKAT (Senin jam 17.00) =====
+async function notifNaikPeringkat() {
+  const today = getWIBDate()
+  const hariMinggu = getHariWIB()
 
+  // Hanya jalan hari Senin (1)
+  if (hariMinggu !== 1) return { message: 'Bukan hari Senin' }
+
+  // Hitung tanggal Senin lalu (7 hari yang lalu)
+  const seninLalu = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  seninLalu.setDate(seninLalu.getDate() - 7)
+  const tglSeninLalu = `${seninLalu.getFullYear()}-${String(seninLalu.getMonth() + 1).padStart(2, '0')}-${String(seninLalu.getDate()).padStart(2, '0')}`
+
+  // Hitung tanggal 7 hari yang lalu dari Senin lalu (untuk minggu sebelumnya)
+  const duaMingguLalu = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  duaMingguLalu.setDate(duaMingguLalu.getDate() - 14)
+  const tglDuaMingguLalu = `${duaMingguLalu.getFullYear()}-${String(duaMingguLalu.getMonth() + 1).padStart(2, '0')}-${String(duaMingguLalu.getDate()).padStart(2, '0')}`
+
+  // Ambil semua santri beserta wali
+  const { data: santriList } = await supabase
+    .from('santri').select('*, wali:wali_id(nama, no_wa)')
+  if (!santriList) return { message: 'Tidak ada santri' }
+
+  // Ambil libur akademik untuk hitung hari aktif
+  const { data: liburAkademik } = await supabase
+    .from('kalender_akademik').select('*').eq('tipe', 'libur')
+
+  const hitungHariAktif = (mulai: string, selesai: string) => {
+    const aktif: string[] = []
+    const cur = new Date(mulai)
+    const end = new Date(selesai)
+    while (cur <= end) {
+      const hari = cur.getDay()
+      const tgl = cur.toISOString().split('T')[0]
+      if (hari !== 0 && hari !== 5) {
+        const isLibur = (liburAkademik || []).some((l: any) =>
+          tgl >= l.tanggal_mulai && tgl <= l.tanggal_selesai
+        )
+        if (!isLibur) aktif.push(tgl)
+      }
+      cur.setDate(cur.getDate() + 1)
+    }
+    return aktif
+  }
+
+  // Hari aktif minggu ini dan minggu lalu
+  const hariAktifMingguIni = hitungHariAktif(tglSeninLalu, today)
+  const hariAktifMingguLalu = hitungHariAktif(tglDuaMingguLalu, tglSeninLalu)
+  const totalHariAktifIni = hariAktifMingguIni.length || 1
+  const totalHariAktifLalu = hariAktifMingguLalu.length || 1
+
+  // Ambil setoran minggu ini
+  const { data: setoranMingguIni } = await supabase
+    .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
+    .gte('tanggal', tglSeninLalu).lte('tanggal', today)
+    .eq('status_kehadiran', 'hadir')
+
+  // Ambil setoran minggu lalu
+  const { data: setoranMingguLalu } = await supabase
+    .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
+    .gte('tanggal', tglDuaMingguLalu).lte('tanggal', tglSeninLalu)
+    .eq('status_kehadiran', 'hadir')
+
+  // Hitung konsistensi dan semangat per santri untuk 2 minggu
+  const hitungStats = (setoranData: any[], hariAktif: string[], totalHari: number) => {
+    const konsistensiMap: Record<string, Set<string>> = {}
+    const semangatMap: Record<string, number> = {}
+
+    ;(setoranData || []).forEach((s: any) => {
+      if (!konsistensiMap[s.santri_id]) konsistensiMap[s.santri_id] = new Set()
+      if (hariAktif.includes(s.tanggal)) {
+        konsistensiMap[s.santri_id].add(s.tanggal)
+      }
+      if (s.jenis === 'baru') {
+        semangatMap[s.santri_id] = (semangatMap[s.santri_id] || 0) + (s.penambahan_juz || 0)
+      }
+    })
+
+    return { konsistensiMap, semangatMap }
+  }
+
+  const statsIni = hitungStats(setoranMingguIni || [], hariAktifMingguIni, totalHariAktifIni)
+  const statsLalu = hitungStats(setoranMingguLalu || [], hariAktifMingguLalu, totalHariAktifLalu)
+
+  // Kelompokkan santri per kelas
+  const perKelas: Record<string, any[]> = {}
+  santriList.forEach(s => {
+    const key = `${s.kelas_num}-${s.jenjang}`
+    if (!perKelas[key]) perKelas[key] = []
+    perKelas[key].push(s)
+  })
+
+  // Hitung peringkat per kelas untuk minggu ini dan minggu lalu
+  const peringkatIni: Record<string, { konsistensi: number, semangat: number }> = {}
+  const peringkatLalu: Record<string, { konsistensi: number, semangat: number }> = {}
+
+  for (const [, anggota] of Object.entries(perKelas)) {
+    // Urutkan berdasarkan konsistensi minggu ini
+    const urutKonsistensiIni = [...anggota]
+      .map(s => ({ id: s.id, nilai: statsIni.konsistensiMap[s.id]?.size || 0 }))
+      .sort((a, b) => b.nilai - a.nilai)
+
+    urutKonsistensiIni.forEach((item, idx) => {
+      if (!peringkatIni[item.id]) peringkatIni[item.id] = { konsistensi: 0, semangat: 0 }
+      peringkatIni[item.id].konsistensi = idx + 1
+    })
+
+    // Urutkan berdasarkan konsistensi minggu lalu
+    const urutKonsistensiLalu = [...anggota]
+      .map(s => ({ id: s.id, nilai: statsLalu.konsistensiMap[s.id]?.size || 0 }))
+      .sort((a, b) => b.nilai - a.nilai)
+
+    urutKonsistensiLalu.forEach((item, idx) => {
+      if (!peringkatLalu[item.id]) peringkatLalu[item.id] = { konsistensi: 0, semangat: 0 }
+      peringkatLalu[item.id].konsistensi = idx + 1
+    })
+
+    // Urutkan berdasarkan semangat minggu ini
+    const urutSemangatIni = [...anggota]
+      .map(s => ({ id: s.id, nilai: statsIni.semangatMap[s.id] || 0 }))
+      .sort((a, b) => b.nilai - a.nilai)
+
+    urutSemangatIni.forEach((item, idx) => {
+      if (!peringkatIni[item.id]) peringkatIni[item.id] = { konsistensi: 0, semangat: 0 }
+      peringkatIni[item.id].semangat = idx + 1
+    })
+
+    // Urutkan berdasarkan semangat minggu lalu
+    const urutSemangatLalu = [...anggota]
+      .map(s => ({ id: s.id, nilai: statsLalu.semangatMap[s.id] || 0 }))
+      .sort((a, b) => b.nilai - a.nilai)
+
+    urutSemangatLalu.forEach((item, idx) => {
+      if (!peringkatLalu[item.id]) peringkatLalu[item.id] = { konsistensi: 0, semangat: 0 }
+      peringkatLalu[item.id].semangat = idx + 1
+    })
+  }
+
+  let terkirim = 0, gagal = 0
+
+  for (const santri of santriList) {
+    const noWali = santri.wali?.no_wa
+    if (!noWali) continue
+
+    const ini = peringkatIni[santri.id]
+    const lalu = peringkatLalu[santri.id]
+    if (!ini || !lalu) continue
+
+    const naikKonsistensi = ini.konsistensi < lalu.konsistensi // peringkat lebih kecil = lebih baik
+    const naikSemangat = ini.semangat < lalu.semangat
+    if (!naikKonsistensi && !naikSemangat) continue
+
+    const namaSantri = santri.nama
+    const namaWali = santri.wali?.nama || 'Wali Santri'
+    const namaKelas = santri.kelas || '-'
+
+    // Buat bagian pesan naik peringkat
+    let detailNaik = ''
+    if (naikKonsistensi && naikSemangat) {
+      detailNaik = `Ananda *${namaSantri}* minggu ini naik peringkat di *${namaKelas}*:\n\n🏆 *Konsistensi Setoran*: Peringkat *${lalu.konsistensi}* → Peringkat *${ini.konsistensi}*\n🔥 *Semangat Hafalan*: Peringkat *${lalu.semangat}* → Peringkat *${ini.semangat}*`
+    } else if (naikKonsistensi) {
+      detailNaik = `Ananda *${namaSantri}* minggu ini naik peringkat *Konsistensi Setoran* di *${namaKelas}*:\n\n🏆 Peringkat *${lalu.konsistensi}* → Peringkat *${ini.konsistensi}*`
+    } else {
+      detailNaik = `Ananda *${namaSantri}* minggu ini naik peringkat *Semangat Hafalan* di *${namaKelas}*:\n\n🔥 Peringkat *${lalu.semangat}* → Peringkat *${ini.semangat}*`
+    }
+
+    const pesan = `Alhamdulillah! 🎉🌟✨\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n${detailNaik}\n\nSemoga Allah meneguhkan hati ananda di atas hafalan Al-Qur'an, memudahkan setiap langkahnya, dan menjadikannya pemberi syafaat bagi keluarga di akhirat kelak.\n\n_"Sebaik-baik kalian adalah orang yang mempelajari Al-Qur'an dan mengajarkannya."_ (HR. Bukhari)\n\nTeruslah istiqomah dan jangan berhenti berjuang! Setiap ayat yang dihafal adalah cahaya di dunia dan di akhirat.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+
+    const hasil = await kirimWA(noWali, pesan)
+    if (hasil.status) terkirim++
+    else gagal++
+  }
+
+  return { message: `Notif naik peringkat selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
+}
 export async function POST(request: Request) {
   const { jenis } = await request.json()
   if (jenis === 'notif-wali') return NextResponse.json(await notifWali())
@@ -256,5 +430,6 @@ export async function POST(request: Request) {
   if (jenis === 'reminder-guru-pagi') return NextResponse.json(await reminderGuru('pagi'))
   if (jenis === 'reminder-guru-siang') return NextResponse.json(await reminderGuru('siang'))
   if (jenis === 'reminder-guru-sore') return NextResponse.json(await reminderGuru('sore'))
+  if (jenis === 'notif-naik-peringkat') return NextResponse.json(await notifNaikPeringkat())
   return NextResponse.json({ error: 'Jenis tidak valid' }, { status: 400 })
 }
