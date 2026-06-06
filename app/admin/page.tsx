@@ -65,6 +65,19 @@ useEffect(() => {
   const [naikKelasPreview, setNaikKelasPreview] = useState<any[]>([])
   const [naikKelasChecked, setNaikKelasChecked] = useState<Record<string, boolean>>({})
   const [naikKelasMsg, setNaikKelasMsg] = useState('')
+  // State rapot
+  const [periodeList, setPeriodeList] = useState<any[]>([])
+  const [showFormPeriode, setShowFormPeriode] = useState(false)
+  const [editPeriodeId, setEditPeriodeId] = useState<any>(null)
+  const [formPeriodeNama, setFormPeriodeNama] = useState('')
+  const [formPeriodeTahunAjaran, setFormPeriodeTahunAjaran] = useState('')
+  const [formPeriodeSemester, setFormPeriodeSemester] = useState('genap')
+  const [formPeriodeTanggal, setFormPeriodeTanggal] = useState('')
+  const [formPeriodeAktif, setFormPeriodeAktif] = useState(false)
+  const [rapotJenjang, setRapotJenjang] = useState('ula')
+  const [rapotKelas, setRapotKelas] = useState('')
+  const [rapotPeriodeId, setRapotPeriodeId] = useState('')
+  const [rapotLoading, setRapotLoading] = useState(false)
 
   // Form kalender
   const [formKalNama, setFormKalNama] = useState('')
@@ -231,6 +244,10 @@ const semangatList = (santri || []).map((s: any) => {
   return 0
 })
 setRankingSemangat(semangatList)
+  }
+const fetchPeriode = async () => {
+    const { data } = await supabase.from('periode_rapot').select('*').order('created_at', { ascending: false })
+    setPeriodeList(data || [])
   }
 
   const hitungTotalJuzAwal = () => {
@@ -451,6 +468,55 @@ setRankingSemangat(semangatList)
   setTimeout(() => setLaporanLoading(''), 3000)
 }
 
+// ===== PERIODE RAPOT =====
+  const handleTambahPeriode = async () => {
+    setLoading(true); setErrorMsg('')
+    if (!formPeriodeNama || !formPeriodeTahunAjaran) { setErrorMsg('Nama dan tahun ajaran wajib diisi!'); setLoading(false); return }
+    if (formPeriodeAktif) {
+      await supabase.from('periode_rapot').update({ is_aktif: false }).eq('is_aktif', true)
+    }
+    const { error } = await supabase.from('periode_rapot').insert({
+      nama: formPeriodeNama, tahun_ajaran: formPeriodeTahunAjaran,
+      semester: formPeriodeSemester, tanggal_rapot: formPeriodeTanggal || null,
+      is_aktif: formPeriodeAktif
+    })
+    if (error) { setErrorMsg(error.message); setLoading(false); return }
+    setSuccessMsg('Periode berhasil ditambahkan!')
+    setShowFormPeriode(false); resetFormPeriode(); fetchPeriode(); setLoading(false)
+  }
+
+  const handleUpdatePeriode = async () => {
+    setLoading(true); setErrorMsg('')
+    if (formPeriodeAktif) {
+      await supabase.from('periode_rapot').update({ is_aktif: false }).eq('is_aktif', true)
+    }
+    const { error } = await supabase.from('periode_rapot').update({
+      nama: formPeriodeNama, tahun_ajaran: formPeriodeTahunAjaran,
+      semester: formPeriodeSemester, tanggal_rapot: formPeriodeTanggal || null,
+      is_aktif: formPeriodeAktif
+    }).eq('id', editPeriodeId)
+    if (error) { setErrorMsg(error.message); setLoading(false); return }
+    setSuccessMsg('Periode berhasil diupdate!')
+    setShowFormPeriode(false); setEditPeriodeId(null); resetFormPeriode(); fetchPeriode(); setLoading(false)
+  }
+
+  const handleHapusPeriode = async (id: any) => {
+    if (!confirm('Yakin hapus periode ini?')) return
+    await supabase.from('periode_rapot').delete().eq('id', id); fetchPeriode()
+  }
+
+  const handleEditPeriode = (p: any) => {
+    setEditPeriodeId(p.id); setFormPeriodeNama(p.nama)
+    setFormPeriodeTahunAjaran(p.tahun_ajaran); setFormPeriodeSemester(p.semester)
+    setFormPeriodeTanggal(p.tanggal_rapot || ''); setFormPeriodeAktif(p.is_aktif)
+    setShowFormPeriode(true)
+  }
+
+  const resetFormPeriode = () => {
+    setFormPeriodeNama(''); setFormPeriodeTahunAjaran(''); setFormPeriodeSemester('genap')
+    setFormPeriodeTanggal(''); setFormPeriodeAktif(false); setEditPeriodeId(null)
+  }
+
 // ===== NAIK KELAS =====
   const handlePreviewNaikKelas = async () => {
     if (!naikKelasNum) return
@@ -608,6 +674,8 @@ setRankingSemangat(semangatList)
   { id: 'wali', label: 'Data Wali', icon: '◍' },
   { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
   { id: 'laporan', label: 'Laporan Bulanan', icon: '📊' },
+  { id: 'rapot', label: 'Rapot Digital', icon: '📋' },
+]
 ]
 
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -700,7 +768,7 @@ const AlumniList = () => {
       </div>
     )
   }
-  
+
   return (
     <div className="min-h-screen bg-gray-50">
 
@@ -1692,6 +1760,147 @@ const AlumniList = () => {
               {naikKelasMsg && naikKelasPreview.length === 0 && (
                 <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl text-sm">{naikKelasMsg}</div>
               )}
+            </div>
+          )}
+          {/* RAPOT DIGITAL */}
+          {activeMenu === 'rapot' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="font-bold text-xl">Rapot Digital</h2>
+                  <p className="text-blue-100 text-sm mt-1">Kelola periode & download rapot santri</p>
+                </div>
+              </div>
+
+              {/* Periode Rapot */}
+              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-gray-800">Periode Rapot</h3>
+                  <button onClick={() => { resetFormPeriode(); setShowFormPeriode(true); fetchPeriode() }}
+                    className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                    + Tambah Periode
+                  </button>
+                </div>
+
+                {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
+
+                {showFormPeriode && (
+                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 mb-4">
+                    <h4 className="font-bold text-gray-800 mb-3">{editPeriodeId ? 'Edit Periode' : 'Tambah Periode Baru'}</h4>
+                    <div className="space-y-3">
+                      <input placeholder="Nama Periode (misal: Semester Genap 2025/2026)"
+                        value={formPeriodeNama} onChange={e => setFormPeriodeNama(e.target.value)} className={inputClass} />
+                      <input placeholder="Tahun Ajaran (misal: 1446-1447 H / 2025-2026 M)"
+                        value={formPeriodeTahunAjaran} onChange={e => setFormPeriodeTahunAjaran(e.target.value)} className={inputClass} />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Semester</label>
+                          <select value={formPeriodeSemester} onChange={e => setFormPeriodeSemester(e.target.value)} className={inputClass}>
+                            <option value="ganjil">Ganjil</option>
+                            <option value="genap">Genap</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Tanggal Rapot</label>
+                          <input type="date" value={formPeriodeTanggal} onChange={e => setFormPeriodeTanggal(e.target.value)} className={inputClass} />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-xl border border-blue-200">
+                        <div onClick={() => setFormPeriodeAktif(!formPeriodeAktif)}
+                          className={`w-10 h-5 rounded-full transition-all flex-shrink-0 ${formPeriodeAktif ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                          <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-all ${formPeriodeAktif ? 'ml-5' : 'ml-0.5'}`} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-gray-700">Jadikan Periode Aktif</div>
+                          <div className="text-xs text-gray-400">Guru akan input nilai untuk periode ini</div>
+                        </div>
+                      </label>
+                    </div>
+                    {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={editPeriodeId ? handleUpdatePeriode : handleTambahPeriode} disabled={loading}
+                        className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                        {loading ? 'Menyimpan...' : editPeriodeId ? 'Update' : 'Simpan'}
+                      </button>
+                      <button onClick={() => { setShowFormPeriode(false); resetFormPeriode() }}
+                        className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm">Batal</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {periodeList.length === 0 && (
+                    <button onClick={fetchPeriode} className="w-full p-4 text-center text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-xl">
+                      Klik untuk memuat data periode
+                    </button>
+                  )}
+                  {periodeList.map(p => (
+                    <div key={p.id} className={`p-4 rounded-xl border-2 ${p.is_aktif ? 'border-blue-400 bg-blue-50' : 'border-gray-100 bg-white'}`}>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-gray-800 flex items-center gap-2">
+                            {p.nama}
+                            {p.is_aktif && <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">Aktif</span>}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {p.tahun_ajaran} • Semester {p.semester.charAt(0).toUpperCase() + p.semester.slice(1)}
+                            {p.tanggal_rapot && ` • ${new Date(p.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => handleEditPeriode(p)} className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50">Edit</button>
+                          <button onClick={() => handleHapusPeriode(p.id)} className="text-red-400 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50">Hapus</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Download Rapot */}
+              <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4">Download Rapot</h3>
+                <div className="space-y-3 mb-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Periode</label>
+                    <select value={rapotPeriodeId} onChange={e => setRapotPeriodeId(e.target.value)} className={inputClass}
+                      onClick={fetchPeriode}>
+                      <option value="">-- Pilih Periode --</option>
+                      {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                      <select value={rapotJenjang} onChange={e => { setRapotJenjang(e.target.value); setRapotKelas('') }} className={inputClass}>
+                        <option value="ula">Ula</option>
+                        <option value="wustha">Wustha</option>
+                        <option value="ulya">Ulya</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                      <select value={rapotKelas} onChange={e => setRapotKelas(e.target.value)} className={inputClass}>
+                        <option value="">-- Pilih Kelas --</option>
+                        {getKelasOptions(rapotJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!rapotPeriodeId || !rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
+                    window.open(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`, '_blank')
+                  }}
+                  disabled={!rapotPeriodeId || !rapotKelas}
+                  className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                  📄 Download Rapot PDF (Semua Santri)
+                </button>
+                <p className="text-xs text-gray-400 mt-2 text-center">Rapot semua santri dalam kelas akan digabung dalam 1 file PDF</p>
+              </div>
             </div>
           )}
 {/* LAPORAN BULANAN */}

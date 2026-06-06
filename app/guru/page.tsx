@@ -22,6 +22,15 @@ export default function GuruDashboard() {
   const [guruPengganti, setGuruPengganti] = useState(false)
   const [kalenderAktif, setKalenderAktif] = useState<any>(null)
   const [setoranLamaHariIni, setSetoranLamaHariIni] = useState<any>(null)
+// State rapot
+  const [periodeAktif, setPeriodeAktif] = useState<any>(null)
+  const [rapotSantriList, setRapotSantriList] = useState<any[]>([])
+  const [selectedSantriRapot, setSelectedSantriRapot] = useState<any>(null)
+  const [searchSantriRapot, setSearchSantriRapot] = useState('')
+  const [nilaiRapot, setNilaiRapot] = useState<Record<string, any>>({})
+  const [rapotLoading, setRapotLoading] = useState(false)
+  const [rapotMsg, setRapotMsg] = useState('')
+  const [existingRapotId, setExistingRapotId] = useState<any>(null)
 
   // Absensi
   const [absenSubuh, setAbsenSubuh] = useState(false)
@@ -97,6 +106,107 @@ export default function GuruDashboard() {
       .order('created_at', { ascending: false })
       .limit(50)
     setRiwayatList(data || [])
+  }
+
+  const fetchPeriodeAktif = async () => {
+    const { data } = await supabase.from('periode_rapot').select('*').eq('is_aktif', true).maybeSingle()
+    setPeriodeAktif(data || null)
+    if (data) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: santri } = await supabase.from('santri')
+        .select('*').eq('guru_id', user.id).eq('jenjang', 'ula').eq('status', 'aktif').order('nama')
+      setRapotSantriList(santri || [])
+    }
+  }
+
+  const fetchNilaiRapotSantri = async (santriId: string) => {
+    if (!periodeAktif) return
+    const { data } = await supabase.from('nilai_rapot')
+      .select('*').eq('santri_id', santriId).eq('periode_id', periodeAktif.id).maybeSingle()
+    if (data) {
+      setExistingRapotId(data.id)
+      setNilaiRapot({
+        kelancaran: data.kelancaran || '',
+        tajwid: data.tajwid || '',
+        keterangan_hafalan: data.keterangan_hafalan || '',
+        aqidah: data.aqidah || '',
+        akhlak: data.akhlak || '',
+        fiqh: data.fiqh || '',
+        bhs_arab: data.bhs_arab || '',
+        siroh: data.siroh || '',
+        khoth: data.khoth || '',
+        bhs_indonesia: data.bhs_indonesia || '',
+        berhitung: data.berhitung || '',
+        ipa: data.ipa || '',
+        ips: data.ips || '',
+        akhlak_kepribadian: data.akhlak_kepribadian || 'B',
+        kebersihan: data.kebersihan || 'B',
+        ketertiban: data.ketertiban || 'B',
+        ekskul_renang: data.ekskul_renang || '',
+        ekskul_beladiri: data.ekskul_beladiri || '',
+        hadir_sakit: data.hadir_sakit || 0,
+        hadir_izin: data.hadir_izin || 0,
+        hadir_alpha: data.hadir_alpha || 0,
+        catatan: data.catatan || '',
+      })
+    } else {
+      setExistingRapotId(null)
+      setNilaiRapot({
+        kelancaran: '', tajwid: '', keterangan_hafalan: '',
+        aqidah: '', akhlak: '', fiqh: '', bhs_arab: '', siroh: '', khoth: '',
+        bhs_indonesia: '', berhitung: '', ipa: '', ips: '',
+        akhlak_kepribadian: 'B', kebersihan: 'B', ketertiban: 'B',
+        ekskul_renang: '', ekskul_beladiri: '',
+        hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0, catatan: '',
+      })
+    }
+  }
+
+  const handleSimpanRapot = async () => {
+    if (!selectedSantriRapot || !periodeAktif) return
+    setRapotLoading(true); setRapotMsg('')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const dataRapot = {
+      santri_id: selectedSantriRapot.id,
+      periode_id: periodeAktif.id,
+      guru_id: user.id,
+      kelancaran: parseInt(nilaiRapot.kelancaran) || null,
+      tajwid: parseInt(nilaiRapot.tajwid) || null,
+      keterangan_hafalan: nilaiRapot.keterangan_hafalan || null,
+      aqidah: parseInt(nilaiRapot.aqidah) || null,
+      akhlak: parseInt(nilaiRapot.akhlak) || null,
+      fiqh: parseInt(nilaiRapot.fiqh) || null,
+      bhs_arab: parseInt(nilaiRapot.bhs_arab) || null,
+      siroh: parseInt(nilaiRapot.siroh) || null,
+      khoth: parseInt(nilaiRapot.khoth) || null,
+      bhs_indonesia: parseInt(nilaiRapot.bhs_indonesia) || null,
+      berhitung: parseInt(nilaiRapot.berhitung) || null,
+      ipa: parseInt(nilaiRapot.ipa) || null,
+      ips: parseInt(nilaiRapot.ips) || null,
+      akhlak_kepribadian: nilaiRapot.akhlak_kepribadian,
+      kebersihan: nilaiRapot.kebersihan,
+      ketertiban: nilaiRapot.ketertiban,
+      ekskul_renang: parseInt(nilaiRapot.ekskul_renang) || null,
+      ekskul_beladiri: nilaiRapot.ekskul_beladiri || null,
+      hadir_sakit: parseInt(nilaiRapot.hadir_sakit) || 0,
+      hadir_izin: parseInt(nilaiRapot.hadir_izin) || 0,
+      hadir_alpha: parseInt(nilaiRapot.hadir_alpha) || 0,
+      catatan: nilaiRapot.catatan || null,
+    }
+    let error
+    if (existingRapotId) {
+      const res = await supabase.from('nilai_rapot').update(dataRapot).eq('id', existingRapotId)
+      error = res.error
+    } else {
+      const res = await supabase.from('nilai_rapot').insert(dataRapot)
+      error = res.error
+    }
+    if (error) { setRapotMsg('Gagal: ' + error.message); setRapotLoading(false); return }
+    setRapotMsg('✓ Nilai rapot berhasil disimpan!')
+    setRapotLoading(false)
+    fetchNilaiRapotSantri(selectedSantriRapot.id)
   }
 
   const fetchNilaiUjian = async () => {
@@ -375,6 +485,7 @@ export default function GuruDashboard() {
   const menuItems = [
     { id: 'input', label: 'Input Setoran', icon: '✎' },
     { id: 'ujian', label: 'Input Nilai Ujian', icon: '📝' },
+    { id: 'rapot', label: 'Input Nilai Rapot', icon: '📋' },
     { id: 'riwayat', label: 'Riwayat Setoran', icon: '◱' },
     { id: 'santri', label: 'Santri Saya', icon: '◎' },
   ]
@@ -502,6 +613,7 @@ export default function GuruDashboard() {
                   setActiveMenu(menu.id); setSuccessMsg(''); setSidebarOpen(false)
                   if (menu.id === 'riwayat') fetchRiwayat()
                   if (menu.id === 'ujian') fetchNilaiUjian()
+                  if (menu.id === 'rapot') fetchPeriodeAktif()
                 }}
                 className={`w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${activeMenu === menu.id ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'}`}>
                 <span className="text-lg">{menu.icon}</span>{menu.label}
@@ -1020,6 +1132,223 @@ export default function GuruDashboard() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+{/* INPUT NILAI RAPOT */}
+          {activeMenu === 'rapot' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-4 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="font-bold text-xl">Input Nilai Rapot</h2>
+                  <p className="text-blue-200 text-sm mt-1">Jenjang Ula</p>
+                  {periodeAktif
+                    ? <div className="mt-2 bg-white bg-opacity-20 rounded-xl px-3 py-1.5 inline-block">
+                        <p className="text-white text-xs font-semibold">{periodeAktif.nama}</p>
+                        <p className="text-blue-200 text-xs">{periodeAktif.tahun_ajaran}</p>
+                      </div>
+                    : <p className="text-blue-300 text-xs mt-1">Belum ada periode aktif</p>
+                  }
+                </div>
+              </div>
+
+              {!periodeAktif && (
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-5 text-center mb-4">
+                  <p className="text-yellow-800 font-semibold">Belum ada periode rapot aktif</p>
+                  <p className="text-yellow-600 text-sm mt-1">Minta admin untuk mengaktifkan periode rapot</p>
+                  <button onClick={fetchPeriodeAktif} className="mt-3 px-4 py-2 bg-yellow-400 text-white rounded-xl text-sm font-semibold">Cek Ulang</button>
+                </div>
+              )}
+
+              {periodeAktif && (
+                <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                  {/* Pilih Santri */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Santri</label>
+                    <input type="text" value={searchSantriRapot} onChange={e => setSearchSantriRapot(e.target.value)}
+                      placeholder="Cari nama santri..." className={inputClass + ' mb-2'} />
+                    {searchSantriRapot && (
+                      <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                        {rapotSantriList.filter(s => s.nama.toLowerCase().includes(searchSantriRapot.toLowerCase())).map(s => (
+                          <button key={s.id} onClick={() => {
+                            setSelectedSantriRapot(s); setSearchSantriRapot(s.nama)
+                            fetchNilaiRapotSantri(s.id)
+                          }} className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
+                            <span className="font-medium">{s.nama}</span>
+                            {s.kelas && <span className="text-gray-400 text-xs ml-2">{s.kelas}</span>}
+                          </button>
+                        ))}
+                        {rapotSantriList.filter(s => s.nama.toLowerCase().includes(searchSantriRapot.toLowerCase())).length === 0 &&
+                          <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
+                      </div>
+                    )}
+                    {selectedSantriRapot && (
+                      <div className="mt-2 p-3 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center">
+                        <div>
+                          <div className="font-bold text-gray-800">{selectedSantriRapot.nama}</div>
+                          <div className="text-xs text-gray-500">{selectedSantriRapot.kelas} • {selectedSantriRapot.total_hafalan_juz?.toFixed(2)} Juz</div>
+                          {existingRapotId && <div className="text-xs text-green-600 mt-0.5">✓ Data rapot sudah ada — akan diupdate</div>}
+                        </div>
+                        <button onClick={() => { setSelectedSantriRapot(null); setSearchSantriRapot(''); setNilaiRapot({}) }} className="text-gray-400 text-xl">×</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedSantriRapot && (
+                    <>
+                      {/* A. Hifzhul Quran */}
+                      <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                        <p className="text-sm font-bold text-gray-700 mb-3">A. Hifzhul Qur'an</p>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Kelancaran (60-95)</label>
+                            <input type="number" min="60" max="95" value={nilaiRapot.kelancaran || ''}
+                              onChange={e => setNilaiRapot({...nilaiRapot, kelancaran: e.target.value})}
+                              placeholder="misal: 85" className={inputClass} />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Tajwid (60-95)</label>
+                            <input type="number" min="60" max="95" value={nilaiRapot.tajwid || ''}
+                              onChange={e => setNilaiRapot({...nilaiRapot, tajwid: e.target.value})}
+                              placeholder="misal: 80" className={inputClass} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Keterangan Hafalan</label>
+                          <input type="text" value={nilaiRapot.keterangan_hafalan || ''}
+                            onChange={e => setNilaiRapot({...nilaiRapot, keterangan_hafalan: e.target.value})}
+                            placeholder="misal: 3,5 juz dari An-Nas hingga Al-Qomar" className={inputClass} />
+                        </div>
+                      </div>
+
+                      {/* B. Materi Diiniyyah */}
+                      <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                        <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { key: 'aqidah', label: 'Aqidah' },
+                            { key: 'akhlak', label: 'Akhlak/Adab' },
+                            { key: 'fiqh', label: 'Fiqh' },
+                            { key: 'bhs_arab', label: 'Bahasa Arab' },
+                            { key: 'siroh', label: 'Siroh' },
+                            { key: 'khoth', label: 'Khoth' },
+                          ].map(m => (
+                            <div key={m.key}>
+                              <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                              <input type="number" min="60" max="95" value={nilaiRapot[m.key] || ''}
+                                onChange={e => setNilaiRapot({...nilaiRapot, [m.key]: e.target.value})}
+                                placeholder="60-95" className={inputClass} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* C. Materi Umum */}
+                      <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
+                        <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { key: 'bhs_indonesia', label: 'Bahasa Indonesia' },
+                            { key: 'berhitung', label: 'Berhitung' },
+                            { key: 'ipa', label: 'IPA' },
+                            { key: 'ips', label: 'IPS' },
+                          ].map(m => (
+                            <div key={m.key}>
+                              <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                              <input type="number" min="60" max="95" value={nilaiRapot[m.key] || ''}
+                                onChange={e => setNilaiRapot({...nilaiRapot, [m.key]: e.target.value})}
+                                placeholder="60-95" className={inputClass} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Kepribadian */}
+                      <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
+                        <p className="text-sm font-bold text-gray-700 mb-3">Kepribadian</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            { key: 'akhlak_kepribadian', label: 'Akhlak' },
+                            { key: 'kebersihan', label: 'Kebersihan' },
+                            { key: 'ketertiban', label: 'Ketertiban' },
+                          ].map(m => (
+                            <div key={m.key}>
+                              <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                              <select value={nilaiRapot[m.key] || 'B'}
+                                onChange={e => setNilaiRapot({...nilaiRapot, [m.key]: e.target.value})}
+                                className={inputClass}>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Ketidakhadiran */}
+                      <div className="mb-4 p-4 bg-red-50 rounded-xl border border-red-200">
+                        <p className="text-sm font-bold text-gray-700 mb-3">Ketidakhadiran</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            { key: 'hadir_sakit', label: 'Sakit' },
+                            { key: 'hadir_izin', label: 'Izin' },
+                            { key: 'hadir_alpha', label: 'Tanpa Izin' },
+                          ].map(m => (
+                            <div key={m.key}>
+                              <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                              <input type="number" min="0" value={nilaiRapot[m.key] ?? 0}
+                                onChange={e => setNilaiRapot({...nilaiRapot, [m.key]: e.target.value})}
+                                className={inputClass} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Ekskul */}
+                      <div className="mb-4 p-4 bg-teal-50 rounded-xl border border-teal-200">
+                        <p className="text-sm font-bold text-gray-700 mb-3">Ekstrakurikuler</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Renang (jumlah pertemuan)</label>
+                            <input type="number" min="0" value={nilaiRapot.ekskul_renang || ''}
+                              onChange={e => setNilaiRapot({...nilaiRapot, ekskul_renang: e.target.value})}
+                              placeholder="misal: 8" className={inputClass} />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Beladiri</label>
+                            <input type="text" value={nilaiRapot.ekskul_beladiri || ''}
+                              onChange={e => setNilaiRapot({...nilaiRapot, ekskul_beladiri: e.target.value})}
+                              placeholder="keterangan" className={inputClass} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Catatan */}
+                      <div className="mb-5">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan Guru</label>
+                        <textarea value={nilaiRapot.catatan || ''}
+                          onChange={e => setNilaiRapot({...nilaiRapot, catatan: e.target.value})}
+                          placeholder="misal: Alhamdulillah terus semangat belajar..." rows={2} className={inputClass} />
+                      </div>
+
+                      {rapotMsg && (
+                        <div className={`p-3 rounded-xl mb-4 text-sm ${rapotMsg.startsWith('✓') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                          {rapotMsg}
+                        </div>
+                      )}
+
+                      <button onClick={handleSimpanRapot} disabled={rapotLoading}
+                        className="w-full text-white py-4 rounded-xl font-bold text-base shadow-lg disabled:opacity-50"
+                        style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                        {rapotLoading ? 'Menyimpan...' : existingRapotId ? '✓ Update Nilai Rapot' : '✓ Simpan Nilai Rapot'}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
