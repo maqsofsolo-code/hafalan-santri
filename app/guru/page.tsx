@@ -21,6 +21,7 @@ export default function GuruDashboard() {
   const [searchSantri, setSearchSantri] = useState('')
   const [guruPengganti, setGuruPengganti] = useState(false)
   const [kalenderAktif, setKalenderAktif] = useState<any>(null)
+  const [setoranLamaHariIni, setSetoranLamaHariIni] = useState<any>(null)
 
   // Absensi
   const [absenSubuh, setAbsenSubuh] = useState(false)
@@ -45,7 +46,6 @@ export default function GuruDashboard() {
   const [catatan, setCatatan] = useState('')
 
   // Form nilai ujian
-  const [showFormUjian, setShowFormUjian] = useState(false)
   const [selectedSantriUjian, setSelectedSantriUjian] = useState<any>(null)
   const [searchSantriUjian, setSearchSantriUjian] = useState('')
   const [ujianSurahMulai, setUjianSurahMulai] = useState('')
@@ -78,14 +78,12 @@ export default function GuruDashboard() {
 
     const today = new Date().toISOString().split('T')[0]
 
-    // Cek absensi
     const { data: absensiList } = await supabase.from('absensi_guru').select('*').eq('guru_id', user.id).eq('tanggal', today)
     const absensiData = absensiList || []
     setAbsenSubuh(absensiData.some((a: any) => a.sesi === 'subuh'))
     setAbsenPagi(absensiData.some((a: any) => a.sesi === 'pagi'))
 
-    // Cek kalender aktif
-    const { data: kalender } = await supabase.from('kalender_akademik').select('*').lte('tanggal_mulai', today).gte('tanggal_selesai', today).single()
+    const { data: kalender } = await supabase.from('kalender_akademik').select('*').lte('tanggal_mulai', today).gte('tanggal_selesai', today).maybeSingle()
     setKalenderAktif(kalender || null)
   }
 
@@ -111,31 +109,40 @@ export default function GuruDashboard() {
       .order('created_at', { ascending: false })
       .limit(50)
     setNilaiUjianList(data || [])
-}
-
-const handleSimpanEditSetoran = async () => {
-  if (!editSetoran) return
-  setEditLoading(true)
-  const { error } = await supabase
-    .from('setoran')
-    .update({
-      status: editStatus,
-      catatan: editCatatan,
-      perlu_ulang: editStatus === 'rosib'
-    })
-    .eq('id', editSetoran.id)
-  if (error) {
-    setErrorMsg('Gagal edit: ' + error.message)
-  } else {
-    setSuccessMsg('Setoran berhasil diupdate!')
-    setEditSetoran(null)
-    fetchRiwayat()
-    setTimeout(() => setSuccessMsg(''), 3000)
   }
-  setEditLoading(false)
-}
 
-  // Status hari ini
+  const cekSetoranLamaHariIni = async (santriId: string) => {
+    const today = new Date().toISOString().split('T')[0]
+    const { data } = await supabase
+      .from('setoran')
+      .select('*')
+      .eq('santri_id', santriId)
+      .eq('tanggal', today)
+      .eq('jenis', 'lama')
+      .eq('status_kehadiran', 'hadir')
+      .order('created_at', { ascending: false })
+      .limit(1)
+    setSetoranLamaHariIni(data?.[0] || null)
+  }
+
+  const handleSimpanEditSetoran = async () => {
+    if (!editSetoran) return
+    setEditLoading(true)
+    const { error } = await supabase
+      .from('setoran')
+      .update({ status: editStatus, catatan: editCatatan, perlu_ulang: editStatus === 'rosib' })
+      .eq('id', editSetoran.id)
+    if (error) {
+      setErrorMsg('Gagal edit: ' + error.message)
+    } else {
+      setSuccessMsg('Setoran berhasil diupdate!')
+      setEditSetoran(null)
+      fetchRiwayat()
+      setTimeout(() => setSuccessMsg(''), 3000)
+    }
+    setEditLoading(false)
+  }
+
   const today = new Date().toISOString().split('T')[0]
   const hariMinggu = new Date().getDay()
   const isLiburMingguan = hariMinggu === 0 || hariMinggu === 5
@@ -183,13 +190,11 @@ const handleSimpanEditSetoran = async () => {
 
   const hitungTargetMurojaah = (santri: any) => {
     if (!santri?.total_hafalan_juz) return null
-    const targetJuz = santri.total_hafalan_juz / 20
-    const targetHalaman = targetJuz * 20
+    const targetHalaman = santri.total_hafalan_juz
     const targetLembar = targetHalaman / 2
-    return { targetJuz: targetJuz.toFixed(3), targetHalaman: targetHalaman.toFixed(1), targetLembar: targetLembar.toFixed(2) }
+    return { targetHalaman: targetHalaman.toFixed(1), targetLembar: targetLembar.toFixed(2) }
   }
 
-  // Hitung target ujian semester (1/10 dari total hafalan)
   const hitungTargetUjianSemester = (santri: any) => {
     if (!santri?.total_hafalan_juz) return null
     const targetJuz = santri.total_hafalan_juz / 10
@@ -198,13 +203,12 @@ const handleSimpanEditSetoran = async () => {
     return { targetJuz: targetJuz.toFixed(3), targetHalaman: targetHalaman.toFixed(1), targetLembar: targetLembar.toFixed(2) }
   }
 
-  // Hitung nilai ujian dari jumlah kesalahan
   const hitungNilaiUjian = () => {
     const tegur = parseInt(ujianJumlahTegur) || 0
     const tahuAyat = parseInt(ujianJumlahTahuAyat) || 0
     const lupa = parseInt(ujianJumlahLupa) || 0
     const nilai = 10 - (tegur * 0.1) - (tahuAyat * 0.1) - (lupa * 1)
-    return Math.max(5, Math.round(nilai * 10) / 10) // minimum 5, 1 desimal
+    return Math.max(5, Math.round(nilai * 10) / 10)
   }
 
   const handleSurahSelesaiChange = (nomor: string) => {
@@ -230,11 +234,11 @@ const handleSimpanEditSetoran = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       const { error } = await supabase.from('setoran').insert({
-  santri_id: selectedSantri.id, guru_id: user.id,
-  jenis: 'baru', status: 'lancar', status_kehadiran: statusKehadiran,
-  tanggal: new Date().toISOString().split('T')[0],
-  guru_pengganti: guruPengganti, perlu_ulang: false, catatan
-})
+        santri_id: selectedSantri.id, guru_id: user.id,
+        jenis: 'baru', status: 'lancar', status_kehadiran: statusKehadiran,
+        tanggal: new Date().toISOString().split('T')[0],
+        guru_pengganti: guruPengganti, perlu_ulang: false, catatan
+      })
       if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
       setSuccessMsg(`Data kehadiran ${selectedSantri.nama} berhasil disimpan!`)
       resetForm(); setLoading(false)
@@ -269,16 +273,11 @@ const handleSimpanEditSetoran = async () => {
         penambahan_juz: penambahanJuz
       }
     } else {
-      const surahMulaiData = surahList.find(s => s.nomor === parseInt(surahMulai))
-      const surahSelesaiData = surahList.find(s => s.nomor === parseInt(surahSelesai))
-      let halamanMurojaah = 0
-      if (surahMulaiData && surahSelesaiData) {
-        const nomorKecil = Math.min(parseInt(surahMulai), parseInt(surahSelesai))
-        const nomorBesar = Math.max(parseInt(surahMulai), parseInt(surahSelesai))
-        const sKecil = surahList.find(s => s.nomor === nomorKecil)
-        const sBesar = surahList.find(s => s.nomor === nomorBesar)
-        if (sKecil && sBesar) halamanMurojaah = sBesar.halaman_selesai - sKecil.halaman_mulai + 1
-      }
+      const nomorKecil = Math.min(parseInt(surahMulai), parseInt(surahSelesai))
+      const nomorBesar = Math.max(parseInt(surahMulai), parseInt(surahSelesai))
+      const sKecil = surahList.find(s => s.nomor === nomorKecil)
+      const sBesar = surahList.find(s => s.nomor === nomorBesar)
+      const halamanMurojaah = (sKecil && sBesar) ? sBesar.halaman_selesai - sKecil.halaman_mulai + 1 : 0
       insertData = {
         ...insertData,
         surah_mulai_nomor: parseInt(surahMulai), surah_selesai_nomor: parseInt(surahSelesai),
@@ -295,6 +294,10 @@ const handleSimpanEditSetoran = async () => {
         total_hafalan_juz: totalBaru, surah_terakhir_nomor: parseInt(surahBaru), ayat_terakhir: parseInt(ayatSelesaiBaru)
       }).eq('id', selectedSantri.id)
     }
+    // Refresh cek setoran lama jika baru saja input lama
+    if (jenis === 'lama' && selectedSantri?.jenjang === 'ula') {
+      await cekSetoranLamaHariIni(selectedSantri.id)
+    }
     setSuccessMsg('Setoran berhasil disimpan!')
     resetForm(); setLoading(false)
     setTimeout(() => setSuccessMsg(''), 3000)
@@ -304,16 +307,12 @@ const handleSimpanEditSetoran = async () => {
   const handleInputNilaiUjian = async () => {
     if (!selectedSantriUjian) { setErrorMsg('Pilih santri dulu!'); return }
     if (!ujianSurahMulai || !ujianSurahSelesai) { setErrorMsg('Lengkapi surah yang diujikan!'); return }
-
     setLoading(true); setErrorMsg('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     const nilaiAkhir = hitungNilaiUjian()
-
     const { error } = await supabase.from('nilai_ujian').insert({
-      santri_id: selectedSantriUjian.id,
-      guru_id: user.id,
+      santri_id: selectedSantriUjian.id, guru_id: user.id,
       kalender_id: kalenderAktif?.id || null,
       tipe: kalenderAktif?.tipe || 'mid_semester',
       tanggal: new Date().toISOString().split('T')[0],
@@ -327,11 +326,9 @@ const handleSimpanEditSetoran = async () => {
       nilai_akhir: nilaiAkhir,
       catatan: ujianCatatan || null
     })
-
     if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
     setSuccessMsg(`Nilai ujian ${selectedSantriUjian.nama} berhasil disimpan! Nilai: ${nilaiAkhir}`)
-    resetFormUjian()
-    setLoading(false)
+    resetFormUjian(); setLoading(false)
     setTimeout(() => setSuccessMsg(''), 4000)
     fetchNilaiUjian()
   }
@@ -341,6 +338,7 @@ const handleSimpanEditSetoran = async () => {
     setSurahBaru(''); setAyatMulaiBaru(''); setAyatSelesaiBaru('')
     setSurahMulai(''); setAyatMulaiMurojaah('1'); setSurahSelesai(''); setAyatSelesaiMurojaah('')
     setCatatan(''); setStatusKehadiran('hadir'); setSearchSantri(''); setGuruPengganti(false)
+    setSetoranLamaHariIni(null)
   }
 
   const resetFormUjian = () => {
@@ -361,6 +359,18 @@ const handleSimpanEditSetoran = async () => {
   const santriTampilUjian = allSantriList.filter(s => s.nama.toLowerCase().includes(searchSantriUjian.toLowerCase()))
   const targetMurojaah = selectedSantri ? hitungTargetMurojaah(selectedSantri) : null
   const getSaranMurojaah = () => surahList.find(s => s.nomor === selectedSantri?.surah_terakhir_nomor)
+
+  // Jadwal setoran per jenjang
+  const getJadwalJenjang = (jenjang: string) => {
+    if (jenjang === 'ula') return { baru: '08.00 - 09.00', lama: '09.00 - 10.00', adaLama: true }
+    if (jenjang === 'wustha') return { baru: '04.30', lama: '08.00 - 09.45', adaLama: true }
+    if (jenjang === 'ulya') return { baru: '04.30', lama: null, adaLama: false }
+    return { baru: '-', lama: '-', adaLama: true }
+  }
+
+  const ulaBlokHafalanBaru = selectedSantri?.jenjang === 'ula' && (
+    !setoranLamaHariIni || setoranLamaHariIni.status === 'rosib'
+  )
 
   const menuItems = [
     { id: 'input', label: 'Input Setoran', icon: '✎' },
@@ -521,7 +531,7 @@ const handleSimpanEditSetoran = async () => {
                   <div className="flex justify-between items-start">
                     <div>
                       <h2 className="text-white font-bold text-xl">Input Setoran</h2>
-                      <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
+                      <p className="text-blue-200 text-sm mt-1">{tanggal}</p>
                       <p className="text-blue-100 text-xs mt-1">{santriList.length} santri dalam kelompok</p>
                     </div>
                     <div className="hidden md:flex flex-col gap-1.5">
@@ -538,7 +548,6 @@ const handleSimpanEditSetoran = async () => {
                 </div>
               </div>
 
-              {/* Banner Libur */}
               {isLibur && (
                 <div className="mb-4 p-4 rounded-2xl border-2 border-orange-300 bg-orange-50 flex items-center gap-3">
                   <span className="text-2xl">🏖</span>
@@ -551,16 +560,13 @@ const handleSimpanEditSetoran = async () => {
                 </div>
               )}
 
-              {/* Banner Ujian */}
               {isUjian && (
                 <div className="mb-4 p-4 rounded-2xl border-2 border-red-300 bg-red-50 flex items-center gap-3">
                   <span className="text-2xl">📝</span>
                   <div>
                     <div className="font-bold text-red-800 text-sm">{kalenderAktif?.nama}</div>
                     <div className="text-red-600 text-xs">
-                      {kalenderAktif?.tipe === 'semester'
-                        ? 'Target ujian: 1/10 dari total hafalan. Gunakan menu Input Nilai Ujian.'
-                        : 'Periode ujian mid semester aktif. Gunakan menu Input Nilai Ujian.'}
+                      {kalenderAktif?.tipe === 'semester' ? 'Target ujian: 1/10 dari total hafalan. Gunakan menu Input Nilai Ujian.' : 'Periode ujian mid semester aktif. Gunakan menu Input Nilai Ujian.'}
                     </div>
                   </div>
                 </div>
@@ -572,7 +578,7 @@ const handleSimpanEditSetoran = async () => {
                 {/* Toggle Guru Pengganti */}
                 <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <div onClick={() => { setGuruPengganti(!guruPengganti); setSelectedSantri(null); setSearchSantri('') }}
+                    <div onClick={() => { setGuruPengganti(!guruPengganti); setSelectedSantri(null); setSearchSantri(''); setSetoranLamaHariIni(null) }}
                       className={`w-12 h-6 rounded-full transition-all flex-shrink-0 ${guruPengganti ? 'bg-blue-600' : 'bg-gray-300'}`}>
                       <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-all ${guruPengganti ? 'ml-6' : 'ml-0.5'}`} />
                     </div>
@@ -593,7 +599,13 @@ const handleSimpanEditSetoran = async () => {
                   {searchSantri && (
                     <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
                       {santriTampil.map(s => (
-                        <button key={s.id} onClick={() => { setSelectedSantri(s); setSearchSantri(s.nama) }}
+                        <button key={s.id} onClick={() => {
+                          setSelectedSantri(s)
+                          setSearchSantri(s.nama)
+                          setSetoranLamaHariIni(null)
+                          setJenis('baru')
+                          if (s.jenjang === 'ula') cekSetoranLamaHariIni(s.id)
+                        }}
                           className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
                           <span className="font-medium">{s.nama}</span>
                           {s.kelas && <span className="text-gray-400 text-xs ml-2">{s.kelas}</span>}
@@ -610,6 +622,9 @@ const handleSimpanEditSetoran = async () => {
                           <div className="font-bold text-gray-800">{selectedSantri.nama}</div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             Total: <span className="font-semibold text-blue-700">{selectedSantri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
+                            {selectedSantri.jenjang && (
+                              <span className="ml-2 bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full text-xs font-semibold capitalize">{selectedSantri.jenjang}</span>
+                            )}
                           </div>
                           {targetMurojaah && !isUjian && (
                             <div className="text-xs text-green-600 mt-0.5">
@@ -627,8 +642,24 @@ const handleSimpanEditSetoran = async () => {
                           })()}
                           {guruPengganti && <div className="text-xs text-orange-500 mt-0.5">Guru tetap: {selectedSantri.guru?.nama || '-'}</div>}
                         </div>
-                        <button onClick={() => { setSelectedSantri(null); setSearchSantri('') }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                        <button onClick={() => { setSelectedSantri(null); setSearchSantri(''); setSetoranLamaHariIni(null) }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
                       </div>
+
+                      {/* Info jadwal per jenjang */}
+                      {selectedSantri.jenjang && (
+                        <div className="mt-2 p-2 bg-white rounded-xl border border-blue-100">
+                          <p className="text-xs font-semibold text-blue-700 mb-1">Jadwal Setoran {selectedSantri.jenjang.charAt(0).toUpperCase() + selectedSantri.jenjang.slice(1)}:</p>
+                          <div className="flex gap-3 flex-wrap">
+                            <span className="text-xs text-gray-600">Hafalan Baru: <span className="font-semibold text-blue-700">{getJadwalJenjang(selectedSantri.jenjang).baru}</span></span>
+                            {getJadwalJenjang(selectedSantri.jenjang).adaLama && (
+                              <span className="text-xs text-gray-600">Murojaah: <span className="font-semibold text-purple-700">{getJadwalJenjang(selectedSantri.jenjang).lama}</span></span>
+                            )}
+                            {!getJadwalJenjang(selectedSantri.jenjang).adaLama && (
+                              <span className="text-xs text-gray-400 italic">Tidak ada setoran murojaah (Ulya)</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -653,18 +684,60 @@ const handleSimpanEditSetoran = async () => {
 
                 {statusKehadiran === 'hadir' && (
                   <>
+                    {/* Jenis Setoran */}
                     <div className="mb-4">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Jenis Setoran</label>
+
+                      {/* Peringatan khusus Ula */}
+                      {selectedSantri?.jenjang === 'ula' && (
+                        <div className="mb-3 p-3 rounded-xl border-2 border-yellow-300 bg-yellow-50">
+                          <p className="text-xs font-bold text-yellow-800 mb-1">Ketentuan Jenjang Ula:</p>
+                          <p className="text-xs text-yellow-700">Santri wajib setor <strong>Murojaah</strong> terlebih dahulu dan dinyatakan <strong>Lancar</strong> sebelum boleh setor Hafalan Baru.</p>
+                          {setoranLamaHariIni && (
+                            <div className={`mt-2 p-2 rounded-lg text-xs font-semibold ${setoranLamaHariIni.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {setoranLamaHariIni.status === 'lancar'
+                                ? '✓ Murojaah hari ini: Lancar — Boleh setor hafalan baru'
+                                : '✗ Murojaah hari ini: Rosib — Hafalan baru tidak boleh disetorkan'}
+                            </div>
+                          )}
+                          {!setoranLamaHariIni && (
+                            <div className="mt-2 p-2 rounded-lg text-xs bg-gray-100 text-gray-600">
+                              Belum ada setoran murojaah hari ini — setor murojaah terlebih dahulu
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => setJenis('baru')}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                        <button
+                          onClick={() => {
+                            if (selectedSantri?.jenjang === 'ula') {
+                              if (!setoranLamaHariIni) {
+                                setErrorMsg('Santri Ula wajib setor Murojaah terlebih dahulu!')
+                                return
+                              }
+                              if (setoranLamaHariIni.status === 'rosib') {
+                                setErrorMsg('Murojaah rosib — Hafalan Baru tidak boleh disetorkan hari ini!')
+                                return
+                              }
+                            }
+                            setJenis('baru')
+                            setErrorMsg('')
+                          }}
+                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${ulaBlokHafalanBaru ? 'opacity-40 cursor-not-allowed' : ''}`}>
                           <div className="text-sm font-bold text-gray-800">Hafalan Baru</div>
-                          <div className="text-xs text-gray-400 mt-0.5">Tambah hafalan baru</div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {selectedSantri?.jenjang === 'ula' ? 'Setelah murojaah lancar' : 'Tambah hafalan baru'}
+                          </div>
                         </button>
-                        <button onClick={() => setJenis('lama')}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'lama' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
+                        <button
+                          onClick={() => { setJenis('lama'); setErrorMsg('') }}
+                          disabled={selectedSantri?.jenjang === 'ulya'}
+                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'lama' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'} ${selectedSantri?.jenjang === 'ulya' ? 'opacity-40 cursor-not-allowed' : ''}`}>
                           <div className="text-sm font-bold text-gray-800">Murojaah</div>
-                          <div className="text-xs text-gray-400 mt-0.5">Mengulang hafalan lama</div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {selectedSantri?.jenjang === 'ulya' ? 'Tidak ada (Ulya)' : selectedSantri?.jenjang === 'ula' ? 'Wajib setor dulu' : 'Mengulang hafalan lama'}
+                          </div>
                         </button>
                       </div>
                     </div>
@@ -739,8 +812,7 @@ const handleSimpanEditSetoran = async () => {
                         </div>
                         {surahMulai && surahSelesai && (
                           <div className="mt-2 p-2 bg-white rounded-lg text-xs text-purple-600">
-                            {surahList.find(s => s.nomor === parseInt(surahMulai))?.nama_latin} {' → '}
-                            {surahList.find(s => s.nomor === parseInt(surahSelesai))?.nama_latin}
+                            {surahList.find(s => s.nomor === parseInt(surahMulai))?.nama_latin} → {surahList.find(s => s.nomor === parseInt(surahSelesai))?.nama_latin}
                           </div>
                         )}
                       </div>
@@ -790,16 +862,13 @@ const handleSimpanEditSetoran = async () => {
                 <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                 <div className="relative z-10">
                   <h2 className="font-bold text-xl">Input Nilai Ujian</h2>
-                  <p className="text-orange-200 text-sm mt-1">📅 {tanggal}</p>
-                  {kalenderAktif && (
+                  <p className="text-orange-200 text-sm mt-1">{tanggal}</p>
+                  {kalenderAktif ? (
                     <div className="mt-2 bg-white bg-opacity-20 rounded-xl px-3 py-2 inline-block">
                       <p className="text-white text-xs font-semibold">{kalenderAktif.nama}</p>
-                      <p className="text-orange-200 text-xs">
-                        {kalenderAktif.tipe === 'semester' ? 'Target: 1/10 dari total hafalan' : 'Ujian hafalan mid semester'}
-                      </p>
+                      <p className="text-orange-200 text-xs">{kalenderAktif.tipe === 'semester' ? 'Target: 1/10 dari total hafalan' : 'Ujian hafalan mid semester'}</p>
                     </div>
-                  )}
-                  {!kalenderAktif && (
+                  ) : (
                     <div className="mt-2 bg-white bg-opacity-20 rounded-xl px-3 py-2 inline-block">
                       <p className="text-orange-100 text-xs">Tidak ada jadwal ujian aktif hari ini</p>
                       <p className="text-orange-200 text-xs">Input nilai tetap bisa dilakukan</p>
@@ -810,11 +879,8 @@ const handleSimpanEditSetoran = async () => {
 
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
 
-              {/* FORM INPUT NILAI */}
               <div className="bg-white rounded-2xl shadow p-5 border border-gray-100 mb-5">
                 <h3 className="font-bold text-gray-800 mb-4">Form Input Nilai Ujian</h3>
-
-                {/* Pilih Santri */}
                 <div className="mb-4">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Santri</label>
                   <input type="text" value={searchSantriUjian} onChange={e => setSearchSantriUjian(e.target.value)}
@@ -836,16 +902,10 @@ const handleSimpanEditSetoran = async () => {
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="font-bold text-gray-800">{selectedSantriUjian.nama}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            Total Hafalan: <span className="font-semibold text-orange-700">{selectedSantriUjian.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
-                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">Total Hafalan: <span className="font-semibold text-orange-700">{selectedSantriUjian.total_hafalan_juz?.toFixed(2) || 0} Juz</span></div>
                           {kalenderAktif?.tipe === 'semester' && selectedSantriUjian.total_hafalan_juz > 0 && (() => {
                             const t = hitungTargetUjianSemester(selectedSantriUjian)
-                            return t ? (
-                              <div className="text-xs text-red-600 mt-0.5 font-semibold">
-                                Target Ujian: {t.targetHalaman} hal (≈ {t.targetLembar} lembar)
-                              </div>
-                            ) : null
+                            return t ? <div className="text-xs text-red-600 mt-0.5 font-semibold">Target Ujian: {t.targetHalaman} hal (≈ {t.targetLembar} lembar)</div> : null
                           })()}
                         </div>
                         <button onClick={() => { setSelectedSantriUjian(null); setSearchSantriUjian('') }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
@@ -854,7 +914,6 @@ const handleSimpanEditSetoran = async () => {
                   )}
                 </div>
 
-                {/* Surah yang diujikan */}
                 <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
                   <label className="block text-sm font-semibold text-gray-700 mb-3">Surah yang Diujikan</label>
                   <div className="space-y-2">
@@ -887,70 +946,41 @@ const handleSimpanEditSetoran = async () => {
                   </div>
                 </div>
 
-                {/* Input Kesalahan */}
                 <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <label className="block text-sm font-semibold text-gray-700 mb-3">Input Kesalahan</label>
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-700">Ditegur (tanpa dibenarkan)</div>
-                        <div className="text-xs text-gray-400">Setiap 1 kali = -0.1 poin</div>
+                    {[
+                      { label: 'Ditegur (tanpa dibenarkan)', sub: 'Setiap 1 kali = -0.1 poin', val: ujianJumlahTegur, set: setUjianJumlahTegur, color: 'orange' },
+                      { label: 'Diberi tahu ayat sebelumnya', sub: 'Setiap 1 kali = -0.1 poin', val: ujianJumlahTahuAyat, set: setUjianJumlahTahuAyat, color: 'orange' },
+                      { label: 'Lupa & diberi tahu', sub: 'Setiap 1 kali = -1.0 poin', val: ujianJumlahLupa, set: setUjianJumlahLupa, color: 'red' },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
+                        <div>
+                          <div className="text-sm font-semibold text-gray-700">{item.label}</div>
+                          <div className="text-xs text-gray-400">{item.sub}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => item.set(String(Math.max(0, parseInt(item.val) - 1)))}
+                            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center hover:bg-gray-200">−</button>
+                          <span className="w-10 text-center font-bold text-lg text-gray-800">{item.val}</span>
+                          <button onClick={() => item.set(String(parseInt(item.val) + 1))}
+                            className={`w-8 h-8 rounded-lg font-bold text-lg flex items-center justify-center ${item.color === 'red' ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'}`}>+</button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => setUjianJumlahTegur(String(Math.max(0, parseInt(ujianJumlahTegur) - 1)))}
-                          className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center hover:bg-gray-200">−</button>
-                        <span className="w-10 text-center font-bold text-lg text-gray-800">{ujianJumlahTegur}</span>
-                        <button onClick={() => setUjianJumlahTegur(String(parseInt(ujianJumlahTegur) + 1))}
-                          className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 font-bold text-lg flex items-center justify-center hover:bg-orange-200">+</button>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-700">Diberi tahu ayat sebelumnya</div>
-                        <div className="text-xs text-gray-400">Setiap 1 kali = -0.1 poin</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => setUjianJumlahTahuAyat(String(Math.max(0, parseInt(ujianJumlahTahuAyat) - 1)))}
-                          className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center hover:bg-gray-200">−</button>
-                        <span className="w-10 text-center font-bold text-lg text-gray-800">{ujianJumlahTahuAyat}</span>
-                        <button onClick={() => setUjianJumlahTahuAyat(String(parseInt(ujianJumlahTahuAyat) + 1))}
-                          className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 font-bold text-lg flex items-center justify-center hover:bg-orange-200">+</button>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-700">Lupa & diberi tahu</div>
-                        <div className="text-xs text-gray-400">Setiap 1 kali = -1.0 poin</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => setUjianJumlahLupa(String(Math.max(0, parseInt(ujianJumlahLupa) - 1)))}
-                          className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center hover:bg-gray-200">−</button>
-                        <span className="w-10 text-center font-bold text-lg text-gray-800">{ujianJumlahLupa}</span>
-                        <button onClick={() => setUjianJumlahLupa(String(parseInt(ujianJumlahLupa) + 1))}
-                          className="w-8 h-8 rounded-lg bg-red-100 text-red-600 font-bold text-lg flex items-center justify-center hover:bg-red-200">+</button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-
-                  {/* Preview Nilai */}
                   <div className="mt-3 p-3 rounded-xl border-2 border-orange-300"
                     style={{ background: hitungNilaiUjian() >= 8 ? '#f0fdf4' : hitungNilaiUjian() >= 6 ? '#fffbeb' : '#fef2f2' }}>
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-semibold text-gray-700">Nilai Akhir:</span>
-                      <span className={`text-3xl font-bold ${hitungNilaiUjian() >= 8 ? 'text-green-600' : hitungNilaiUjian() >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {hitungNilaiUjian()}
-                      </span>
+                      <span className={`text-3xl font-bold ${hitungNilaiUjian() >= 8 ? 'text-green-600' : hitungNilaiUjian() >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>{hitungNilaiUjian()}</span>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
                       10 − ({ujianJumlahTegur}×0.1) − ({ujianJumlahTahuAyat}×0.1) − ({ujianJumlahLupa}×1) = {hitungNilaiUjian()}
-                      {hitungNilaiUjian() === 5 && parseInt(ujianJumlahLupa) > 5 && (
-                        <span className="text-red-500 ml-1">(minimum 5)</span>
-                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Catatan */}
                 <div className="mb-5">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan (Opsional)</label>
                   <textarea value={ujianCatatan} onChange={e => setUjianCatatan(e.target.value)}
@@ -966,7 +996,6 @@ const handleSimpanEditSetoran = async () => {
                 </button>
               </div>
 
-              {/* Riwayat Nilai Ujian */}
               {nilaiUjianList.length > 0 && (
                 <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                   <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
@@ -983,17 +1012,11 @@ const handleSimpanEditSetoran = async () => {
                           </div>
                           <div>
                             <div className="font-semibold text-sm text-gray-800">{item.santri?.nama}</div>
-                            <div className="text-xs text-gray-400">
-                              {item.surah_mulai?.nama_latin} → {item.surah_selesai?.nama_latin} • {item.tanggal}
-                            </div>
-                            <div className="text-xs text-gray-400">
-                              Tegur: {item.jumlah_tegur} | Tahu Ayat: {item.jumlah_tahu_ayat} | Lupa: {item.jumlah_lupa}
-                            </div>
+                            <div className="text-xs text-gray-400">{item.surah_mulai?.nama_latin} → {item.surah_selesai?.nama_latin} • {item.tanggal}</div>
+                            <div className="text-xs text-gray-400">Tegur: {item.jumlah_tegur} | Tahu Ayat: {item.jumlah_tahu_ayat} | Lupa: {item.jumlah_lupa}</div>
                           </div>
                         </div>
-                        <div className={`text-2xl font-bold ${item.nilai_akhir >= 8 ? 'text-green-600' : item.nilai_akhir >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>
-                          {item.nilai_akhir}
-                        </div>
+                        <div className={`text-2xl font-bold ${item.nilai_akhir >= 8 ? 'text-green-600' : item.nilai_akhir >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>{item.nilai_akhir}</div>
                       </div>
                     ))}
                   </div>
@@ -1020,88 +1043,81 @@ const handleSimpanEditSetoran = async () => {
                   </div>
                 )}
                 {riwayatList.map((item) => (
-  <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
-    <div className="flex justify-between items-start mb-2">
-      <div className="flex items-center gap-2">
-        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-          {item.santri?.nama?.charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <div className="font-semibold text-sm">{item.santri?.nama}</div>
-          <div className="text-xs text-gray-400">{item.tanggal}</div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        {item.status_kehadiran !== 'hadir' ? (
-          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' : item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-            {item.status_kehadiran?.toUpperCase()}
-          </span>
-        ) : (
-          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-            {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
-          </span>
-        )}
-        {item.status_kehadiran === 'hadir' && (
-          <button
-            onClick={() => {
-              setEditSetoran(item)
-              setEditStatus(item.status)
-              setEditCatatan(item.catatan || '')
-            }}
-            className="text-blue-500 text-xs px-2 py-1 rounded-lg hover:bg-blue-50 border border-blue-200">
-            Edit
-          </button>
-        )}
-      </div>
-    </div>
-    {item.status_kehadiran === 'hadir' && (
-      <div className="flex items-center gap-2 mt-1 flex-wrap">
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-          {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
-        </span>
-        <span className="text-xs text-gray-600">
-          {item.surah_mulai?.nama_latin || item.surah}
-          {item.surah_selesai && item.surah_mulai_nomor !== item.surah_selesai_nomor && <> → {item.surah_selesai?.nama_latin}</>}
-          {' '}ayat {item.ayat_mulai}–{item.ayat_selesai}
-        </span>
-        {item.guru_pengganti && <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Pengganti</span>}
-      </div>
-    )}
-    {item.catatan && <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>}
-
-    {/* Form Edit */}
-    {editSetoran?.id === item.id && (
-      <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
-        <p className="text-xs font-semibold text-gray-600 mb-2">Edit Setoran:</p>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <button onClick={() => setEditStatus('lancar')}
-            className={`py-2 rounded-xl text-xs font-bold border-2 transition ${editStatus === 'lancar' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'}`}>
-            ✓ Lancar
-          </button>
-          <button onClick={() => setEditStatus('rosib')}
-            className={`py-2 rounded-xl text-xs font-bold border-2 transition ${editStatus === 'rosib' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-500'}`}>
-            ✗ Rosib
-          </button>
-        </div>
-        <textarea value={editCatatan} onChange={e => setEditCatatan(e.target.value)}
-          placeholder="Catatan..." rows={2}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 mb-2" />
-        <div className="flex gap-2">
-          <button onClick={handleSimpanEditSetoran} disabled={editLoading}
-            className="flex-1 text-white py-2 rounded-xl text-xs font-semibold disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-            {editLoading ? 'Menyimpan...' : 'Simpan'}
-          </button>
-          <button onClick={() => setEditSetoran(null)}
-            className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl text-xs font-semibold">
-            Batal
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-))}
+                  <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                          style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                          {item.santri?.nama?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm">{item.santri?.nama}</div>
+                          <div className="text-xs text-gray-400">{item.tanggal}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {item.status_kehadiran !== 'hadir' ? (
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' : item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                            {item.status_kehadiran?.toUpperCase()}
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
+                          </span>
+                        )}
+                        {item.status_kehadiran === 'hadir' && (
+                          <button onClick={() => { setEditSetoran(item); setEditStatus(item.status); setEditCatatan(item.catatan || '') }}
+                            className="text-blue-500 text-xs px-2 py-1 rounded-lg hover:bg-blue-50 border border-blue-200">
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {item.status_kehadiran === 'hadir' && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                          {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
+                        </span>
+                        <span className="text-xs text-gray-600">
+                          {item.surah_mulai?.nama_latin || item.surah}
+                          {item.surah_selesai && item.surah_mulai_nomor !== item.surah_selesai_nomor && <> → {item.surah_selesai?.nama_latin}</>}
+                          {' '}ayat {item.ayat_mulai}–{item.ayat_selesai}
+                        </span>
+                        {item.guru_pengganti && <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Pengganti</span>}
+                      </div>
+                    )}
+                    {item.catatan && <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>}
+                    {editSetoran?.id === item.id && (
+                      <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                        <p className="text-xs font-semibold text-gray-600 mb-2">Edit Setoran:</p>
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <button onClick={() => setEditStatus('lancar')}
+                            className={`py-2 rounded-xl text-xs font-bold border-2 transition ${editStatus === 'lancar' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                            ✓ Lancar
+                          </button>
+                          <button onClick={() => setEditStatus('rosib')}
+                            className={`py-2 rounded-xl text-xs font-bold border-2 transition ${editStatus === 'rosib' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                            ✗ Rosib
+                          </button>
+                        </div>
+                        <textarea value={editCatatan} onChange={e => setEditCatatan(e.target.value)}
+                          placeholder="Catatan..." rows={2}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 mb-2" />
+                        <div className="flex gap-2">
+                          <button onClick={handleSimpanEditSetoran} disabled={editLoading}
+                            className="flex-1 text-white py-2 rounded-xl text-xs font-semibold disabled:opacity-50"
+                            style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                            {editLoading ? 'Menyimpan...' : 'Simpan'}
+                          </button>
+                          <button onClick={() => setEditSetoran(null)}
+                            className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl text-xs font-semibold">
+                            Batal
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1125,6 +1141,7 @@ const handleSimpanEditSetoran = async () => {
                 )}
                 {santriList.map(santri => {
                   const target = hitungTargetMurojaah(santri)
+                  const jadwal = getJadwalJenjang(santri.jenjang)
                   return (
                     <div key={santri.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
                       <div className="flex items-center gap-3">
@@ -1154,6 +1171,10 @@ const handleSimpanEditSetoran = async () => {
                               <span className="text-gray-400 ml-1">(≈ {target.targetLembar} lembar)</span>
                             </div>
                           )}
+                          <div className="mt-1 text-xs text-gray-400">
+                            Baru: <span className="font-semibold text-blue-600">{jadwal.baru}</span>
+                            {jadwal.adaLama && <> • Murojaah: <span className="font-semibold text-purple-600">{jadwal.lama}</span></>}
+                          </div>
                         </div>
                       </div>
                     </div>
