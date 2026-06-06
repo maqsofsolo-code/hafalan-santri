@@ -301,36 +301,42 @@ async function notifNaikPeringkat() {
 
   // Ambil setoran minggu ini
   const { data: setoranMingguIni } = await supabase
-    .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
+    .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
     .gte('tanggal', tglSeninLalu).lte('tanggal', today)
     .eq('status_kehadiran', 'hadir')
 
   // Ambil setoran minggu lalu
   const { data: setoranMingguLalu } = await supabase
-    .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran')
+    .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
     .gte('tanggal', tglDuaMingguLalu).lte('tanggal', tglSeninLalu)
     .eq('status_kehadiran', 'hadir')
 
   // Hitung konsistensi dan semangat per santri untuk 2 minggu
-  const hitungStats = (setoranData: any[], hariAktif: string[], totalHari: number) => {
-    const konsistensiMap: Record<string, Set<string>> = {}
-    const semangatMap: Record<string, number> = {}
+  const hitungStats = (setoranData: any[], hariAktif: string[]) => {
+    const statsMap: Record<string, {
+      hariSetorLama: Set<string>, hariSetorBaru: Set<string>,
+      najihLama: number, najihBaru: number, totalJuz: number
+    }> = {}
 
     ;(setoranData || []).forEach((s: any) => {
-      if (!konsistensiMap[s.santri_id]) konsistensiMap[s.santri_id] = new Set()
-      if (hariAktif.includes(s.tanggal)) {
-        konsistensiMap[s.santri_id].add(s.tanggal)
+      if (!statsMap[s.santri_id]) statsMap[s.santri_id] = {
+        hariSetorLama: new Set(), hariSetorBaru: new Set(),
+        najihLama: 0, najihBaru: 0, totalJuz: 0
       }
-      if (s.jenis === 'baru') {
-        semangatMap[s.santri_id] = (semangatMap[s.santri_id] || 0) + (s.penambahan_juz || 0)
+      if (s.jenis === 'lama') {
+        if (hariAktif.includes(s.tanggal)) statsMap[s.santri_id].hariSetorLama.add(s.tanggal)
+        if (s.status === 'lancar') statsMap[s.santri_id].najihLama++
+      } else if (s.jenis === 'baru') {
+        if (hariAktif.includes(s.tanggal)) statsMap[s.santri_id].hariSetorBaru.add(s.tanggal)
+        if (s.status === 'lancar') statsMap[s.santri_id].najihBaru++
+        statsMap[s.santri_id].totalJuz += (s.penambahan_juz || 0)
       }
     })
-
-    return { konsistensiMap, semangatMap }
+    return statsMap
   }
 
-  const statsIni = hitungStats(setoranMingguIni || [], hariAktifMingguIni, totalHariAktifIni)
-  const statsLalu = hitungStats(setoranMingguLalu || [], hariAktifMingguLalu, totalHariAktifLalu)
+  const statsIni = hitungStats(setoranMingguIni || [], hariAktifMingguIni)
+  const statsLalu = hitungStats(setoranMingguLalu || [], hariAktifMingguLalu)
 
   // Kelompokkan santri per kelas
   const perKelas: Record<string, any[]> = {}
@@ -344,45 +350,47 @@ async function notifNaikPeringkat() {
   const peringkatIni: Record<string, { konsistensi: number, semangat: number }> = {}
   const peringkatLalu: Record<string, { konsistensi: number, semangat: number }> = {}
 
+  const sortKonsistensi = (anggota: any[], stats: any) => [...anggota].sort((a: any, b: any) => {
+    const aUlya = a.jenjang === 'ulya'
+    const bUlya = b.jenjang === 'ulya'
+    const aSt = stats[a.id] || { hariSetorLama: new Set(), hariSetorBaru: new Set(), najihLama: 0, najihBaru: 0 }
+    const bSt = stats[b.id] || { hariSetorLama: new Set(), hariSetorBaru: new Set(), najihLama: 0, najihBaru: 0 }
+    const aHari = aUlya ? aSt.hariSetorBaru.size : aSt.hariSetorLama.size
+    const bHari = bUlya ? bSt.hariSetorBaru.size : bSt.hariSetorLama.size
+    if (bHari !== aHari) return bHari - aHari
+    const aNajih = aUlya ? aSt.najihBaru : aSt.najihLama
+    const bNajih = bUlya ? bSt.najihBaru : bSt.najihLama
+    if (bNajih !== aNajih) return bNajih - aNajih
+    if (bSt.hariSetorBaru.size !== aSt.hariSetorBaru.size) return bSt.hariSetorBaru.size - aSt.hariSetorBaru.size
+    if (bSt.najihBaru !== aSt.najihBaru) return bSt.najihBaru - aSt.najihBaru
+    return 0
+  })
+
+  const sortSemangat = (anggota: any[], stats: any) => [...anggota].sort((a: any, b: any) => {
+    const aSt = stats[a.id] || { totalJuz: 0, hariSetorBaru: new Set(), najihBaru: 0 }
+    const bSt = stats[b.id] || { totalJuz: 0, hariSetorBaru: new Set(), najihBaru: 0 }
+    if (bSt.totalJuz !== aSt.totalJuz) return bSt.totalJuz - aSt.totalJuz
+    if (bSt.hariSetorBaru.size !== aSt.hariSetorBaru.size) return bSt.hariSetorBaru.size - aSt.hariSetorBaru.size
+    if (bSt.najihBaru !== aSt.najihBaru) return bSt.najihBaru - aSt.najihBaru
+    return 0
+  })
+
   for (const [, anggota] of Object.entries(perKelas)) {
-    // Urutkan berdasarkan konsistensi minggu ini
-    const urutKonsistensiIni = [...anggota]
-      .map(s => ({ id: s.id, nilai: statsIni.konsistensiMap[s.id]?.size || 0 }))
-      .sort((a, b) => b.nilai - a.nilai)
-
-    urutKonsistensiIni.forEach((item, idx) => {
-      if (!peringkatIni[item.id]) peringkatIni[item.id] = { konsistensi: 0, semangat: 0 }
-      peringkatIni[item.id].konsistensi = idx + 1
+    sortKonsistensi(anggota, statsIni).forEach((s: any, idx: number) => {
+      if (!peringkatIni[s.id]) peringkatIni[s.id] = { konsistensi: 0, semangat: 0 }
+      peringkatIni[s.id].konsistensi = idx + 1
     })
-
-    // Urutkan berdasarkan konsistensi minggu lalu
-    const urutKonsistensiLalu = [...anggota]
-      .map(s => ({ id: s.id, nilai: statsLalu.konsistensiMap[s.id]?.size || 0 }))
-      .sort((a, b) => b.nilai - a.nilai)
-
-    urutKonsistensiLalu.forEach((item, idx) => {
-      if (!peringkatLalu[item.id]) peringkatLalu[item.id] = { konsistensi: 0, semangat: 0 }
-      peringkatLalu[item.id].konsistensi = idx + 1
+    sortKonsistensi(anggota, statsLalu).forEach((s: any, idx: number) => {
+      if (!peringkatLalu[s.id]) peringkatLalu[s.id] = { konsistensi: 0, semangat: 0 }
+      peringkatLalu[s.id].konsistensi = idx + 1
     })
-
-    // Urutkan berdasarkan semangat minggu ini
-    const urutSemangatIni = [...anggota]
-      .map(s => ({ id: s.id, nilai: statsIni.semangatMap[s.id] || 0 }))
-      .sort((a, b) => b.nilai - a.nilai)
-
-    urutSemangatIni.forEach((item, idx) => {
-      if (!peringkatIni[item.id]) peringkatIni[item.id] = { konsistensi: 0, semangat: 0 }
-      peringkatIni[item.id].semangat = idx + 1
+    sortSemangat(anggota, statsIni).forEach((s: any, idx: number) => {
+      if (!peringkatIni[s.id]) peringkatIni[s.id] = { konsistensi: 0, semangat: 0 }
+      peringkatIni[s.id].semangat = idx + 1
     })
-
-    // Urutkan berdasarkan semangat minggu lalu
-    const urutSemangatLalu = [...anggota]
-      .map(s => ({ id: s.id, nilai: statsLalu.semangatMap[s.id] || 0 }))
-      .sort((a, b) => b.nilai - a.nilai)
-
-    urutSemangatLalu.forEach((item, idx) => {
-      if (!peringkatLalu[item.id]) peringkatLalu[item.id] = { konsistensi: 0, semangat: 0 }
-      peringkatLalu[item.id].semangat = idx + 1
+    sortSemangat(anggota, statsLalu).forEach((s: any, idx: number) => {
+      if (!peringkatLalu[s.id]) peringkatLalu[s.id] = { konsistensi: 0, semangat: 0 }
+      peringkatLalu[s.id].semangat = idx + 1
     })
   }
 
