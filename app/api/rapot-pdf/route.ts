@@ -32,11 +32,31 @@ export async function GET(request: Request) {
   const { data: periode } = await supabase.from('periode_rapot').select('*').eq('id', periodeId).single()
   if (!periode) return NextResponse.json({ error: 'Periode tidak ditemukan' }, { status: 404 })
 
-  // Ambil semua santri di kelas ini
-  const { data: santriList } = await supabase
-    .from('santri').select('*, guru:guru_id(nama)')
-    .eq('jenjang', jenjang).eq('kelas_num', parseInt(kelas))
-    .order('nama')
+  // Ambil semua santri yang punya nilai rapot di kelas ini (termasuk alumni)
+  const { data: nilaiKelas } = await supabase
+    .from('nilai_rapot')
+    .select('santri_id')
+    .eq('periode_id', periodeId)
+    .eq('kelas_snapshot', parseInt(kelas))
+
+  const santriIdsKelas = (nilaiKelas || []).map((n: any) => n.santri_id)
+
+  if (santriIdsKelas.length === 0) {
+    // Fallback: ambil berdasarkan kelas santri saat ini
+    const { data: santriAktif } = await supabase
+      .from('santri').select('*, guru:guru_id(nama)')
+      .eq('jenjang', jenjang).eq('kelas_num', parseInt(kelas))
+      .order('nama')
+    if (!santriAktif || santriAktif.length === 0) {
+      return NextResponse.json({ error: 'Tidak ada santri di kelas ini' }, { status: 404 })
+    }
+    var santriList = santriAktif
+  } else {
+    const { data: santriDariNilai } = await supabase
+      .from('santri').select('*, guru:guru_id(nama)')
+      .in('id', santriIdsKelas).order('nama')
+    var santriList = santriDariNilai || []
+  }
 
   if (!santriList || santriList.length === 0) {
     return NextResponse.json({ error: 'Tidak ada santri di kelas ini' }, { status: 404 })

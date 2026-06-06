@@ -87,6 +87,8 @@ useEffect(() => {
   const [rapotInputLoading, setRapotInputLoading] = useState(false)
   const [rapotInputMsg, setRapotInputMsg] = useState('')
   const [rapotExistingId, setRapotExistingId] = useState<any>(null)
+  const [rapotKelasSnapshot, setRapotKelasSnapshot] = useState('')
+  const [rapotJenjangSnapshot, setRapotJenjangSnapshot] = useState('ula')
 
   // Form kalender
   const [formKalNama, setFormKalNama] = useState('')
@@ -531,12 +533,16 @@ const fetchPeriode = async () => {
     setRapotInputSearch('')
     setRapotNilai({})
     setRapotExistingId(null)
+    setRapotKelasSnapshot('')
+    setRapotJenjangSnapshot('ula')
     setRapotInputMsg('')
   }
 
-  const fetchNilaiRapotAdmin = async (santriId: string, periodeId: string) => {
-    const { data } = await supabase.from('nilai_rapot')
-      .select('*').eq('santri_id', santriId).eq('periode_id', periodeId).maybeSingle()
+  const fetchNilaiRapotAdmin = async (santriId: string, periodeId: string, kelasSnapshot?: string) => {
+    let query = supabase.from('nilai_rapot')
+      .select('*').eq('santri_id', santriId).eq('periode_id', periodeId)
+    if (kelasSnapshot) query = query.eq('kelas_snapshot', parseInt(kelasSnapshot))
+    const { data } = await query.maybeSingle()
     if (data) {
       setRapotExistingId(data.id)
       setRapotNilai({
@@ -583,6 +589,8 @@ const fetchPeriode = async () => {
       santri_id: rapotInputSantri.id,
       periode_id: rapotInputPeriodeId,
       guru_id: rapotInputSantri.guru_id || null,
+      kelas_snapshot: rapotKelasSnapshot ? parseInt(rapotKelasSnapshot) : null,
+      jenjang_snapshot: rapotJenjangSnapshot || null,
       kelancaran: parseInt(rapotNilai.kelancaran) || null,
       tajwid: parseInt(rapotNilai.tajwid) || null,
       keterangan_hafalan: rapotNilai.keterangan_hafalan || null,
@@ -617,7 +625,7 @@ const fetchPeriode = async () => {
     if (error) { setRapotInputMsg('Gagal: ' + error.message); setRapotInputLoading(false); return }
     setRapotInputMsg('✓ Nilai rapot berhasil disimpan!')
     setRapotInputLoading(false)
-    fetchNilaiRapotAdmin(rapotInputSantri.id, rapotInputPeriodeId)
+    fetchNilaiRapotAdmin(rapotInputSantri.id, rapotInputPeriodeId, rapotKelasSnapshot)
   }
 
   const resetFormPeriode = () => {
@@ -2004,7 +2012,9 @@ const AlumniList = () => {
                               <button key={s.id} onClick={() => {
                                 setRapotInputSantri(s)
                                 setRapotInputSearch(s.nama)
-                                fetchNilaiRapotAdmin(s.id, rapotInputPeriodeId)
+                                setRapotKelasSnapshot(s.kelas_num?.toString() || '')
+                                setRapotJenjangSnapshot(s.jenjang || 'ula')
+                                fetchNilaiRapotAdmin(s.id, rapotInputPeriodeId, s.kelas_num?.toString())
                               }} className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
                                 <span className="font-medium">{s.nama}</span>
                                 <span className="text-gray-400 text-xs ml-2">{s.kelas || '-'}</span>
@@ -2026,12 +2036,45 @@ const AlumniList = () => {
                             <div className="text-xs text-gray-500">{rapotInputSantri.kelas || '-'} • {rapotInputSantri.total_hafalan_juz?.toFixed(2)} Juz</div>
                             {rapotExistingId && <div className="text-xs text-green-600 mt-0.5">✓ Data rapot sudah ada — akan diupdate</div>}
                           </div>
-                          <button onClick={() => { setRapotInputSantri(null); setRapotInputSearch(''); setRapotNilai({}); setRapotExistingId(null) }}
+                          <button onClick={() => { setRapotInputSantri(null); setRapotInputSearch(''); setRapotNilai({}); setRapotExistingId(null); setRapotKelasSnapshot(''); setRapotJenjangSnapshot('ula') }}
                             className="text-gray-400 text-xl">×</button>
                         </div>
                       )}
                     </div>
-
+{rapotInputSantri && (
+                      <div className="mb-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                        <p className="text-sm font-bold text-gray-700 mb-1">📌 Kelas pada Periode Ini</p>
+                        <p className="text-xs text-gray-500 mb-3">Pilih kelas santri saat periode rapot ini berlangsung. Untuk alumni, pilih kelas lama mereka.</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                            <select value={rapotJenjangSnapshot}
+                              onChange={e => { setRapotJenjangSnapshot(e.target.value); setRapotKelasSnapshot('') }}
+                              className={inputClass}>
+                              <option value="ula">Ula</option>
+                              <option value="wustha">Wustha</option>
+                              <option value="ulya">Ulya</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                            <select value={rapotKelasSnapshot}
+                              onChange={e => setRapotKelasSnapshot(e.target.value)}
+                              className={inputClass}>
+                              <option value="">-- Pilih Kelas --</option>
+                              {getKelasOptions(rapotJenjangSnapshot).map(k => (
+                                <option key={k} value={k}>Kelas {k}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {rapotKelasSnapshot && (
+                          <div className="mt-2 p-2 bg-white rounded-lg text-xs text-yellow-700">
+                            Rapot ini untuk: <span className="font-bold">Kelas {rapotKelasSnapshot} {jenjangLabel(rapotJenjangSnapshot)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {rapotInputSantri && (
                       <>
                         {/* A. Hifzhul Quran */}
