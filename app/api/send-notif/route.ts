@@ -67,9 +67,10 @@ async function notifWali() {
   const { data: setoranHariIni } = await supabase
     .from('setoran').select('*').eq('tanggal', today)
 
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  now.setDate(now.getDate() - 14)
-  const tglMulaiRosib = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  // Riwayat rosib 14 hari untuk cek 3x rosib surat sama
+  const nowWIB = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  nowWIB.setDate(nowWIB.getDate() - 14)
+  const tglMulaiRosib = `${nowWIB.getFullYear()}-${String(nowWIB.getMonth() + 1).padStart(2, '0')}-${String(nowWIB.getDate()).padStart(2, '0')}`
 
   const { data: riwayatRosib } = await supabase
     .from('setoran').select('santri_id, surah, status, jenis')
@@ -81,24 +82,41 @@ async function notifWali() {
     const noWali = santri.wali?.no_wa
     if (!noWali) continue
 
+    const jenjang = santri.jenjang // 'ula' | 'wustha' | 'ulya'
     const setoranSantri = (setoranHariIni || []).filter((s: any) => s.santri_id === santri.id)
     const sudahSetor = setoranSantri.length > 0
     const setoranHadir = setoranSantri.filter((s: any) => s.status_kehadiran === 'hadir')
-    const adaRosib = setoranHadir.some((s: any) => s.status === 'rosib')
     const statusKehadiran = setoranSantri[0]?.status_kehadiran
     const namaSantri = santri.nama
     const namaWali = santri.wali?.nama || 'Wali Santri'
+
+    // Setoran per jenis
+    const setoranBaru = setoranHadir.filter((s: any) => s.jenis === 'baru')
+    const setoranLama = setoranHadir.filter((s: any) => s.jenis === 'lama')
+    const sudahSetorBaru = setoranBaru.length > 0
+    const sudahSetorLama = setoranLama.length > 0
+    const rosibBaru = setoranBaru.some((s: any) => s.status === 'rosib')
+    const rosibLama = setoranLama.some((s: any) => s.status === 'rosib')
+    const adaRosib = setoranHadir.some((s: any) => s.status === 'rosib')
+
     let pesan = ''
 
+    // ===== 1. SAKIT =====
     if (statusKehadiran === 'sakit') {
       pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak dapat hadir karena *sakit*.\n\nSemoga Allah segera memberikan kesembuhan kepada ananda.\n\nاللَّهُمَّ رَبَّ النَّاسِ أَذْهِبِ الْبَاسَ وَاشْفِ أَنْتَ الشَّافِي لَا شِفَاءَ إِلَّا شِفَاؤُكَ شِفَاءً لَا يُغَادِرُ سَقَمَاً\n\n_"Ya Allah, Tuhan manusia, hilangkanlah penyakit dan sembuhkanlah, Engkaulah Yang Maha Menyembuhkan, tidak ada kesembuhan kecuali dari-Mu."_\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
+
+    // ===== 2. IZIN =====
     else if (statusKehadiran === 'izin') {
       pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak hadir karena *izin*.\n\nKami berpesan agar ananda tetap dimotivasi untuk *murojaah hafalannya di rumah*, karena hafalan yang kuat adalah hafalan yang senantiasa diulang.\n\n_"Jagalah hafalan Al-Qur'an ini, demi Allah, hafalan ini lebih mudah lepas dari hati daripada lepasnya unta dari ikatannya."_ (HR. Bukhari)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
+
+    // ===== 3. ALPHA =====
     else if (statusKehadiran === 'alpha') {
       pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* *tidak hadir tanpa keterangan (alpha)*.\n\nMohon Bapak/Ibu dapat menghubungi pihak pesantren untuk memberikan keterangan.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
+
+    // ===== 4. ROSIB =====
     else if (adaRosib) {
       const daftarRosib = setoranHadir
         .filter((s: any) => s.status === 'rosib')
@@ -106,18 +124,44 @@ async function notifWali() {
         .join('\n')
       pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* perlu mengulang hafalannya (rosib) pada:\n\n${daftarRosib}\n\nMohon bantu muroja'ah di rumah agar hafalan semakin kuat dan lancar.\n\nSemoga Allah memudahkan ananda dalam menghafal Al-Qur'an.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
-    else if (!sudahSetor) {
-      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* belum menyetorkan hafalan Al-Qur'an.\n\nMohon kiranya Bapak/Ibu dapat memberikan tasyji' dan semangat kepada ananda.\n\nSemoga Allah membalas kebaikan Bapak/Ibu, menjadikan jerih payah ini sebagai pahala jariyah, dan menjadikan ananda sebagai hafidzul Qur'an yang memberikan mahkota kemuliaan di hari kiamat kelak.\n\nJazakumullahu khairan katsiran.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+
+    // ===== 5. BELUM SETOR — logika per jenjang =====
+    else if (!sudahSetor || (jenjang === 'wustha' && (!sudahSetorBaru || !sudahSetorLama))) {
+      let belumSetor = ''
+
+      if (jenjang === 'ulya') {
+        // Ulya: hanya cek hafalan baru
+        if (!sudahSetorBaru) belumSetor = 'hafalan baru'
+      } else if (jenjang === 'ula') {
+        // Ula: belum setor lama = notif, sudah setor lama tapi belum baru = tidak notif
+        if (!sudahSetorLama && !sudahSetorBaru) belumSetor = 'hafalan lama (murojaah) dan hafalan baru'
+        else if (!sudahSetorLama) belumSetor = 'hafalan lama (murojaah)'
+        // sudah setor lama tapi belum baru → tidak kirim notif
+      } else if (jenjang === 'wustha') {
+        // Wustha: cek keduanya terpisah
+        if (!sudahSetorBaru && !sudahSetorLama) belumSetor = 'hafalan baru dan murojaah'
+        else if (!sudahSetorBaru) belumSetor = 'hafalan baru'
+        else if (!sudahSetorLama) belumSetor = 'murojaah (hafalan lama)'
+      } else {
+        // Jenjang tidak diketahui, cek keduanya
+        if (!sudahSetor) belumSetor = 'hafalan Al-Qur\'an'
+      }
+
+      if (belumSetor) {
+        pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* belum menyetorkan *${belumSetor}*.\n\nMohon kiranya Bapak/Ibu dapat memberikan tasyji' dan semangat kepada ananda.\n\nSemoga Allah membalas kebaikan Bapak/Ibu, menjadikan jerih payah ini sebagai pahala jariyah, dan menjadikan ananda sebagai hafidzul Qur'an yang memberikan mahkota kemuliaan di hari kiamat kelak.\n\nJazakumullahu khairan katsiran.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+      }
     }
 
+    // ===== 6. CEK 3x ROSIB SURAT SAMA =====
     if (!pesan) {
       const rosibPerSurah: Record<string, number> = {}
       ;(riwayatRosib || []).filter((r: any) => r.santri_id === santri.id).forEach((r: any) => {
         rosibPerSurah[r.surah || 'unknown'] = (rosibPerSurah[r.surah || 'unknown'] || 0) + 1
       })
-      const surahRosib3x = Object.entries(rosibPerSurah).filter(([, c]) => c >= 3).map(([s]) => s)
+      const surahRosib3x = Object.entries(rosibPerSurah)
+        .filter(([, c]) => c >= 3).map(([s]) => s)
       if (surahRosib3x.length > 0) {
-        pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa *${namaSantri}* telah rosib sebanyak *3 kali atau lebih* pada surah:\n\n*${surahRosib3x.join(', ')}*\n\nMohon perhatian dan dukungan ekstra dari Bapak/Ibu. Teruslah berjuang! Kelak seorang hafidz Al-Qur'an akan memakaikan mahkota kemuliaan kepada kedua orang tuanya di hari kiamat.\n\n_"Barang siapa menghafal Al-Qur'an, ia akan datang pada hari kiamat dan Al-Qur'an berkata: Ya Rabb, pakaikanlah dia mahkota kemuliaan."_ (HR. Tirmidzi)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+        pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa *${namaSantri}* telah rosib sebanyak *3 kali atau lebih* pada surah:\n\n*${surahRosib3x.join(', ')}*\n\nMohon perhatian dan dukungan ekstra dari Bapak/Ibu.\n\nTeruslah berjuang! Kelak seorang hafidz Al-Qur'an akan memakaikan mahkota kemuliaan kepada kedua orang tuanya di hari kiamat.\n\n_"Barang siapa menghafal Al-Qur'an, ia akan datang pada hari kiamat dan Al-Qur'an berkata: Ya Rabb, pakaikanlah dia mahkota kemuliaan."_ (HR. Tirmidzi)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
       }
     }
 
@@ -141,7 +185,7 @@ async function reminderGuru(sesi: string) {
     .from('profiles').select('*').eq('role', 'guru')
   if (!guruList) return { message: 'Tidak ada guru' }
 
-  // Ambil jenjang yang diajar tiap guru dari data santri
+  // Deteksi jenjang yang diajar tiap guru dari data santri
   const { data: semuaSantri } = await supabase
     .from('santri').select('guru_id, jenjang')
   const guruJenjangMap: Record<string, Set<string>> = {}
@@ -151,11 +195,9 @@ async function reminderGuru(sesi: string) {
     guruJenjangMap[s.guru_id].add(s.jenjang)
   })
 
-  // Ambil absensi hari ini
   const { data: absensiHariIni } = await supabase
     .from('absensi_guru').select('*').eq('tanggal', today)
 
-  // Ambil setoran hari ini per guru
   const { data: setoranHariIni } = await supabase
     .from('setoran').select('guru_id').eq('tanggal', today)
   const guruSudahInput = [...new Set((setoranHariIni || []).map((s: any) => s.guru_id))]
@@ -163,7 +205,7 @@ async function reminderGuru(sesi: string) {
   const pesanPerSesi: Record<string, string> = {
     subuh: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nKami mengingatkan bahwa *sesi setoran Subuh* akan segera dimulai pukul *04.30*.\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
 
-    pagi: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nKami mengingatkan bahwa *sesi setoran Pagi* akan segera dimulai.\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
+    pagi: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nKami mengingatkan bahwa *sesi setoran Pagi* akan segera dimulai.\n\nJenjang Ula: Hafalan Lama pukul *08.00 - 09.00*, Hafalan Baru pukul *09.00 - 10.00*\nJenjang Wustha: Murojaah pukul *08.00 - 09.45*\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
 
     siang: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nIni adalah *pengingat siang* pukul 12.00. Mohon pastikan data hafalan santri sesi pagi sudah *diinput ke sistem*.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
 
@@ -180,22 +222,19 @@ async function reminderGuru(sesi: string) {
     const sudahAbsenPagi = (absensiHariIni || []).some((a: any) => a.guru_id === guru.id && a.sesi === 'pagi')
     const sudahInput = guruSudahInput.includes(guru.id)
 
-    // Reminder subuh: hanya guru Wustha & Ulya, skip jika sudah absen subuh
     if (sesi === 'subuh') {
+      // Hanya guru Wustha & Ulya, skip jika sudah absen subuh
       const ajarWusthaUlya = jenjangGuru.has('wustha') || jenjangGuru.has('ulya')
       if (!ajarWusthaUlya) continue
       if (sudahAbsenSubuh) continue
-    }
-    // Reminder pagi: semua guru, skip jika sudah absen pagi
-    else if (sesi === 'pagi') {
+    } else if (sesi === 'pagi') {
+      // Semua guru, skip jika sudah absen pagi
       if (sudahAbsenPagi) continue
-    }
-    // Reminder siang: semua guru, skip jika sudah input data
-    else if (sesi === 'siang') {
+    } else if (sesi === 'siang') {
+      // Semua guru, skip jika sudah input data
       if (sudahInput) continue
-    }
-    // Reminder sore: semua guru, skip jika sudah input data
-    else if (sesi === 'sore') {
+    } else if (sesi === 'sore') {
+      // Semua guru, skip jika sudah input data
       if (sudahInput) continue
     }
 
