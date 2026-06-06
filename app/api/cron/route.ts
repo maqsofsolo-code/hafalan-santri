@@ -11,7 +11,8 @@ export async function GET(request: Request) {
 
   const jadwalValid = [
     'reminder-guru-subuh',
-    'reminder-guru-pagi', 
+    'reminder-guru-pagi',
+    'reminder-guru-siang',
     'reminder-guru-sore',
     'notif-wali'
   ]
