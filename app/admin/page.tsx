@@ -54,6 +54,17 @@ useEffect(() => {
   const [formTempatLahir, setFormTempatLahir] = useState('')
   const [formTanggalLahir, setFormTanggalLahir] = useState('')
   const [formAlamat, setFormAlamat] = useState('')
+  const [formStatus, setFormStatus] = useState('aktif')
+  const [formTahunLulus, setFormTahunLulus] = useState('')
+  const [formKeteranganKeluar, setFormKeteranganKeluar] = useState('')
+
+  // State naik kelas
+  const [naikKelasJenjang, setNaikKelasJenjang] = useState('ula')
+  const [naikKelasNum, setNaikKelasNum] = useState('')
+  const [naikKelasLoading, setNaikKelasLoading] = useState(false)
+  const [naikKelasPreview, setNaikKelasPreview] = useState<any[]>([])
+  const [naikKelasChecked, setNaikKelasChecked] = useState<Record<string, boolean>>({})
+  const [naikKelasMsg, setNaikKelasMsg] = useState('')
 
   // Form kalender
   const [formKalNama, setFormKalNama] = useState('')
@@ -80,7 +91,7 @@ useEffect(() => {
 
   const fetchData = async () => {
     const { data: guru } = await supabase.from('profiles').select('*').eq('role', 'guru').order('nama')
-    const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama), wali:wali_id(nama)').order('nama')
+    const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama), wali:wali_id(nama)').eq('status', 'aktif').order('nama')
     const { data: wali } = await supabase.from('profiles').select('*').eq('role', 'wali').order('nama')
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
     const { data: kalender } = await supabase.from('kalender_akademik').select('*').order('tanggal_mulai', { ascending: true })
@@ -349,6 +360,9 @@ setRankingSemangat(semangatList)
       tempat_lahir: formTempatLahir || null,
       tanggal_lahir: formTanggalLahir || null,
       alamat: formAlamat || null,
+      status: formStatus || 'aktif',
+      tahun_lulus: formTahunLulus || null,
+      keterangan_keluar: formKeteranganKeluar || null,
     })
     if (error) { setErrorMsg(error.message); setLoading(false); return }
     setSuccessMsg('Santri berhasil ditambahkan!'); setShowForm(false); resetForm(); fetchData(); setLoading(false)
@@ -365,6 +379,9 @@ setRankingSemangat(semangatList)
     setFormTempatLahir(santri.tempat_lahir || '')
     setFormTanggalLahir(santri.tanggal_lahir || '')
     setFormAlamat(santri.alamat || '')
+    setFormStatus(santri.status || 'aktif')
+    setFormTahunLulus(santri.tahun_lulus || '')
+    setFormKeteranganKeluar(santri.keterangan_keluar || '')
     setShowForm(true); setFormType('santri')
   }
 
@@ -378,6 +395,9 @@ setRankingSemangat(semangatList)
       tempat_lahir: formTempatLahir || null,
       tanggal_lahir: formTanggalLahir || null,
       alamat: formAlamat || null,
+      status: formStatus || 'aktif',
+      tahun_lulus: formTahunLulus || null,
+      keterangan_keluar: formKeteranganKeluar || null,
     }
     if (formSurahAwal && formSurahAkhir) {
       updateData = { ...updateData, total_hafalan_juz: hitungTotalJuzAwal(), surah_terakhir_nomor: parseInt(formSurahAkhir), ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null }
@@ -431,6 +451,70 @@ setRankingSemangat(semangatList)
   setTimeout(() => setLaporanLoading(''), 3000)
 }
 
+// ===== NAIK KELAS =====
+  const handlePreviewNaikKelas = async () => {
+    if (!naikKelasNum) return
+    const { data } = await supabase.from('santri')
+      .select('id, nama, kelas_num, jenjang, kelas')
+      .eq('jenjang', naikKelasJenjang)
+      .eq('kelas_num', parseInt(naikKelasNum))
+      .eq('status', 'aktif')
+      .order('nama')
+    setNaikKelasPreview(data || [])
+    const checked: Record<string, boolean> = {}
+    ;(data || []).forEach((s: any) => { checked[s.id] = true })
+    setNaikKelasChecked(checked)
+    setNaikKelasMsg('')
+  }
+
+  const handleProsesNaikKelas = async () => {
+    const santriNaik = naikKelasPreview.filter(s => naikKelasChecked[s.id])
+    const santriTinggal = naikKelasPreview.filter(s => !naikKelasChecked[s.id])
+    if (santriNaik.length === 0) { setNaikKelasMsg('Pilih minimal 1 santri untuk naik kelas.'); return }
+    if (!confirm(`Proses naik kelas untuk ${santriNaik.length} santri? Tindakan ini tidak bisa dibatalkan.`)) return
+    setNaikKelasLoading(true)
+    setNaikKelasMsg('')
+
+    const kelasSekarang = parseInt(naikKelasNum)
+
+    for (const santri of santriNaik) {
+      let kelasBaruNum = kelasSekarang + 1
+      let jenjangBaru = naikKelasJenjang
+
+      // Cek naik jenjang
+      if (naikKelasJenjang === 'ula' && kelasSekarang === 6) {
+        kelasBaruNum = 7; jenjangBaru = 'wustha'
+      } else if (naikKelasJenjang === 'wustha' && kelasSekarang === 9) {
+        kelasBaruNum = 10; jenjangBaru = 'ulya'
+      } else if (naikKelasJenjang === 'ulya' && kelasSekarang === 12) {
+        // Lulus — jadikan alumni
+        await supabase.from('santri').update({
+          status: 'alumni',
+          tahun_lulus: new Date().getFullYear().toString(),
+          guru_id: null
+        }).eq('id', santri.id)
+        continue
+      }
+
+      const jenjangBaruLabel = jenjangBaru === 'ula' ? 'Ula' : jenjangBaru === 'wustha' ? 'Wustha' : 'Ulya'
+      await supabase.from('santri').update({
+        kelas_num: kelasBaruNum,
+        jenjang: jenjangBaru,
+        kelas: `Kelas ${kelasBaruNum} ${jenjangBaruLabel}`,
+        guru_id: null // Putuskan ikatan guru lama
+      }).eq('id', santri.id)
+    }
+
+    setNaikKelasLoading(false)
+    setNaikKelasPreview([])
+    setNaikKelasChecked({})
+    const pesanLulus = naikKelasJenjang === 'ulya' && kelasSekarang === 12
+      ? ` (${santriNaik.length} santri lulus → alumni)`
+      : ''
+    setNaikKelasMsg(`✓ Berhasil! ${santriNaik.length} santri naik kelas${pesanLulus}. Hubungkan ke guru baru di menu Data Santri.`)
+    fetchData()
+  }
+
   const handleImportExcel = async (e: any) => {
     const file = e.target.files[0]; if (!file) return
     setImportLoading(true); setImportMsg('')
@@ -445,6 +529,8 @@ setRankingSemangat(semangatList)
     setFormGuruId(''); setFormWaliId(''); setFormJenjang(''); setFormKelasNum('')
     setFormSurahAwal(''); setFormAyatAwal('1'); setFormSurahAkhir(''); setFormAyatAkhir('')
     setFormNik(''); setFormNisn(''); setFormTempatLahir(''); setFormTanggalLahir(''); setFormAlamat('')
+    setFormStatus('aktif'); setFormTahunLulus(''); setFormKeteranganKeluar('')
+    setNaikKelasPreview([]); setNaikKelasChecked({}); setNaikKelasMsg('')
     setShowPassword(false)
     setFormKalNama(''); setFormKalTipe('libur'); setFormKalSemester('1')
     setFormKalMulai(''); setFormKalSelesai(''); setFormKalKeterangan('')
@@ -517,6 +603,8 @@ setRankingSemangat(semangatList)
   { id: 'kalender', label: 'Kalender Akademik', icon: '📅' },
   { id: 'guru', label: 'Data Guru', icon: '▤' },
   { id: 'santri', label: 'Data Santri', icon: '◎' },
+  { id: 'alumni', label: 'Data Alumni', icon: '🎓' },
+  { id: 'naik-kelas', label: 'Naik Kelas', icon: '⬆' },
   { id: 'wali', label: 'Data Wali', icon: '◍' },
   { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
   { id: 'laporan', label: 'Laporan Bulanan', icon: '📊' },
@@ -547,7 +635,72 @@ setRankingSemangat(semangatList)
       </div>
     </div>
   )
+const AlumniList = () => {
+    const [alumniData, setAlumniData] = useState<any[]>([])
+    const [filterStatusAlumni, setFilterStatusAlumni] = useState('semua')
+    const [searchAlumni, setSearchAlumni] = useState('')
 
+    useEffect(() => {
+      const fetchAlumni = async () => {
+        const { data } = await supabase.from('santri')
+          .select('*, guru:guru_id(nama)')
+          .in('status', ['alumni', 'keluar']).order('nama')
+        setAlumniData(data || [])
+      }
+      fetchAlumni()
+    }, [])
+
+    const filtered = alumniData.filter(s => {
+      if (filterStatusAlumni !== 'semua' && s.status !== filterStatusAlumni) return false
+      if (searchAlumni && !s.nama?.toLowerCase().includes(searchAlumni.toLowerCase())) return false
+      return true
+    })
+
+    return (
+      <div>
+        <div className="bg-white rounded-2xl shadow p-4 mb-4 border border-gray-100">
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <select value={filterStatusAlumni} onChange={e => setFilterStatusAlumni(e.target.value)} className={inputClass}>
+              <option value="semua">Semua</option>
+              <option value="alumni">Alumni (Lulus)</option>
+              <option value="keluar">Keluar</option>
+            </select>
+            <input type="text" value={searchAlumni} onChange={e => setSearchAlumni(e.target.value)}
+              placeholder="Cari nama..." className={inputClass} />
+          </div>
+          <p className="text-xs text-gray-400">{filtered.length} dari {alumniData.length} alumni</p>
+        </div>
+        <div className="space-y-3">
+          {filtered.length === 0 && <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Belum ada data alumni</div>}
+          {filtered.map(s => (
+            <div key={s.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+                  style={{ background: s.status === 'alumni' ? 'linear-gradient(135deg, #92400e, #d97706)' : 'linear-gradient(135deg, #374151, #6b7280)' }}>
+                  {s.nama?.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-800">{s.nama}</div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.status === 'alumni' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {s.status === 'alumni' ? '🎓 Alumni' : '↩ Keluar'}
+                    </span>
+                    {s.jenjang && <span className="text-xs text-gray-400">Terakhir: {s.kelas || '-'}</span>}
+                    {s.tahun_lulus && <span className="text-xs text-gray-400">TA {s.tahun_lulus}</span>}
+                    {s.nisn && <span className="text-xs text-gray-400">NIS: {s.nisn}</span>}
+                  </div>
+                  {s.keterangan_keluar && <div className="text-xs text-gray-400 mt-0.5">{s.keterangan_keluar}</div>}
+                </div>
+                <button onClick={() => handleEditSantri(s)}
+                  className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50 flex-shrink-0">Edit</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  
   return (
     <div className="min-h-screen bg-gray-50">
 
@@ -1080,6 +1233,24 @@ setRankingSemangat(semangatList)
                       </div>
                     </div>
 
+                    {/* Status Santri */}
+                    <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
+                      <p className="text-sm font-semibold text-gray-700 mb-3">📌 Status Santri</p>
+                      <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className={inputClass}>
+                        <option value="aktif">Aktif</option>
+                        <option value="alumni">Alumni (Lulus)</option>
+                        <option value="keluar">Keluar</option>
+                      </select>
+                      {(formStatus === 'alumni' || formStatus === 'keluar') && (
+                        <div className="mt-2 space-y-2">
+                          <input placeholder="Tahun lulus / keluar (misal: 2024/2025)"
+                            value={formTahunLulus} onChange={e => setFormTahunLulus(e.target.value)} className={inputClass} />
+                          <input placeholder="Keterangan (opsional)"
+                            value={formKeteranganKeluar} onChange={e => setFormKeteranganKeluar(e.target.value)} className={inputClass} />
+                        </div>
+                      )}
+                    </div>
+
                     {/* Data Hafalan */}
                     <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                       <p className="text-sm font-semibold text-gray-700 mb-1">
@@ -1391,6 +1562,135 @@ setRankingSemangat(semangatList)
                     {filterRankingList(rankingSemangat).length === 0 && <p className="text-gray-400 text-sm text-center py-6">Belum ada data</p>}
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+          {/* DATA ALUMNI */}
+          {activeMenu === 'alumni' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #92400e 0%, #d97706 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="font-bold text-xl">Data Alumni</h2>
+                  <p className="text-yellow-100 text-sm mt-1">Santri yang telah lulus atau keluar</p>
+                </div>
+              </div>
+              <AlumniList />
+            </div>
+          )}
+
+          {/* NAIK KELAS */}
+          {activeMenu === 'naik-kelas' && (
+            <div>
+              <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
+                <div className="relative z-10">
+                  <h2 className="font-bold text-xl">Proses Naik Kelas</h2>
+                  <p className="text-blue-200 text-sm mt-1">Pilih kelas yang akan dinaikkan</p>
+                  <p className="text-blue-300 text-xs mt-0.5">⚠️ Guru lama akan diputus, sambungkan guru baru setelah proses</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4">Pilih Kelas</h3>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                    <select value={naikKelasJenjang} onChange={e => { setNaikKelasJenjang(e.target.value); setNaikKelasNum(''); setNaikKelasPreview([]) }} className={inputClass}>
+                      <option value="ula">Ula</option>
+                      <option value="wustha">Wustha</option>
+                      <option value="ulya">Ulya</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                    <select value={naikKelasNum} onChange={e => { setNaikKelasNum(e.target.value); setNaikKelasPreview([]) }} className={inputClass}>
+                      <option value="">-- Pilih Kelas</option>
+                      {getKelasOptions(naikKelasJenjang).map(k => (
+                        <option key={k} value={k}>Kelas {k}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {naikKelasNum && (
+                  <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 mb-4 text-xs text-blue-700">
+                    {naikKelasJenjang === 'ulya' && parseInt(naikKelasNum) === 12
+                      ? '🎓 Santri Kelas 12 Ulya yang dicentang akan menjadi Alumni (Lulus)'
+                      : `📚 Santri akan naik ke Kelas ${parseInt(naikKelasNum) + 1} ${
+                          naikKelasJenjang === 'ula' && parseInt(naikKelasNum) === 6 ? 'Wustha' :
+                          naikKelasJenjang === 'wustha' && parseInt(naikKelasNum) === 9 ? 'Ulya' :
+                          jenjangLabel(naikKelasJenjang)
+                        }`
+                    }
+                  </div>
+                )}
+
+                <button onClick={handlePreviewNaikKelas} disabled={!naikKelasNum}
+                  className="w-full text-white py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                  Lihat Daftar Santri
+                </button>
+              </div>
+
+              {naikKelasPreview.length > 0 && (
+                <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-gray-800">Daftar Santri Kelas {naikKelasNum} {jenjangLabel(naikKelasJenjang)}</h3>
+                    <div className="flex gap-2">
+                      <button onClick={() => {
+                        const all: Record<string, boolean> = {}
+                        naikKelasPreview.forEach(s => { all[s.id] = true })
+                        setNaikKelasChecked(all)
+                      }} className="text-xs text-blue-600 px-3 py-1 rounded-lg bg-blue-50">Pilih Semua</button>
+                      <button onClick={() => setNaikKelasChecked({})}
+                        className="text-xs text-gray-500 px-3 py-1 rounded-lg bg-gray-100">Hapus Pilihan</button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">Centang santri yang akan naik kelas. Yang tidak dicentang tetap di kelas yang sama.</p>
+                  <div className="space-y-2 mb-4">
+                    {naikKelasPreview.map(s => (
+                      <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${naikKelasChecked[s.id] ? 'border-blue-400 bg-blue-50' : 'border-gray-100 bg-gray-50'}`}
+                        onClick={() => setNaikKelasChecked(prev => ({ ...prev, [s.id]: !prev[s.id] }))}>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${naikKelasChecked[s.id] ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                          {naikKelasChecked[s.id] && <span className="text-white text-xs">✓</span>}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-sm">{s.nama}</div>
+                          <div className="text-xs text-gray-400">{s.kelas}</div>
+                        </div>
+                        {naikKelasChecked[s.id] && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                            {naikKelasJenjang === 'ulya' && parseInt(naikKelasNum) === 12 ? 'Lulus' : 'Naik'}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-200 mb-4">
+                    <p className="text-xs text-yellow-700">
+                      ✓ Naik: <span className="font-bold">{Object.values(naikKelasChecked).filter(Boolean).length} santri</span>
+                      &nbsp;•&nbsp;
+                      Tetap: <span className="font-bold">{naikKelasPreview.length - Object.values(naikKelasChecked).filter(Boolean).length} santri</span>
+                    </p>
+                  </div>
+                  {naikKelasMsg && (
+                    <div className={`p-3 rounded-xl mb-4 text-sm ${naikKelasMsg.startsWith('✓') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                      {naikKelasMsg}
+                    </div>
+                  )}
+                  <button onClick={handleProsesNaikKelas} disabled={naikKelasLoading}
+                    className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                    {naikKelasLoading ? 'Memproses...' : `✓ Proses Naik Kelas (${Object.values(naikKelasChecked).filter(Boolean).length} santri)`}
+                  </button>
+                </div>
+              )}
+
+              {naikKelasMsg && naikKelasPreview.length === 0 && (
+                <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl text-sm">{naikKelasMsg}</div>
               )}
             </div>
           )}
