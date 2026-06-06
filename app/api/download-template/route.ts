@@ -137,7 +137,9 @@ export async function GET() {
   return new NextResponse(buf, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="template-hafalan-daarus-salaf.xlsx"'
+      'Content-Disposition': 'attachment; filename="template-hafalan-daarus-salaf.xlsx"',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
     }
   })
 }
