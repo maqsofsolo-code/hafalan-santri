@@ -14,6 +14,10 @@ export default function GuruDashboard() {
   const [errorMsg, setErrorMsg] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [riwayatList, setRiwayatList] = useState<any[]>([])
+  const [editSetoran, setEditSetoran] = useState<any>(null)
+  const [editStatus, setEditStatus] = useState('lancar')
+  const [editCatatan, setEditCatatan] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
   const [searchSantri, setSearchSantri] = useState('')
   const [guruPengganti, setGuruPengganti] = useState(false)
   const [kalenderAktif, setKalenderAktif] = useState<any>(null)
@@ -107,7 +111,29 @@ export default function GuruDashboard() {
       .order('created_at', { ascending: false })
       .limit(50)
     setNilaiUjianList(data || [])
+}
+
+const handleSimpanEditSetoran = async () => {
+  if (!editSetoran) return
+  setEditLoading(true)
+  const { error } = await supabase
+    .from('setoran')
+    .update({
+      status: editStatus,
+      catatan: editCatatan,
+      perlu_ulang: editStatus === 'rosib'
+    })
+    .eq('id', editSetoran.id)
+  if (error) {
+    setErrorMsg('Gagal edit: ' + error.message)
+  } else {
+    setSuccessMsg('Setoran berhasil diupdate!')
+    setEditSetoran(null)
+    fetchRiwayat()
+    setTimeout(() => setSuccessMsg(''), 3000)
   }
+  setEditLoading(false)
+}
 
   // Status hari ini
   const today = new Date().toISOString().split('T')[0]
@@ -204,11 +230,11 @@ export default function GuruDashboard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       const { error } = await supabase.from('setoran').insert({
-        santri_id: selectedSantri.id, guru_id: user.id,
-        jenis: 'baru', status: 'tidak_hadir', status_kehadiran: statusKehadiran,
-        tanggal: new Date().toISOString().split('T')[0],
-        guru_pengganti: guruPengganti, perlu_ulang: false, catatan
-      })
+  santri_id: selectedSantri.id, guru_id: user.id,
+  jenis: 'baru', status: 'lancar', status_kehadiran: statusKehadiran,
+  tanggal: new Date().toISOString().split('T')[0],
+  guru_pengganti: guruPengganti, perlu_ulang: false, catatan
+})
       if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
       setSuccessMsg(`Data kehadiran ${selectedSantri.nama} berhasil disimpan!`)
       resetForm(); setLoading(false)
@@ -994,44 +1020,88 @@ export default function GuruDashboard() {
                   </div>
                 )}
                 {riwayatList.map((item) => (
-                  <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                          style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-                          {item.santri?.nama?.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-sm">{item.santri?.nama}</div>
-                          <div className="text-xs text-gray-400">{item.tanggal}</div>
-                        </div>
-                      </div>
-                      {item.status_kehadiran !== 'hadir' ? (
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' : item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-                          {item.status_kehadiran?.toUpperCase()}
-                        </span>
-                      ) : (
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
-                        </span>
-                      )}
-                    </div>
-                    {item.status_kehadiran === 'hadir' && (
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                          {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
-                        </span>
-                        <span className="text-xs text-gray-600">
-                          {item.surah_mulai?.nama_latin || item.surah}
-                          {item.surah_selesai && item.surah_mulai_nomor !== item.surah_selesai_nomor && <> → {item.surah_selesai?.nama_latin}</>}
-                          {' '}ayat {item.ayat_mulai}–{item.ayat_selesai}
-                        </span>
-                        {item.guru_pengganti && <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Pengganti</span>}
-                      </div>
-                    )}
-                    {item.catatan && <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>}
-                  </div>
-                ))}
+  <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
+    <div className="flex justify-between items-start mb-2">
+      <div className="flex items-center gap-2">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+          {item.santri?.nama?.charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <div className="font-semibold text-sm">{item.santri?.nama}</div>
+          <div className="text-xs text-gray-400">{item.tanggal}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {item.status_kehadiran !== 'hadir' ? (
+          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' : item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+            {item.status_kehadiran?.toUpperCase()}
+          </span>
+        ) : (
+          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {item.status === 'lancar' ? 'Lancar' : 'Rosib'}
+          </span>
+        )}
+        {item.status_kehadiran === 'hadir' && (
+          <button
+            onClick={() => {
+              setEditSetoran(item)
+              setEditStatus(item.status)
+              setEditCatatan(item.catatan || '')
+            }}
+            className="text-blue-500 text-xs px-2 py-1 rounded-lg hover:bg-blue-50 border border-blue-200">
+            Edit
+          </button>
+        )}
+      </div>
+    </div>
+    {item.status_kehadiran === 'hadir' && (
+      <div className="flex items-center gap-2 mt-1 flex-wrap">
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+          {item.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}
+        </span>
+        <span className="text-xs text-gray-600">
+          {item.surah_mulai?.nama_latin || item.surah}
+          {item.surah_selesai && item.surah_mulai_nomor !== item.surah_selesai_nomor && <> → {item.surah_selesai?.nama_latin}</>}
+          {' '}ayat {item.ayat_mulai}–{item.ayat_selesai}
+        </span>
+        {item.guru_pengganti && <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">Pengganti</span>}
+      </div>
+    )}
+    {item.catatan && <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-600">{item.catatan}</div>}
+
+    {/* Form Edit */}
+    {editSetoran?.id === item.id && (
+      <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+        <p className="text-xs font-semibold text-gray-600 mb-2">Edit Setoran:</p>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <button onClick={() => setEditStatus('lancar')}
+            className={`py-2 rounded-xl text-xs font-bold border-2 transition ${editStatus === 'lancar' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+            ✓ Lancar
+          </button>
+          <button onClick={() => setEditStatus('rosib')}
+            className={`py-2 rounded-xl text-xs font-bold border-2 transition ${editStatus === 'rosib' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+            ✗ Rosib
+          </button>
+        </div>
+        <textarea value={editCatatan} onChange={e => setEditCatatan(e.target.value)}
+          placeholder="Catatan..." rows={2}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 mb-2" />
+        <div className="flex gap-2">
+          <button onClick={handleSimpanEditSetoran} disabled={editLoading}
+            className="flex-1 text-white py-2 rounded-xl text-xs font-semibold disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+            {editLoading ? 'Menyimpan...' : 'Simpan'}
+          </button>
+          <button onClick={() => setEditSetoran(null)}
+            className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl text-xs font-semibold">
+            Batal
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+))}
               </div>
             </div>
           )}
