@@ -525,7 +525,6 @@ const fetchPeriode = async () => {
     // Admin bisa akses semua santri termasuk alumni
     const { data } = await supabase.from('santri')
       .select('*, guru:guru_id(nama)')
-      .eq('jenjang', 'ula')
       .order('kelas_num').order('nama')
     setRapotInputSantriList(data || [])
     setRapotInputSantri(null)
@@ -2187,7 +2186,7 @@ const AlumniList = () => {
                   </>
                 )}
               </div>
-              
+
               {/* Download Rapot */}
               <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-4">Download Rapot</h3>
