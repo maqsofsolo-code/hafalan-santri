@@ -26,11 +26,7 @@ async function kirimWA(nomor: string, pesan: string) {
   }
 }
 
-function getHariWIB() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
-}
-
-function getTodayWIB() {
+function getWIBDate() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
   const y = now.getFullYear()
   const m = String(now.getMonth() + 1).padStart(2, '0')
@@ -38,10 +34,21 @@ function getTodayWIB() {
   return `${y}-${m}-${d}`
 }
 
+function getHariWIB() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
+}
+
+function formatTanggal(tgl: string) {
+  return new Date(tgl + 'T00:00:00').toLocaleDateString('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  })
+}
+
 // ===== NOTIF WALI SANTRI (jam 17.00 WIB) =====
 async function notifWali() {
   const hariMinggu = getHariWIB()
-  const today = getTodayWIB()
+  const today = getWIBDate()
+  const tanggalFormatted = formatTanggal(today)
 
   // Skip Jumat (5) dan Ahad (0)
   if (hariMinggu === 0 || hariMinggu === 5) {
@@ -72,12 +79,9 @@ async function notifWali() {
     .eq('tanggal', today)
 
   // Ambil riwayat rosib 14 hari terakhir untuk cek 3x rosib surat sama
-  const tigaHariLalu = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  tigaHariLalu.setDate(tigaHariLalu.getDate() - 14)
-  const y = tigaHariLalu.getFullYear()
-  const m = String(tigaHariLalu.getMonth() + 1).padStart(2, '0')
-  const d = String(tigaHariLalu.getDate()).padStart(2, '0')
-  const tglMulaiRosib = `${y}-${m}-${d}`
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  now.setDate(now.getDate() - 14)
+  const tglMulaiRosib = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
   const { data: riwayatRosib } = await supabase
     .from('setoran')
@@ -103,31 +107,36 @@ async function notifWali() {
 
     let pesan = ''
 
-    // 1. Tidak hadir - Sakit
+    // 1. Sakit
     if (statusKehadiran === 'sakit') {
-      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. ${namaWali} (Wali dari *${namaSantri}*)\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak hadir karena *sakit*.\n\nSemoga Allah segera memberikan kesembuhan kepada ananda.\n\nاللَّهُمَّ رَبَّ النَّاسِ أَذْهِبِ الْبَاسَ وَاشْفِ أَنْتَ الشَّافِي لَا شِفَاءَ إِلَّا شِفَاؤُكَ شِفَاءً لَا يُغَادِرُ سَقَمَاً\n\n_"Ya Allah, Tuhan manusia, hilangkanlah penyakit ini dan sembuhkanlah, Engkaulah Yang Maha Menyembuhkan, tidak ada kesembuhan kecuali dari-Mu."_\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak dapat hadir karena *sakit*.\n\nSemoga Allah segera memberikan kesembuhan kepada ananda.\n\nاللَّهُمَّ رَبَّ النَّاسِ أَذْهِبِ الْبَاسَ وَاشْفِ أَنْتَ الشَّافِي لَا شِفَاءَ إِلَّا شِفَاؤُكَ شِفَاءً لَا يُغَادِرُ سَقَمَاً\n\n_"Ya Allah, Tuhan manusia, hilangkanlah penyakit ini dan sembuhkanlah, Engkaulah Yang Maha Menyembuhkan, tidak ada kesembuhan kecuali dari-Mu."_\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
 
-    // 2. Tidak hadir - Izin
+    // 2. Izin
     else if (statusKehadiran === 'izin') {
-      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. ${namaWali} (Wali dari *${namaSantri}*)\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak hadir karena *izin*.\n\nKami berpesan agar ananda tetap dimotivasi untuk *murojaah hafalannya di rumah*, karena hafalan yang kuat adalah hafalan yang senantiasa diulang.\n\n_"Jagalah hafalan Al-Qur'an ini, demi Allah, hafalan ini lebih mudah lepas dari hati daripada lepasnya unta dari ikatannya."_ (HR. Bukhari)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak hadir karena *izin*.\n\nKami berpesan agar ananda tetap dimotivasi untuk *murojaah hafalannya di rumah*, karena hafalan yang kuat adalah hafalan yang senantiasa diulang.\n\n_"Jagalah hafalan Al-Qur'an ini, demi Allah, hafalan ini lebih mudah lepas dari hati daripada lepasnya unta dari ikatannya."_ (HR. Bukhari)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
 
-    // 3. Rosib
+    // 3. Alpha
+    else if (statusKehadiran === 'alpha') {
+      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* *tidak hadir tanpa keterangan (alpha)*.\n\nMohon Bapak/Ibu dapat menghubungi pihak pesantren untuk memberikan keterangan.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+    }
+
+    // 4. Rosib
     else if (adaRosib) {
       const setoranRosib = setoranHadir.filter(s => s.status === 'rosib')
       const daftarRosib = setoranRosib.map(s =>
         `- ${s.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}: ${s.surah || '-'} ayat ${s.ayat_mulai}-${s.ayat_selesai}`
       ).join('\n')
-      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. ${namaWali} (Wali dari *${namaSantri}*)\n\nKami informasikan bahwa hari ini *${namaSantri}* perlu mengulang hafalannya (rosib) pada:\n\n${daftarRosib}\n\nMohon bantu muroja'ah di rumah agar hafalan semakin kuat dan lancar.\n\nSemoga Allah memudahkan ananda dalam menghafal Al-Qur'an.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* perlu mengulang hafalannya (rosib) pada:\n\n${daftarRosib}\n\nMohon bantu muroja'ah di rumah agar hafalan semakin kuat dan lancar.\n\nSemoga Allah memudahkan ananda dalam menghafal Al-Qur'an.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
 
-    // 4. Tidak setor sama sekali
+    // 5. Tidak setor sama sekali
     else if (!sudahSetor) {
-      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. ${namaWali} (Wali dari *${namaSantri}*)\n\nKami informasikan bahwa hari ini *${namaSantri}* belum menyetorkan hafalan Al-Qur'an.\n\nMohon kiranya Bapak/Ibu dapat memberikan tasyji' dan semangat kepada ananda.\n\nSemoga Allah membalas kebaikan Bapak/Ibu, menjadikan jerih payah ini sebagai pahala jariyah, dan menjadikan ananda sebagai hafidzul Qur'an yang memberikan mahkota kemuliaan di hari kiamat kelak.\n\nJazakumullahu khairan katsiran.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+      pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* belum menyetorkan hafalan Al-Qur'an.\n\nMohon kiranya Bapak/Ibu dapat memberikan tasyji' dan semangat kepada ananda.\n\nSemoga Allah membalas kebaikan Bapak/Ibu, menjadikan jerih payah ini sebagai pahala jariyah, dan menjadikan ananda sebagai hafidzul Qur'an yang memberikan mahkota kemuliaan di hari kiamat kelak.\n\nJazakumullahu khairan katsiran.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
     }
 
-    // 5. Cek 3x rosib surat yang sama
+    // 6. Cek 3x rosib surat yang sama
     if (!pesan) {
       const rosibPerSurah: Record<string, number> = {}
       ;(riwayatRosib || [])
@@ -140,7 +149,7 @@ async function notifWali() {
         .filter(([, count]) => count >= 3)
         .map(([surah]) => surah)
       if (surahRosib3x.length > 0) {
-        pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. ${namaWali} (Wali dari *${namaSantri}*)\n\nKami informasikan bahwa *${namaSantri}* telah rosib sebanyak *3 kali atau lebih* pada surah:\n\n*${surahRosib3x.join(', ')}*\n\nMohon perhatian dan dukungan ekstra dari Bapak/Ibu.\n\nTeruslah berjuang! Kelak seorang hafidz Al-Qur'an akan memakaikan mahkota kemuliaan kepada kedua orang tuanya di hari kiamat.\n\n_"Barang siapa menghafal Al-Qur'an, ia akan datang pada hari kiamat dan Al-Qur'an berkata: Ya Rabb, pakaikanlah dia mahkota kemuliaan."_ (HR. Tirmidzi)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+        pesan = `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa *${namaSantri}* telah rosib sebanyak *3 kali atau lebih* pada surah:\n\n*${surahRosib3x.join(', ')}*\n\nMohon perhatian dan dukungan ekstra dari Bapak/Ibu.\n\nTeruslah berjuang! Kelak seorang hafidz Al-Qur'an akan memakaikan mahkota kemuliaan kepada kedua orang tuanya di hari kiamat.\n\n_"Barang siapa menghafal Al-Qur'an, ia akan datang pada hari kiamat dan Al-Qur'an berkata: Ya Rabb, pakaikanlah dia mahkota kemuliaan."_ (HR. Tirmidzi)\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
       }
     }
 
@@ -157,12 +166,13 @@ async function notifWali() {
 // ===== REMINDER GURU =====
 async function reminderGuru(sesi: string) {
   const hariMinggu = getHariWIB()
+  const today = getWIBDate()
+  const tanggalFormatted = formatTanggal(today)
 
   if (hariMinggu === 0 || hariMinggu === 5) {
     return { message: 'Hari libur' }
   }
 
-  const today = getTodayWIB()
   const { data: kalender } = await supabase
     .from('kalender_akademik')
     .select('*')
@@ -179,22 +189,46 @@ async function reminderGuru(sesi: string) {
 
   if (!guruList) return { message: 'Tidak ada guru' }
 
+  // Ambil absensi hari ini
+  const { data: absensiHariIni } = await supabase
+    .from('absensi_guru')
+    .select('*')
+    .eq('tanggal', today)
+
+  // Ambil setoran hari ini per guru
+  const { data: setoranHariIni } = await supabase
+    .from('setoran')
+    .select('guru_id')
+    .eq('tanggal', today)
+
+  const guruSudahInput = [...new Set((setoranHariIni || []).map((s: any) => s.guru_id))]
+
   const pesanPerSesi: Record<string, string> = {
-    subuh: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. Ustadz/Ustadzah yang mulia,\n\nKami mengingatkan bahwa *sesi setoran Subuh* akan segera dimulai pukul *04.00 - 05.30*.\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
+    subuh: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nKami mengingatkan bahwa *sesi setoran Subuh* akan segera dimulai pukul *04.00 - 05.30*.\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
 
-    pagi: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. Ustadz/Ustadzah yang mulia,\n\nKami mengingatkan bahwa *sesi setoran Pagi* akan segera dimulai pukul *08.00 - 09.45*.\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
+    pagi: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nKami mengingatkan bahwa *sesi setoran Pagi* akan segera dimulai pukul *08.00 - 09.45*.\n\nMohon segera bersiap dan jangan lupa *input data hafalan santri* setelah sesi selesai.\n\nBaarakallahu fiikum.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`,
 
-    sore: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYth. Ustadz/Ustadzah yang mulia,\n\nIni adalah *pengingat sore* pukul 15.00. Mohon pastikan semua data hafalan santri hari ini sudah *diinput ke sistem* sebelum pukul 17.00.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
+    sore: `Bismillahirrahmanirrahim\n\nAssalamu'alaikum warahmatullahi wabarakatuh\n\nYkh. Ustadz/Ustadzah yang mulia,\n\n📅 *${tanggalFormatted}*\n\nIni adalah *pengingat sore* pukul 15.00. Mohon pastikan semua data hafalan santri hari ini sudah *diinput ke sistem* sebelum pukul 17.00.\n\nJazakumullahu khairan.\n_Pondok Pesantren Daarus Salaf Sukoharjo_`
   }
-
-  const pesan = pesanPerSesi[sesi]
-  if (!pesan) return { message: 'Sesi tidak valid' }
 
   let terkirim = 0
   let gagal = 0
 
   for (const guru of guruList) {
     if (!guru.no_wa) continue
+
+    const sudahAbsenSubuh = (absensiHariIni || []).some((a: any) => a.guru_id === guru.id && a.sesi === 'subuh')
+    const sudahAbsenPagi = (absensiHariIni || []).some((a: any) => a.guru_id === guru.id && a.sesi === 'pagi')
+    const sudahInput = guruSudahInput.includes(guru.id)
+
+    // Skip jika sudah absen/input sesuai sesi
+    if (sesi === 'subuh' && sudahAbsenSubuh) continue
+    if (sesi === 'pagi' && sudahAbsenPagi) continue
+    if (sesi === 'sore' && sudahInput) continue
+
+    const pesan = pesanPerSesi[sesi]
+    if (!pesan) continue
+
     const hasil = await kirimWA(guru.no_wa, pesan)
     if (hasil.status) terkirim++
     else gagal++
