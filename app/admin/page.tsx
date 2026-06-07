@@ -90,6 +90,10 @@ useEffect(() => {
   const [rapotKelasSnapshot, setRapotKelasSnapshot] = useState('')
   const [rapotJenjangSnapshot, setRapotJenjangSnapshot] = useState('ula')
   const [rapotActiveTab, setRapotActiveTab] = useState('periode')
+  const [rapotDownloadSearch, setRapotDownloadSearch] = useState('')
+  const [rapotDownloadSantri, setRapotDownloadSantri] = useState<any>(null)
+  const [rapotDownloadKelas, setRapotDownloadKelas] = useState('')
+  const [rapotDownloadJenjang, setRapotDownloadJenjang] = useState('ula')
 
   // Form kalender
   const [formKalNama, setFormKalNama] = useState('')
@@ -1904,7 +1908,8 @@ const AlumniList = () => {
                   <button key={tab.id}
                     onClick={() => {
                       setRapotActiveTab(tab.id)
-                      if (tab.id === 'periode' || tab.id === 'input' || tab.id === 'download') fetchPeriode()
+                      fetchPeriode()
+                      if (tab.id === 'download' && rapotInputSantriList.length === 0) fetchSantriUntukRapot('')
                     }}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${rapotActiveTab === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
                     {tab.label}
@@ -2291,45 +2296,145 @@ const AlumniList = () => {
 
               {/* TAB: DOWNLOAD */}
               {rapotActiveTab === 'download' && (
-                <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
-                  <h3 className="font-bold text-gray-800 mb-4">Download Rapot PDF</h3>
-                  <div className="space-y-3 mb-4">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Periode</label>
-                      <select value={rapotPeriodeId} onChange={e => setRapotPeriodeId(e.target.value)} className={inputClass}>
-                        <option value="">-- Pilih Periode --</option>
-                        {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
-                      </select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-4">
+
+                  {/* Download Per Kelas */}
+                  <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-1">Download Per Kelas</h3>
+                    <p className="text-xs text-gray-400 mb-4">Semua rapot santri dalam satu kelas digabung jadi 1 file</p>
+                    <div className="space-y-3 mb-4">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-                        <select value={rapotJenjang} onChange={e => { setRapotJenjang(e.target.value); setRapotKelas('') }} className={inputClass}>
-                          <option value="ula">Ula</option>
-                          <option value="wustha">Wustha</option>
-                          <option value="ulya">Ulya</option>
+                        <label className="block text-xs text-gray-500 mb-1">Periode</label>
+                        <select value={rapotPeriodeId} onChange={e => setRapotPeriodeId(e.target.value)} className={inputClass}>
+                          <option value="">-- Pilih Periode --</option>
+                          {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-                        <select value={rapotKelas} onChange={e => setRapotKelas(e.target.value)} className={inputClass}>
-                          <option value="">-- Pilih Kelas --</option>
-                          {getKelasOptions(rapotJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
-                        </select>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                          <select value={rapotJenjang} onChange={e => { setRapotJenjang(e.target.value); setRapotKelas('') }} className={inputClass}>
+                            <option value="ula">Ula</option>
+                            <option value="wustha">Wustha</option>
+                            <option value="ulya">Ulya</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                          <select value={rapotKelas} onChange={e => setRapotKelas(e.target.value)} className={inputClass}>
+                            <option value="">-- Pilih Kelas --</option>
+                            {getKelasOptions(rapotJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
+                          </select>
+                        </div>
                       </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        if (!rapotPeriodeId || !rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
+                        window.open(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`, '_blank')
+                      }}
+                      disabled={!rapotPeriodeId || !rapotKelas}
+                      className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                      📄 Download Rapot Satu Kelas
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      if (!rapotPeriodeId || !rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
-                      window.open(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`, '_blank')
-                    }}
-                    disabled={!rapotPeriodeId || !rapotKelas}
-                    className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
-                    style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                    📄 Download Rapot PDF
-                  </button>
-                  <p className="text-xs text-gray-400 mt-2 text-center">Semua santri dalam kelas akan digabung dalam 1 file</p>
+
+                  {/* Download Per Santri */}
+                  <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-1">Download Per Santri</h3>
+                    <p className="text-xs text-gray-400 mb-4">Download rapot satu santri saja</p>
+                    <div className="space-y-3 mb-4">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Periode</label>
+                        <select value={rapotPeriodeId} onChange={e => setRapotPeriodeId(e.target.value)} className={inputClass}>
+                          <option value="">-- Pilih Periode --</option>
+                          {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Cari Santri</label>
+                        <input type="text" value={rapotDownloadSearch}
+                          onChange={e => setRapotDownloadSearch(e.target.value)}
+                          placeholder="Ketik nama santri..." className={inputClass + ' mb-2'} />
+                        {rapotDownloadSearch && !rapotDownloadSantri && (
+                          <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                            {rapotInputSantriList
+                              .filter(s => s.nama.toLowerCase().includes(rapotDownloadSearch.toLowerCase()))
+                              .map(s => (
+                                <button key={s.id} onClick={() => {
+                                  setRapotDownloadSantri(s)
+                                  setRapotDownloadSearch(s.nama)
+                                  setRapotDownloadKelas(s.kelas_num?.toString() || '')
+                                  setRapotDownloadJenjang(s.jenjang || 'ula')
+                                }} className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
+                                  <span className="font-medium">{s.nama}</span>
+                                  <span className="text-gray-400 text-xs ml-2">{s.kelas || '-'}</span>
+                                  <span className={`text-xs ml-2 px-1.5 py-0.5 rounded-full ${s.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                    {s.status}
+                                  </span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        {rapotDownloadSantri && (
+                          <div className="mt-2 p-3 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center">
+                            <div>
+                              <div className="font-bold text-gray-800">{rapotDownloadSantri.nama}</div>
+                              <div className="text-xs text-gray-500">{rapotDownloadSantri.kelas || '-'}</div>
+                            </div>
+                            <button onClick={() => { setRapotDownloadSantri(null); setRapotDownloadSearch('') }}
+                              className="text-gray-400 text-xl">×</button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pilih kelas saat periode — penting untuk alumni */}
+                      {rapotDownloadSantri && (
+                        <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-200">
+                          <p className="text-xs font-semibold text-gray-600 mb-2">📌 Kelas saat periode ini (penting untuk alumni)</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <select value={rapotDownloadJenjang}
+                              onChange={e => { setRapotDownloadJenjang(e.target.value); setRapotDownloadKelas('') }}
+                              className={inputClass}>
+                              <option value="ula">Ula</option>
+                              <option value="wustha">Wustha</option>
+                              <option value="ulya">Ulya</option>
+                            </select>
+                            <select value={rapotDownloadKelas}
+                              onChange={e => setRapotDownloadKelas(e.target.value)}
+                              className={inputClass}>
+                              <option value="">-- Kelas --</option>
+                              {getKelasOptions(rapotDownloadJenjang).map(k => (
+                                <option key={k} value={k}>Kelas {k}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (!rapotPeriodeId || !rapotDownloadSantri) { alert('Pilih periode dan santri dulu!'); return }
+                        const params = new URLSearchParams({
+                          periode_id: rapotPeriodeId,
+                          santri_id: rapotDownloadSantri.id,
+                          jenjang: rapotDownloadJenjang,
+                          kelas: rapotDownloadKelas || rapotDownloadSantri.kelas_num?.toString() || '',
+                        })
+                        window.open(`/api/rapot-pdf?${params}`, '_blank')
+                      }}
+                      disabled={!rapotPeriodeId || !rapotDownloadSantri}
+                      className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                      📄 Download Rapot Santri Ini
+                    </button>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200">
+                    <p className="text-xs text-blue-700">💡 <strong>Tips:</strong> Setelah halaman terbuka, tekan <strong>Ctrl+P</strong> lalu pilih <strong>Save as PDF</strong> untuk menyimpan file PDF.</p>
+                  </div>
                 </div>
               )}
             </div>
