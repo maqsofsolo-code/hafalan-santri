@@ -1718,7 +1718,7 @@ const AlumniList = () => {
                   { id: 'total', label: 'Total Hafalan', sub: 'Keseluruhan' },
                   { id: 'konsistensi', label: 'Konsistensi Setor', sub: '7 hari terakhir' },
                   { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir' },
-                ].map(tab => (
+                ].map((tab: { id: string; label: string; sub: string }) => (
                   <button key={tab.id} onClick={() => setActiveRanking(tab.id)}
                     className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${activeRanking === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
                     <div>{tab.label}</div>
