@@ -875,7 +875,11 @@ const AlumniList = () => {
                   </div>
                   {s.keterangan_keluar && <div className="text-xs text-gray-400 mt-0.5">{s.keterangan_keluar}</div>}
                 </div>
-                <button onClick={() => handleEditSantri(s)}
+                <button onClick={() => {
+                  handleEditSantri(s)
+                  setActiveMenu('santri')
+                  setSidebarOpen(false)
+                }}
                   className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50 flex-shrink-0">Edit</button>
               </div>
             </div>
