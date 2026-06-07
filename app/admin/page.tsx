@@ -94,6 +94,11 @@ useEffect(() => {
   const [rapotDownloadSantri, setRapotDownloadSantri] = useState<any>(null)
   const [rapotDownloadKelas, setRapotDownloadKelas] = useState('')
   const [rapotDownloadJenjang, setRapotDownloadJenjang] = useState('ula')
+  const [rapotRekapPeriodeId, setRapotRekapPeriodeId] = useState('')
+  const [rapotRekapJenjang, setRapotRekapJenjang] = useState('ula')
+  const [rapotRekapKelas, setRapotRekapKelas] = useState('')
+  const [rapotRekapData, setRapotRekapData] = useState<any[]>([])
+  const [rapotRekapLoading, setRapotRekapLoading] = useState(false)
 
   // Form kalender
   const [formKalNama, setFormKalNama] = useState('')
@@ -526,6 +531,70 @@ const fetchPeriode = async () => {
     setFormPeriodeTahunAjaran(p.tahun_ajaran); setFormPeriodeSemester(p.semester)
     setFormPeriodeTanggal(p.tanggal_rapot || ''); setFormPeriodeAktif(p.is_aktif)
     setShowFormPeriode(true)
+  }
+
+  const fetchRekapKelas = async () => {
+    if (!rapotRekapPeriodeId || !rapotRekapKelas) return
+    setRapotRekapLoading(true)
+    setRapotRekapData([])
+
+    // Ambil nilai berdasarkan kelas_snapshot dulu
+    const { data: nilaiSnapshot } = await supabase
+      .from('nilai_rapot')
+      .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
+      .eq('periode_id', rapotRekapPeriodeId)
+      .eq('kelas_snapshot', parseInt(rapotRekapKelas))
+
+    let nilaiList = nilaiSnapshot || []
+
+    // Jika tidak ada kelas_snapshot, fallback ke kelas santri saat ini
+    if (nilaiList.length === 0) {
+      const { data: santriKelas } = await supabase
+        .from('santri').select('id')
+        .eq('jenjang', rapotRekapJenjang)
+        .eq('kelas_num', parseInt(rapotRekapKelas))
+      const ids = (santriKelas || []).map((s: any) => s.id)
+      if (ids.length > 0) {
+        const { data: nilaiFallback } = await supabase
+          .from('nilai_rapot')
+          .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
+          .eq('periode_id', rapotRekapPeriodeId)
+          .in('santri_id', ids)
+        nilaiList = nilaiFallback || []
+      }
+    }
+
+    // Hitung rata-rata per santri
+    const hitungRata = (n: any) => {
+      const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v: any) => v != null && v > 0)
+      const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v: any) => v != null && v > 0)
+      if (d.length === 0 && u.length === 0) return 0
+      const rd = d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : 0
+      const ru = u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : 0
+      if (d.length === 0) return ru
+      if (u.length === 0) return rd
+      return (rd + ru) / 2
+    }
+
+    // Tambah rata-rata dan urutkan
+    const withRata = nilaiList.map((n: any) => ({
+      ...n,
+      rata_diiniyyah: (() => {
+        const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v: any) => v != null && v > 0)
+        return d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : null
+      })(),
+      rata_umum: (() => {
+        const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v: any) => v != null && v > 0)
+        return u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : null
+      })(),
+      rata_akhir: hitungRata(n)
+    })).sort((a: any, b: any) => b.rata_akhir - a.rata_akhir)
+
+    // Tambah peringkat
+    const withPeringkat = withRata.map((n: any, i: number) => ({ ...n, peringkat: i + 1 }))
+
+    setRapotRekapData(withPeringkat)
+    setRapotRekapLoading(false)
   }
 
   const fetchSantriUntukRapot = async (periodeId: string) => {
@@ -1645,9 +1714,10 @@ const AlumniList = () => {
               {/* Tab */}
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {[
-                  { id: 'total', label: 'Total Hafalan', sub: 'Keseluruhan' },
-                  { id: 'konsistensi', label: 'Konsistensi Setor', sub: '7 hari terakhir' },
-                  { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir' },
+                  { id: 'periode', label: 'Periode' },
+                  { id: 'input', label: 'Input Nilai' },
+                  { id: 'rekap', label: 'Rekap Kelas' },
+                  { id: 'download', label: 'Download' },
                 ].map(tab => (
                   <button key={tab.id} onClick={() => setActiveRanking(tab.id)}
                     className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${activeRanking === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
@@ -2294,6 +2364,192 @@ const AlumniList = () => {
                 </div>
               )}
 
+{/* TAB: REKAP KELAS */}
+              {rapotActiveTab === 'rekap' && (
+                <div>
+                  <div className="bg-white rounded-2xl shadow p-5 mb-4 border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-4">Rekap Nilai Kelas</h3>
+                    <div className="space-y-3 mb-4">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Periode</label>
+                        <select value={rapotRekapPeriodeId}
+                          onChange={e => { setRapotRekapPeriodeId(e.target.value); setRapotRekapData([]) }}
+                          className={inputClass}>
+                          <option value="">-- Pilih Periode --</option>
+                          {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}{p.is_aktif ? ' (Aktif)' : ''}</option>)}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                          <select value={rapotRekapJenjang}
+                            onChange={e => { setRapotRekapJenjang(e.target.value); setRapotRekapKelas(''); setRapotRekapData([]) }}
+                            className={inputClass}>
+                            <option value="ula">Ula</option>
+                            <option value="wustha">Wustha</option>
+                            <option value="ulya">Ulya</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                          <select value={rapotRekapKelas}
+                            onChange={e => { setRapotRekapKelas(e.target.value); setRapotRekapData([]) }}
+                            className={inputClass}>
+                            <option value="">-- Pilih Kelas --</option>
+                            {getKelasOptions(rapotRekapJenjang).map(k => (
+                              <option key={k} value={k}>Kelas {k}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={fetchRekapKelas}
+                      disabled={!rapotRekapPeriodeId || !rapotRekapKelas || rapotRekapLoading}
+                      className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                      {rapotRekapLoading ? 'Memuat...' : '🔍 Tampilkan Rekap Nilai'}
+                    </button>
+                  </div>
+
+                  {rapotRekapData.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-4 flex justify-between items-center"
+                        style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                        <div>
+                          <h3 className="text-white font-bold">Rekap Kelas {rapotRekapKelas} {jenjangLabel(rapotRekapJenjang)}</h3>
+                          <p className="text-blue-200 text-xs mt-0.5">{rapotRekapData.length} santri • {periodeList.find(p => p.id === rapotRekapPeriodeId)?.nama}</p>
+                        </div>
+                      </div>
+
+                      {/* Tabel scroll horizontal */}
+                      <div className="overflow-x-auto">
+                        <table style={{ minWidth: '900px', width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                          <thead>
+                            <tr style={{ background: '#f0f4ff' }}>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '35px' }}>No</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left', minWidth: '130px' }}>Nama Santri</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Klancaran</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Tajwid</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Aqidah</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Akhlak</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Fiqh</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Arab</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Siroh</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Khoth</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata D</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Ind</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Hitung</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPA</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPS</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata U</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Rata Akhir</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Peringkat</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rapotRekapData.map((n: any, i: number) => {
+                              const isComplete = n.rata_akhir > 0
+                              return (
+                                <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>
+                                    <div style={{ fontWeight: '600' }}>{n.santri?.nama || '-'}</div>
+                                    {n.santri?.status !== 'aktif' && (
+                                      <div style={{ fontSize: '10px', color: '#d97706' }}>{n.santri?.status}</div>
+                                    )}
+                                  </td>
+                                  {[n.kelancaran, n.tajwid].map((v: any, idx: number) => (
+                                    <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? '#1e3a8a' : '#ccc' }}>
+                                      {v ?? '-'}
+                                    </td>
+                                  ))}
+                                  {[n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].map((v: any, idx: number) => (
+                                    <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>
+                                      {v ?? '-'}
+                                    </td>
+                                  ))}
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
+                                    {n.rata_diiniyyah ? n.rata_diiniyyah.toFixed(1) : '-'}
+                                  </td>
+                                  {[n.bhs_indonesia, n.berhitung, n.ipa, n.ips].map((v: any, idx: number) => (
+                                    <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>
+                                      {v ?? '-'}
+                                    </td>
+                                  ))}
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
+                                    {n.rata_umum ? n.rata_umum.toFixed(1) : '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3', fontWeight: 'bold', fontSize: '12px', color: isComplete ? '#92400e' : '#ccc' }}>
+                                    {n.rata_akhir ? n.rata_akhir.toFixed(1) : '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
+                                    {isComplete ? (
+                                      <span style={{
+                                        background: n.peringkat === 1 ? '#fbbf24' : n.peringkat === 2 ? '#9ca3af' : n.peringkat === 3 ? '#f97316' : '#e5e7eb',
+                                        color: n.peringkat <= 3 ? 'white' : '#374151',
+                                        padding: '2px 8px', borderRadius: '999px', fontWeight: 'bold', fontSize: '11px'
+                                      }}>
+                                        {n.peringkat}
+                                      </span>
+                                    ) : '-'}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ background: '#f0f4ff', fontWeight: 'bold' }}>
+                              <td colSpan={2} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>Rata-rata Kelas</td>
+                              {['kelancaran','tajwid','aqidah','akhlak','fiqh','bhs_arab','siroh','khoth'].map((field: string) => {
+                                const vals = rapotRekapData.map((n: any) => n[field]).filter((v: any) => v != null && v > 0)
+                                const avg = vals.length > 0 ? (vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                return <td key={field} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
+                              })}
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>
+                                {(() => {
+                                  const vals = rapotRekapData.map((n: any) => n.rata_diiniyyah).filter((v: any) => v != null && v > 0)
+                                  return vals.length > 0 ? (vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                })()}
+                              </td>
+                              {['bhs_indonesia','berhitung','ipa','ips'].map((field: string) => {
+                                const vals = rapotRekapData.map((n: any) => n[field]).filter((v: any) => v != null && v > 0)
+                                const avg = vals.length > 0 ? (vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                return <td key={field} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
+                              })}
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>
+                                {(() => {
+                                  const vals = rapotRekapData.map((n: any) => n.rata_umum).filter((v: any) => v != null && v > 0)
+                                  return vals.length > 0 ? (vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                })()}
+                              </td>
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
+                                {(() => {
+                                  const vals = rapotRekapData.map((n: any) => n.rata_akhir).filter((v: any) => v != null && v > 0)
+                                  return vals.length > 0 ? (vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                })()}
+                              </td>
+                              <td style={{ border: '1px solid #ddd' }}></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+
+                      <div className="p-4">
+                        <p className="text-xs text-gray-400">
+                          Nilai merah = di bawah 60 • Peringkat dihitung dari Rata-rata Akhir (Diiniyyah + Umum) / 2
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {rapotRekapData.length === 0 && !rapotRekapLoading && rapotRekapPeriodeId && rapotRekapKelas && (
+                    <div className="bg-white rounded-2xl p-8 text-center text-gray-400 shadow border border-gray-100">
+                      Belum ada data nilai untuk kelas ini
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {/* TAB: DOWNLOAD */}
               {rapotActiveTab === 'download' && (
                 <div className="space-y-4">
