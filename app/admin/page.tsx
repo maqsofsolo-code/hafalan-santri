@@ -1711,13 +1711,12 @@ const AlumniList = () => {
                 </p>
               </div>
 
-              {/* Tab */}
+              {/* Tab Ranking */}
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {[
-                  { id: 'periode', label: 'Periode' },
-                  { id: 'input', label: 'Input Nilai' },
-                  { id: 'rekap', label: 'Rekap Kelas' },
-                  { id: 'download', label: 'Download' },
+                  { id: 'total', label: 'Total Hafalan', sub: 'Keseluruhan' },
+                  { id: 'konsistensi', label: 'Konsistensi Setor', sub: '7 hari terakhir' },
+                  { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir' },
                 ].map(tab => (
                   <button key={tab.id} onClick={() => setActiveRanking(tab.id)}
                     className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${activeRanking === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
@@ -1969,17 +1968,18 @@ const AlumniList = () => {
               </div>
 
               {/* Tab */}
-              <div className="flex gap-2 mb-5">
+              <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {[
-                  { id: 'periode', label: 'Periode Rapot' },
+                  { id: 'periode', label: 'Periode' },
                   { id: 'input', label: 'Input Nilai' },
-                  { id: 'download', label: 'Download PDF' },
+                  { id: 'rekap', label: 'Rekap Kelas' },
+                  { id: 'download', label: 'Download' },
                 ].map(tab => (
                   <button key={tab.id}
                     onClick={() => {
                       setRapotActiveTab(tab.id)
                       fetchPeriode()
-                      if (tab.id === 'download' && rapotInputSantriList.length === 0) fetchSantriUntukRapot('')
+                      if ((tab.id === 'download' || tab.id === 'rekap') && rapotInputSantriList.length === 0) fetchSantriUntukRapot('')
                     }}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${rapotActiveTab === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
                     {tab.label}
@@ -2549,7 +2549,7 @@ const AlumniList = () => {
                   )}
                 </div>
               )}
-              
+
               {/* TAB: DOWNLOAD */}
               {rapotActiveTab === 'download' && (
                 <div className="space-y-4">
