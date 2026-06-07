@@ -2414,22 +2414,36 @@ const AlumniList = () => {
                       )}
                     </div>
 
-                    <button
-                      onClick={() => {
-                        if (!rapotPeriodeId || !rapotDownloadSantri) { alert('Pilih periode dan santri dulu!'); return }
-                        const params = new URLSearchParams({
-                          periode_id: rapotPeriodeId,
-                          santri_id: rapotDownloadSantri.id,
-                          jenjang: rapotDownloadJenjang,
-                          kelas: rapotDownloadKelas || rapotDownloadSantri.kelas_num?.toString() || '',
-                        })
-                        window.open(`/api/rapot-pdf?${params}`, '_blank')
-                      }}
-                      disabled={!rapotPeriodeId || !rapotDownloadSantri}
-                      className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
-                      style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
-                      📄 Download Rapot Santri Ini
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          if (!rapotPeriodeId || !rapotDownloadSantri) { alert('Pilih periode dan santri dulu!'); return }
+                          const params = new URLSearchParams({
+                            periode_id: rapotPeriodeId,
+                            santri_id: rapotDownloadSantri.id,
+                            jenjang: rapotDownloadJenjang,
+                            kelas: rapotDownloadKelas || rapotDownloadSantri.kelas_num?.toString() || '',
+                          })
+                          window.open(`/api/rapot-pdf?${params}`, '_blank')
+                        }}
+                        disabled={!rapotPeriodeId || !rapotDownloadSantri}
+                        className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                        style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                        📄 Download Rapot Periode Ini
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (!rapotDownloadSantri) { alert('Pilih santri dulu!'); return }
+                          window.open(`/api/rapot-pdf?santri_id=${rapotDownloadSantri.id}&mode=lengkap`, '_blank')
+                        }}
+                        disabled={!rapotDownloadSantri}
+                        className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                        style={{ background: 'linear-gradient(135deg, #92400e, #d97706)' }}>
+                        📚 Download Semua Rapot (Lengkap)
+                      </button>
+                      <p className="text-xs text-gray-400 text-center">Semua rapot dari kelas 1 hingga terakhir dalam 1 file</p>
+                    </div>
                   </div>
 
                   <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200">
