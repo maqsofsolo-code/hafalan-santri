@@ -89,6 +89,7 @@ useEffect(() => {
   const [rapotExistingId, setRapotExistingId] = useState<any>(null)
   const [rapotKelasSnapshot, setRapotKelasSnapshot] = useState('')
   const [rapotJenjangSnapshot, setRapotJenjangSnapshot] = useState('ula')
+  const [rapotActiveTab, setRapotActiveTab] = useState('periode')
 
   // Form kalender
   const [formKalNama, setFormKalNama] = useState('')
@@ -1885,393 +1886,448 @@ const AlumniList = () => {
                 <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
                 <div className="relative z-10">
                   <h2 className="font-bold text-xl">Rapot Digital</h2>
-                  <p className="text-blue-100 text-sm mt-1">Kelola periode & download rapot santri</p>
+                  <p className="text-blue-100 text-sm mt-1">Kelola periode, input nilai & download rapot</p>
                 </div>
               </div>
 
-              {/* Periode Rapot */}
-              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-gray-800">Periode Rapot</h3>
-                  <button onClick={() => { resetFormPeriode(); setShowFormPeriode(true); fetchPeriode() }}
-                    className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                    + Tambah Periode
-                  </button>
-                </div>
-
-                {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
-
-                {showFormPeriode && (
-                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 mb-4">
-                    <h4 className="font-bold text-gray-800 mb-3">{editPeriodeId ? 'Edit Periode' : 'Tambah Periode Baru'}</h4>
-                    <div className="space-y-3">
-                      <input placeholder="Nama Periode (misal: Semester Genap 2025/2026)"
-                        value={formPeriodeNama} onChange={e => setFormPeriodeNama(e.target.value)} className={inputClass} />
-                      <input placeholder="Tahun Ajaran (misal: 1446-1447 H / 2025-2026 M)"
-                        value={formPeriodeTahunAjaran} onChange={e => setFormPeriodeTahunAjaran(e.target.value)} className={inputClass} />
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Semester</label>
-                          <select value={formPeriodeSemester} onChange={e => setFormPeriodeSemester(e.target.value)} className={inputClass}>
-                            <option value="ganjil">Ganjil</option>
-                            <option value="genap">Genap</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Tanggal Rapot</label>
-                          <input type="date" value={formPeriodeTanggal} onChange={e => setFormPeriodeTanggal(e.target.value)} className={inputClass} />
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-xl border border-blue-200">
-                        <div onClick={() => setFormPeriodeAktif(!formPeriodeAktif)}
-                          className={`w-10 h-5 rounded-full transition-all flex-shrink-0 ${formPeriodeAktif ? 'bg-blue-600' : 'bg-gray-300'}`}>
-                          <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-all ${formPeriodeAktif ? 'ml-5' : 'ml-0.5'}`} />
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-gray-700">Jadikan Periode Aktif</div>
-                          <div className="text-xs text-gray-400">Guru akan input nilai untuk periode ini</div>
-                        </div>
-                      </label>
-                    </div>
-                    {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
-                    <div className="flex gap-2 mt-4">
-                      <button onClick={editPeriodeId ? handleUpdatePeriode : handleTambahPeriode} disabled={loading}
-                        className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                        {loading ? 'Menyimpan...' : editPeriodeId ? 'Update' : 'Simpan'}
-                      </button>
-                      <button onClick={() => { setShowFormPeriode(false); resetFormPeriode() }}
-                        className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm">Batal</button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  {periodeList.length === 0 && (
-                    <button onClick={fetchPeriode} className="w-full p-4 text-center text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-xl">
-                      Klik untuk memuat data periode
-                    </button>
-                  )}
-                  {periodeList.map(p => (
-                    <div key={p.id} className={`p-4 rounded-xl border-2 ${p.is_aktif ? 'border-blue-400 bg-blue-50' : 'border-gray-100 bg-white'}`}>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-semibold text-gray-800 flex items-center gap-2">
-                            {p.nama}
-                            {p.is_aktif && <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">Aktif</span>}
-                          </div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            {p.tahun_ajaran} • Semester {p.semester.charAt(0).toUpperCase() + p.semester.slice(1)}
-                            {p.tanggal_rapot && ` • ${new Date(p.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <button onClick={() => handleEditPeriode(p)} className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50">Edit</button>
-                          <button onClick={() => handleHapusPeriode(p.id)} className="text-red-400 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50">Hapus</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-{/* Input Nilai Rapot */}
-              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-4">Input Nilai Rapot</h3>
-                <p className="text-xs text-gray-400 mb-4">Admin bisa input nilai untuk semua santri termasuk data lama</p>
-
-                {/* Pilih Periode */}
-                <div className="mb-4">
-                  <label className="block text-xs text-gray-500 mb-1">Periode</label>
-                  <select value={rapotInputPeriodeId}
-                    onChange={e => {
-                      setRapotInputPeriodeId(e.target.value)
-                      if (e.target.value) fetchSantriUntukRapot(e.target.value)
+              {/* Tab */}
+              <div className="flex gap-2 mb-5">
+                {[
+                  { id: 'periode', label: 'Periode Rapot' },
+                  { id: 'input', label: 'Input Nilai' },
+                  { id: 'download', label: 'Download PDF' },
+                ].map(tab => (
+                  <button key={tab.id}
+                    onClick={() => {
+                      setRapotActiveTab(tab.id)
+                      if (tab.id === 'periode' || tab.id === 'input' || tab.id === 'download') fetchPeriode()
                     }}
-                    onClick={fetchPeriode}
-                    className={inputClass}>
-                    <option value="">-- Pilih Periode --</option>
-                    {periodeList.map(p => (
-                      <option key={p.id} value={p.id}>{p.nama} {p.is_aktif ? '(Aktif)' : ''}</option>
-                    ))}
-                  </select>
-                </div>
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${rapotActiveTab === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-                {rapotInputPeriodeId && (
-                  <>
-                    {/* Pilih Santri */}
-                    <div className="mb-4">
-                      <label className="block text-xs text-gray-500 mb-1">Pilih Santri</label>
-                      <input type="text" value={rapotInputSearch}
-                        onChange={e => setRapotInputSearch(e.target.value)}
-                        placeholder="Cari nama santri..." className={inputClass + ' mb-2'} />
-                      {rapotInputSearch && (
-                        <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                          {rapotInputSantriList
-                            .filter(s => s.nama.toLowerCase().includes(rapotInputSearch.toLowerCase()))
-                            .map(s => (
-                              <button key={s.id} onClick={() => {
-                                setRapotInputSantri(s)
-                                setRapotInputSearch(s.nama)
-                                setRapotKelasSnapshot(s.kelas_num?.toString() || '')
-                                setRapotJenjangSnapshot(s.jenjang || 'ula')
-                                fetchNilaiRapotAdmin(s.id, rapotInputPeriodeId, s.kelas_num?.toString())
-                              }} className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
-                                <span className="font-medium">{s.nama}</span>
-                                <span className="text-gray-400 text-xs ml-2">{s.kelas || '-'}</span>
-                                {s.status !== 'aktif' && (
-                                  <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full ml-2">
-                                    {s.status}
-                                  </span>
-                                )}
-                              </button>
-                            ))}
-                          {rapotInputSantriList.filter(s => s.nama.toLowerCase().includes(rapotInputSearch.toLowerCase())).length === 0 &&
-                            <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
-                        </div>
-                      )}
-                      {rapotInputSantri && (
-                        <div className="mt-2 p-3 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center">
-                          <div>
-                            <div className="font-bold text-gray-800">{rapotInputSantri.nama}</div>
-                            <div className="text-xs text-gray-500">{rapotInputSantri.kelas || '-'} • {rapotInputSantri.total_hafalan_juz?.toFixed(2)} Juz</div>
-                            {rapotExistingId && <div className="text-xs text-green-600 mt-0.5">✓ Data rapot sudah ada — akan diupdate</div>}
-                          </div>
-                          <button onClick={() => { setRapotInputSantri(null); setRapotInputSearch(''); setRapotNilai({}); setRapotExistingId(null); setRapotKelasSnapshot(''); setRapotJenjangSnapshot('ula') }}
-                            className="text-gray-400 text-xl">×</button>
-                        </div>
-                      )}
-                    </div>
-{rapotInputSantri && (
-                      <div className="mb-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-                        <p className="text-sm font-bold text-gray-700 mb-1">📌 Kelas pada Periode Ini</p>
-                        <p className="text-xs text-gray-500 mb-3">Pilih kelas santri saat periode rapot ini berlangsung. Untuk alumni, pilih kelas lama mereka.</p>
+              {/* TAB: PERIODE */}
+              {rapotActiveTab === 'periode' && (
+                <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-800">Daftar Periode Rapot</h3>
+                    <button onClick={() => { resetFormPeriode(); setShowFormPeriode(true) }}
+                      className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                      + Tambah
+                    </button>
+                  </div>
+
+                  {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
+
+                  {showFormPeriode && (
+                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 mb-4">
+                      <h4 className="font-bold text-gray-800 mb-3">{editPeriodeId ? 'Edit Periode' : 'Tambah Periode Baru'}</h4>
+                      <div className="space-y-3">
+                        <input placeholder="Nama Periode (misal: Semester Genap 2025/2026)"
+                          value={formPeriodeNama} onChange={e => setFormPeriodeNama(e.target.value)} className={inputClass} />
+                        <input placeholder="Tahun Ajaran (misal: 1446-1447 H / 2025-2026 M)"
+                          value={formPeriodeTahunAjaran} onChange={e => setFormPeriodeTahunAjaran(e.target.value)} className={inputClass} />
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-                            <select value={rapotJenjangSnapshot}
-                              onChange={e => { setRapotJenjangSnapshot(e.target.value); setRapotKelasSnapshot('') }}
-                              className={inputClass}>
-                              <option value="ula">Ula</option>
-                              <option value="wustha">Wustha</option>
-                              <option value="ulya">Ulya</option>
+                            <label className="block text-xs text-gray-500 mb-1">Semester</label>
+                            <select value={formPeriodeSemester} onChange={e => setFormPeriodeSemester(e.target.value)} className={inputClass}>
+                              <option value="ganjil">Ganjil</option>
+                              <option value="genap">Genap</option>
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-                            <select value={rapotKelasSnapshot}
-                              onChange={e => setRapotKelasSnapshot(e.target.value)}
-                              className={inputClass}>
-                              <option value="">-- Pilih Kelas --</option>
-                              {getKelasOptions(rapotJenjangSnapshot).map(k => (
-                                <option key={k} value={k}>Kelas {k}</option>
-                              ))}
-                            </select>
+                            <label className="block text-xs text-gray-500 mb-1">Tanggal Rapot</label>
+                            <input type="date" value={formPeriodeTanggal} onChange={e => setFormPeriodeTanggal(e.target.value)} className={inputClass} />
                           </div>
                         </div>
-                        {rapotKelasSnapshot && (
-                          <div className="mt-2 p-2 bg-white rounded-lg text-xs text-yellow-700">
-                            Rapot ini untuk: <span className="font-bold">Kelas {rapotKelasSnapshot} {jenjangLabel(rapotJenjangSnapshot)}</span>
+                        <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-xl border border-blue-200">
+                          <div onClick={() => setFormPeriodeAktif(!formPeriodeAktif)}
+                            className={`w-10 h-5 rounded-full transition-all flex-shrink-0 ${formPeriodeAktif ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                            <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-all ${formPeriodeAktif ? 'ml-5' : 'ml-0.5'}`} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-gray-700">Jadikan Periode Aktif</div>
+                            <div className="text-xs text-gray-400">Guru akan input nilai untuk periode ini</div>
+                          </div>
+                        </label>
+                      </div>
+                      {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
+                      <div className="flex gap-2 mt-4">
+                        <button onClick={editPeriodeId ? handleUpdatePeriode : handleTambahPeriode} disabled={loading}
+                          className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                          {loading ? 'Menyimpan...' : editPeriodeId ? 'Update' : 'Simpan'}
+                        </button>
+                        <button onClick={() => { setShowFormPeriode(false); resetFormPeriode() }}
+                          className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm">Batal</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {periodeList.length === 0 && (
+                      <div className="text-center text-gray-400 py-8 text-sm">Belum ada periode — klik Tambah</div>
+                    )}
+                    {periodeList.map(p => (
+                      <div key={p.id} className={`p-4 rounded-xl border-2 ${p.is_aktif ? 'border-blue-400 bg-blue-50' : 'border-gray-100 bg-white'}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                              {p.nama}
+                              {p.is_aktif && <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">Aktif</span>}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {p.tahun_ajaran} • Semester {p.semester.charAt(0).toUpperCase() + p.semester.slice(1)}
+                              {p.tanggal_rapot && ` • ${new Date(p.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={() => handleEditPeriode(p)} className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50">Edit</button>
+                            <button onClick={() => handleHapusPeriode(p.id)} className="text-red-400 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50">Hapus</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: INPUT NILAI */}
+              {rapotActiveTab === 'input' && (
+                <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                  <h3 className="font-bold text-gray-800 mb-1">Input Nilai Rapot</h3>
+                  <p className="text-xs text-gray-400 mb-4">Admin bisa input nilai semua santri termasuk alumni & data lama</p>
+
+                  {/* Pilih Periode */}
+                  <div className="mb-4">
+                    <label className="block text-xs text-gray-500 mb-1">Pilih Periode</label>
+                    <select value={rapotInputPeriodeId}
+                      onChange={e => {
+                        setRapotInputPeriodeId(e.target.value)
+                        setRapotInputSantri(null)
+                        setRapotInputSearch('')
+                        setRapotNilai({})
+                        setRapotExistingId(null)
+                        setRapotKelasSnapshot('')
+                        setRapotJenjangSnapshot('ula')
+                        setRapotInputMsg('')
+                        if (e.target.value) fetchSantriUntukRapot(e.target.value)
+                      }}
+                      className={inputClass}>
+                      <option value="">-- Pilih Periode --</option>
+                      {periodeList.map(p => (
+                        <option key={p.id} value={p.id}>{p.nama}{p.is_aktif ? ' (Aktif)' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {rapotInputPeriodeId && (
+                    <>
+                      {/* Pilih Santri */}
+                      <div className="mb-4">
+                        <label className="block text-xs text-gray-500 mb-1">Pilih Santri</label>
+                        <input type="text" value={rapotInputSearch}
+                          onChange={e => setRapotInputSearch(e.target.value)}
+                          placeholder="Cari nama santri (aktif & alumni)..." className={inputClass + ' mb-2'} />
+                        {rapotInputSearch && !rapotInputSantri && (
+                          <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                            {rapotInputSantriList
+                              .filter(s => s.nama.toLowerCase().includes(rapotInputSearch.toLowerCase()))
+                              .map(s => (
+                                <button key={s.id} onClick={() => {
+                                  setRapotInputSantri(s)
+                                  setRapotInputSearch(s.nama)
+                                  setRapotKelasSnapshot(s.kelas_num?.toString() || '')
+                                  setRapotJenjangSnapshot(s.jenjang || 'ula')
+                                  fetchNilaiRapotAdmin(s.id, rapotInputPeriodeId, s.kelas_num?.toString())
+                                }} className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
+                                  <span className="font-medium">{s.nama}</span>
+                                  <span className="text-gray-400 text-xs ml-2">{s.kelas || '-'}</span>
+                                  <span className={`text-xs ml-2 px-1.5 py-0.5 rounded-full ${s.status === 'aktif' ? 'bg-green-100 text-green-700' : s.status === 'alumni' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {s.status}
+                                  </span>
+                                </button>
+                              ))}
+                            {rapotInputSantriList.filter(s => s.nama.toLowerCase().includes(rapotInputSearch.toLowerCase())).length === 0 &&
+                              <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
+                          </div>
+                        )}
+
+                        {rapotInputSantri && (
+                          <div className="mt-2 p-3 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center">
+                            <div>
+                              <div className="font-bold text-gray-800">{rapotInputSantri.nama}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {rapotInputSantri.kelas || '-'} • {rapotInputSantri.total_hafalan_juz?.toFixed(2)} Juz
+                                <span className={`ml-2 px-1.5 py-0.5 rounded-full ${rapotInputSantri.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {rapotInputSantri.status}
+                                </span>
+                              </div>
+                              {rapotExistingId && <div className="text-xs text-green-600 mt-0.5">✓ Data sudah ada — akan diupdate</div>}
+                            </div>
+                            <button onClick={() => {
+                              setRapotInputSantri(null); setRapotInputSearch('')
+                              setRapotNilai({}); setRapotExistingId(null)
+                              setRapotKelasSnapshot(''); setRapotJenjangSnapshot('ula')
+                              setRapotInputMsg('')
+                            }} className="text-gray-400 text-xl ml-3">×</button>
                           </div>
                         )}
                       </div>
-                    )}
-                    {rapotInputSantri && (
-                      <>
-                        {/* A. Hifzhul Quran */}
-                        <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
-                          <p className="text-sm font-bold text-gray-700 mb-3">A. Hifzhul Qur'an</p>
-                          <div className="grid grid-cols-2 gap-3 mb-3">
-                            <div>
-                              <label className="block text-xs text-gray-500 mb-1">Kelancaran (60-95)</label>
-                              <input type="number" min="60" max="95" value={rapotNilai.kelancaran || ''}
-                                onChange={e => setRapotNilai({...rapotNilai, kelancaran: e.target.value})}
-                                placeholder="misal: 85" className={inputClass} />
-                            </div>
-                            <div>
-                              <label className="block text-xs text-gray-500 mb-1">Tajwid (60-95)</label>
-                              <input type="number" min="60" max="95" value={rapotNilai.tajwid || ''}
-                                onChange={e => setRapotNilai({...rapotNilai, tajwid: e.target.value})}
-                                placeholder="misal: 80" className={inputClass} />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-500 mb-1">Keterangan Hafalan</label>
-                            <input type="text" value={rapotNilai.keterangan_hafalan || ''}
-                              onChange={e => setRapotNilai({...rapotNilai, keterangan_hafalan: e.target.value})}
-                              placeholder="misal: 3,5 juz dari An-Nas hingga Al-Qomar" className={inputClass} />
-                          </div>
-                        </div>
 
-                        {/* B. Diiniyyah */}
-                        <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                          <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah</p>
-                          <div className="grid grid-cols-2 gap-3">
-                            {[
-                              { key: 'aqidah', label: 'Aqidah' },
-                              { key: 'akhlak', label: 'Akhlak/Adab' },
-                              { key: 'fiqh', label: 'Fiqh' },
-                              { key: 'bhs_arab', label: 'Bahasa Arab' },
-                              { key: 'siroh', label: 'Siroh' },
-                              { key: 'khoth', label: 'Khoth' },
-                            ].map(m => (
-                              <div key={m.key}>
-                                <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                                <input type="number" min="60" max="95" value={rapotNilai[m.key] || ''}
-                                  onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
-                                  placeholder="60-95" className={inputClass} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* C. Umum */}
-                        <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
-                          <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum</p>
-                          <div className="grid grid-cols-2 gap-3">
-                            {[
-                              { key: 'bhs_indonesia', label: 'Bahasa Indonesia' },
-                              { key: 'berhitung', label: 'Berhitung' },
-                              { key: 'ipa', label: 'IPA' },
-                              { key: 'ips', label: 'IPS' },
-                            ].map(m => (
-                              <div key={m.key}>
-                                <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                                <input type="number" min="60" max="95" value={rapotNilai[m.key] || ''}
-                                  onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
-                                  placeholder="60-95" className={inputClass} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Kepribadian */}
-                        <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
-                          <p className="text-sm font-bold text-gray-700 mb-3">Kepribadian</p>
-                          <div className="grid grid-cols-3 gap-3">
-                            {[
-                              { key: 'akhlak_kepribadian', label: 'Akhlak' },
-                              { key: 'kebersihan', label: 'Kebersihan' },
-                              { key: 'ketertiban', label: 'Ketertiban' },
-                            ].map(m => (
-                              <div key={m.key}>
-                                <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                                <select value={rapotNilai[m.key] || 'B'}
-                                  onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
-                                  className={inputClass}>
-                                  <option value="A">A</option>
-                                  <option value="B">B</option>
-                                  <option value="C">C</option>
-                                </select>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Ketidakhadiran */}
-                        <div className="mb-4 p-4 bg-red-50 rounded-xl border border-red-200">
-                          <p className="text-sm font-bold text-gray-700 mb-3">Ketidakhadiran</p>
-                          <div className="grid grid-cols-3 gap-3">
-                            {[
-                              { key: 'hadir_sakit', label: 'Sakit' },
-                              { key: 'hadir_izin', label: 'Izin' },
-                              { key: 'hadir_alpha', label: 'Tanpa Izin' },
-                            ].map(m => (
-                              <div key={m.key}>
-                                <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                                <input type="number" min="0" value={rapotNilai[m.key] ?? 0}
-                                  onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
-                                  className={inputClass} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Ekskul */}
-                        <div className="mb-4 p-4 bg-teal-50 rounded-xl border border-teal-200">
-                          <p className="text-sm font-bold text-gray-700 mb-3">Ekstrakurikuler</p>
+                      {/* Pilih Kelas Snapshot */}
+                      {rapotInputSantri && (
+                        <div className="mb-4 p-4 bg-yellow-50 rounded-xl border border-yellow-300">
+                          <p className="text-sm font-bold text-gray-700 mb-1">📌 Kelas Saat Periode Ini</p>
+                          <p className="text-xs text-gray-500 mb-3">
+                            Pilih kelas santri <strong>pada saat periode rapot berlangsung</strong>. 
+                            Untuk alumni, pilih kelas lama mereka (misal: kelas 1, 2, dst).
+                          </p>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-xs text-gray-500 mb-1">Renang (pertemuan)</label>
-                              <input type="number" min="0" value={rapotNilai.ekskul_renang || ''}
-                                onChange={e => setRapotNilai({...rapotNilai, ekskul_renang: e.target.value})}
-                                placeholder="misal: 8" className={inputClass} />
+                              <label className="block text-xs text-gray-500 mb-1">Jenjang saat itu</label>
+                              <select value={rapotJenjangSnapshot}
+                                onChange={e => { setRapotJenjangSnapshot(e.target.value); setRapotKelasSnapshot('') }}
+                                className={inputClass}>
+                                <option value="ula">Ula (Kelas 1-6)</option>
+                                <option value="wustha">Wustha (Kelas 7-9)</option>
+                                <option value="ulya">Ulya (Kelas 10-12)</option>
+                              </select>
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500 mb-1">Beladiri</label>
-                              <input type="text" value={rapotNilai.ekskul_beladiri || ''}
-                                onChange={e => setRapotNilai({...rapotNilai, ekskul_beladiri: e.target.value})}
-                                placeholder="keterangan" className={inputClass} />
+                              <label className="block text-xs text-gray-500 mb-1">Kelas saat itu</label>
+                              <select value={rapotKelasSnapshot}
+                                onChange={e => {
+                                  setRapotKelasSnapshot(e.target.value)
+                                  if (e.target.value) fetchNilaiRapotAdmin(rapotInputSantri.id, rapotInputPeriodeId, e.target.value)
+                                }}
+                                className={inputClass}>
+                                <option value="">-- Pilih Kelas --</option>
+                                {getKelasOptions(rapotJenjangSnapshot).map(k => (
+                                  <option key={k} value={k}>Kelas {k}</option>
+                                ))}
+                              </select>
                             </div>
                           </div>
+                          {rapotKelasSnapshot && (
+                            <div className="mt-2 p-2 bg-white rounded-lg border border-yellow-200 text-xs text-yellow-800">
+                              Rapot ini untuk: <strong>Kelas {rapotKelasSnapshot} {jenjangLabel(rapotJenjangSnapshot)}</strong>
+                              {rapotExistingId
+                                ? <span className="ml-2 text-green-600">✓ Data sudah ada</span>
+                                : <span className="ml-2 text-gray-400">— belum ada data</span>
+                              }
+                            </div>
+                          )}
                         </div>
+                      )}
 
-                        {/* Catatan */}
-                        <div className="mb-4">
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan Guru</label>
-                          <textarea value={rapotNilai.catatan || ''}
-                            onChange={e => setRapotNilai({...rapotNilai, catatan: e.target.value})}
-                            placeholder="misal: Alhamdulillah terus semangat..." rows={2} className={inputClass} />
-                        </div>
-
-                        {rapotInputMsg && (
-                          <div className={`p-3 rounded-xl mb-4 text-sm ${rapotInputMsg.startsWith('✓') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-                            {rapotInputMsg}
+                      {/* Form Nilai — hanya tampil setelah pilih kelas snapshot */}
+                      {rapotInputSantri && rapotKelasSnapshot && (
+                        <>
+                          {/* A. Hifzhul Quran */}
+                          <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                            <p className="text-sm font-bold text-gray-700 mb-3">A. Hifzhul Qur'an</p>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Kelancaran (60-95)</label>
+                                <input type="number" min="60" max="95" value={rapotNilai.kelancaran || ''}
+                                  onChange={e => setRapotNilai({...rapotNilai, kelancaran: e.target.value})}
+                                  placeholder="misal: 85" className={inputClass} />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Tajwid (60-95)</label>
+                                <input type="number" min="60" max="95" value={rapotNilai.tajwid || ''}
+                                  onChange={e => setRapotNilai({...rapotNilai, tajwid: e.target.value})}
+                                  placeholder="misal: 80" className={inputClass} />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Keterangan Hafalan</label>
+                              <input type="text" value={rapotNilai.keterangan_hafalan || ''}
+                                onChange={e => setRapotNilai({...rapotNilai, keterangan_hafalan: e.target.value})}
+                                placeholder="misal: 3,5 juz dari An-Nas hingga Al-Qomar" className={inputClass} />
+                            </div>
                           </div>
-                        )}
 
-                        <button onClick={handleSimpanRapotAdmin} disabled={rapotInputLoading}
-                          className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
-                          style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                          {rapotInputLoading ? 'Menyimpan...' : rapotExistingId ? '✓ Update Nilai Rapot' : '✓ Simpan Nilai Rapot'}
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
+                          {/* B. Diiniyyah */}
+                          <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                            <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              {[
+                                { key: 'aqidah', label: 'Aqidah' },
+                                { key: 'akhlak', label: 'Akhlak/Adab' },
+                                { key: 'fiqh', label: 'Fiqh' },
+                                { key: 'bhs_arab', label: 'Bahasa Arab' },
+                                { key: 'siroh', label: 'Siroh' },
+                                { key: 'khoth', label: 'Khoth' },
+                              ].map(m => (
+                                <div key={m.key}>
+                                  <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                                  <input type="number" min="60" max="95" value={rapotNilai[m.key] || ''}
+                                    onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
+                                    placeholder="60-95" className={inputClass} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
 
-              {/* Download Rapot */}
-              <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-4">Download Rapot</h3>
-                <div className="space-y-3 mb-4">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Periode</label>
-                    <select value={rapotPeriodeId} onChange={e => setRapotPeriodeId(e.target.value)} className={inputClass}
-                      onClick={fetchPeriode}>
-                      <option value="">-- Pilih Periode --</option>
-                      {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-                      <select value={rapotJenjang} onChange={e => { setRapotJenjang(e.target.value); setRapotKelas('') }} className={inputClass}>
-                        <option value="ula">Ula</option>
-                        <option value="wustha">Wustha</option>
-                        <option value="ulya">Ulya</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-                      <select value={rapotKelas} onChange={e => setRapotKelas(e.target.value)} className={inputClass}>
-                        <option value="">-- Pilih Kelas --</option>
-                        {getKelasOptions(rapotJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
-                      </select>
-                    </div>
-                  </div>
+                          {/* C. Umum */}
+                          <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
+                            <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              {[
+                                { key: 'bhs_indonesia', label: 'Bahasa Indonesia' },
+                                { key: 'berhitung', label: 'Berhitung' },
+                                { key: 'ipa', label: 'IPA' },
+                                { key: 'ips', label: 'IPS' },
+                              ].map(m => (
+                                <div key={m.key}>
+                                  <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                                  <input type="number" min="60" max="95" value={rapotNilai[m.key] || ''}
+                                    onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
+                                    placeholder="60-95" className={inputClass} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Kepribadian */}
+                          <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
+                            <p className="text-sm font-bold text-gray-700 mb-3">Kepribadian</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              {[
+                                { key: 'akhlak_kepribadian', label: 'Akhlak' },
+                                { key: 'kebersihan', label: 'Kebersihan' },
+                                { key: 'ketertiban', label: 'Ketertiban' },
+                              ].map(m => (
+                                <div key={m.key}>
+                                  <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                                  <select value={rapotNilai[m.key] || 'B'}
+                                    onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
+                                    className={inputClass}>
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Ketidakhadiran */}
+                          <div className="mb-4 p-4 bg-red-50 rounded-xl border border-red-200">
+                            <p className="text-sm font-bold text-gray-700 mb-3">Ketidakhadiran</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              {[
+                                { key: 'hadir_sakit', label: 'Sakit' },
+                                { key: 'hadir_izin', label: 'Izin' },
+                                { key: 'hadir_alpha', label: 'Tanpa Izin' },
+                              ].map(m => (
+                                <div key={m.key}>
+                                  <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
+                                  <input type="number" min="0" value={rapotNilai[m.key] ?? 0}
+                                    onChange={e => setRapotNilai({...rapotNilai, [m.key]: e.target.value})}
+                                    className={inputClass} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Ekskul */}
+                          <div className="mb-4 p-4 bg-teal-50 rounded-xl border border-teal-200">
+                            <p className="text-sm font-bold text-gray-700 mb-3">Ekstrakurikuler</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Renang (pertemuan)</label>
+                                <input type="number" min="0" value={rapotNilai.ekskul_renang || ''}
+                                  onChange={e => setRapotNilai({...rapotNilai, ekskul_renang: e.target.value})}
+                                  placeholder="misal: 8" className={inputClass} />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Beladiri</label>
+                                <input type="text" value={rapotNilai.ekskul_beladiri || ''}
+                                  onChange={e => setRapotNilai({...rapotNilai, ekskul_beladiri: e.target.value})}
+                                  placeholder="keterangan" className={inputClass} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Catatan */}
+                          <div className="mb-5">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan Guru</label>
+                            <textarea value={rapotNilai.catatan || ''}
+                              onChange={e => setRapotNilai({...rapotNilai, catatan: e.target.value})}
+                              placeholder="misal: Alhamdulillah terus semangat..." rows={2} className={inputClass} />
+                          </div>
+
+                          {rapotInputMsg && (
+                            <div className={`p-3 rounded-xl mb-4 text-sm ${rapotInputMsg.startsWith('✓') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                              {rapotInputMsg}
+                            </div>
+                          )}
+
+                          <button onClick={handleSimpanRapotAdmin} disabled={rapotInputLoading}
+                            className="w-full text-white py-4 rounded-xl font-bold text-base shadow disabled:opacity-50"
+                            style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                            {rapotInputLoading ? 'Menyimpan...' : rapotExistingId ? '✓ Update Nilai Rapot' : '✓ Simpan Nilai Rapot'}
+                          </button>
+                        </>
+                      )}
+
+                      {rapotInputSantri && !rapotKelasSnapshot && (
+                        <div className="p-4 bg-yellow-50 border-2 border-yellow-200 rounded-xl text-center text-sm text-yellow-700">
+                          ⬆ Pilih kelas santri saat periode ini untuk mulai input nilai
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-                <button
-                  onClick={() => {
-                    if (!rapotPeriodeId || !rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
-                    window.open(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`, '_blank')
-                  }}
-                  disabled={!rapotPeriodeId || !rapotKelas}
-                  className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                  📄 Download Rapot PDF (Semua Santri)
-                </button>
-                <p className="text-xs text-gray-400 mt-2 text-center">Rapot semua santri dalam kelas akan digabung dalam 1 file PDF</p>
-              </div>
+              )}
+
+              {/* TAB: DOWNLOAD */}
+              {rapotActiveTab === 'download' && (
+                <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+                  <h3 className="font-bold text-gray-800 mb-4">Download Rapot PDF</h3>
+                  <div className="space-y-3 mb-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Periode</label>
+                      <select value={rapotPeriodeId} onChange={e => setRapotPeriodeId(e.target.value)} className={inputClass}>
+                        <option value="">-- Pilih Periode --</option>
+                        {periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                        <select value={rapotJenjang} onChange={e => { setRapotJenjang(e.target.value); setRapotKelas('') }} className={inputClass}>
+                          <option value="ula">Ula</option>
+                          <option value="wustha">Wustha</option>
+                          <option value="ulya">Ulya</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                        <select value={rapotKelas} onChange={e => setRapotKelas(e.target.value)} className={inputClass}>
+                          <option value="">-- Pilih Kelas --</option>
+                          {getKelasOptions(rapotJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!rapotPeriodeId || !rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
+                      window.open(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`, '_blank')
+                    }}
+                    disabled={!rapotPeriodeId || !rapotKelas}
+                    className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                    📄 Download Rapot PDF
+                  </button>
+                  <p className="text-xs text-gray-400 mt-2 text-center">Semua santri dalam kelas akan digabung dalam 1 file</p>
+                </div>
+              )}
             </div>
           )}
 {/* LAPORAN BULANAN */}
