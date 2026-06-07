@@ -41,6 +41,7 @@ useEffect(() => {
   const [formPassword, setFormPassword] = useState('')
   const [formNoWa, setFormNoWa] = useState('')
   const [formGuruId, setFormGuruId] = useState('')
+  const [formGuruId2, setFormGuruId2] = useState('')
   const [formWaliId, setFormWaliId] = useState('')
   const [formJenjang, setFormJenjang] = useState('')
   const [formKelasNum, setFormKelasNum] = useState('')
@@ -391,7 +392,7 @@ const fetchPeriode = async () => {
     const { error } = await supabase.from('santri').insert({
       nama: formNama, jenjang: formJenjang, kelas_num: parseInt(formKelasNum),
       kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
-      guru_id: formGuruId || null, wali_id: formWaliId || null,
+      guru_id: formGuruId || null, guru_id_2: formGuruId2 || null, wali_id: formWaliId || null,
       total_hafalan_juz: hitungTotalJuzAwal(),
       surah_terakhir_nomor: formSurahAkhir ? parseInt(formSurahAkhir) : null,
       ayat_terakhir: formAyatAkhir ? parseInt(formAyatAkhir) : null,
@@ -410,7 +411,7 @@ const fetchPeriode = async () => {
   const handleEditSantri = (santri: any) => {
     setEditSantriId(santri.id); setFormNama(santri.nama)
     setFormJenjang(santri.jenjang || ''); setFormKelasNum(santri.kelas_num?.toString() || '')
-    setFormGuruId(santri.guru_id || ''); setFormWaliId(santri.wali_id || '')
+    setFormGuruId(santri.guru_id || ''); setFormGuruId2(santri.guru_id_2 || ''); setFormWaliId(santri.wali_id || '')
     setFormSurahAwal(''); setFormAyatAwal('1')
     setFormSurahAkhir(santri.surah_terakhir_nomor?.toString() || '')
     setFormAyatAkhir(santri.ayat_terakhir?.toString() || '')
@@ -429,7 +430,7 @@ const fetchPeriode = async () => {
     let updateData: any = {
       nama: formNama, jenjang: formJenjang, kelas_num: parseInt(formKelasNum),
       kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
-      guru_id: formGuruId || null, wali_id: formWaliId || null,
+      guru_id: formGuruId || null, guru_id_2: formGuruId2 || null, wali_id: formWaliId || null,
       nik: formNik || null, nisn: formNisn || null,
       tempat_lahir: formTempatLahir || null,
       tanggal_lahir: formTanggalLahir || null,
@@ -783,7 +784,7 @@ const fetchPeriode = async () => {
 
   const resetForm = () => {
     setFormNama(''); setFormEmail(''); setFormPassword(''); setFormNoWa('')
-    setFormGuruId(''); setFormWaliId(''); setFormJenjang(''); setFormKelasNum('')
+    setFormGuruId(''); setFormGuruId2(''); setFormWaliId(''); setFormJenjang(''); setFormKelasNum('')
     setFormSurahAwal(''); setFormAyatAwal('1'); setFormSurahAkhir(''); setFormAyatAkhir('')
     setFormNik(''); setFormNisn(''); setFormTempatLahir(''); setFormTanggalLahir(''); setFormAlamat('')
     setFormStatus('aktif'); setFormTahunLulus(''); setFormKeteranganKeluar('')
@@ -1467,10 +1468,14 @@ const AlumniList = () => {
 
                     <div className="grid grid-cols-2 gap-3">
                       <select value={formGuruId} onChange={e => setFormGuruId(e.target.value)} className={inputClass}>
-                        <option value="">-- Pilih Guru</option>
-                        {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
-                      </select>
-                      <select value={formWaliId} onChange={e => setFormWaliId(e.target.value)} className={inputClass}>
+  <option value="">-- Pilih Guru Utama</option>
+  {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
+</select>
+<select value={formGuruId2} onChange={e => setFormGuruId2(e.target.value)} className={inputClass}>
+  <option value="">-- Guru Kedua (Opsional)</option>
+  {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
+</select>
+<select value={formWaliId} onChange={e => setFormWaliId(e.target.value)} className={inputClass}>
                         <option value="">-- Pilih Wali</option>
                         {waliList.map(w => <option key={w.id} value={w.id}>{w.nama}</option>)}
                       </select>
@@ -1581,7 +1586,7 @@ const AlumniList = () => {
                               </span>
                             )}
                             <span className="text-xs text-gray-400">{santri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
-                            <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
+                            <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}{santri.guru_id_2 && ` & ${guruList.find(g => g.id === santri.guru_id_2)?.nama || ''}`}</span>
                             {santri.nisn && <span className="text-xs text-gray-400">NIS: {santri.nisn}</span>}
                           </div>
                           {(santri.tempat_lahir || santri.tanggal_lahir) && (
