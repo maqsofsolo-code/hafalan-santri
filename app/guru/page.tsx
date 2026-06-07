@@ -80,8 +80,15 @@ export default function GuruDashboard() {
     if (profile?.role !== 'guru') { window.location.href = '/'; return }
     setGuruProfile(profile)
 
-    const { data: santri } = await supabase.from('santri').select('*, guru:guru_id(nama)').eq('guru_id', user.id)
-    setSantriList(santri || [])
+    const { data: santri1 } = await supabase.from('santri')
+  .select('*, guru:guru_id(nama)').eq('guru_id', user.id)
+const { data: santri2 } = await supabase.from('santri')
+  .select('*, guru:guru_id(nama)').eq('guru_id_2', user.id)
+const allSantri = [...(santri1 || [])]
+;(santri2 || []).forEach((s: any) => {
+  if (!allSantri.find(x => x.id === s.id)) allSantri.push(s)
+})
+setSantriList(allSantri)
 
     const { data: allSantri } = await supabase.from('santri').select('*, guru:guru_id(nama)')
     setAllSantriList(allSantri || [])
@@ -118,9 +125,15 @@ export default function GuruDashboard() {
     if (data) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const { data: santri } = await supabase.from('santri')
-        .select('*').eq('guru_id', user.id).eq('jenjang', 'ula').eq('status', 'aktif').order('nama')
-      setRapotSantriList(santri || [])
+      const { data: rapot1 } = await supabase.from('santri')
+  .select('*').eq('guru_id', user.id).eq('jenjang', 'ula').eq('status', 'aktif').order('nama')
+const { data: rapot2 } = await supabase.from('santri')
+  .select('*').eq('guru_id_2', user.id).eq('jenjang', 'ula').eq('status', 'aktif').order('nama')
+const allRapotSantri = [...(rapot1 || [])]
+;(rapot2 || []).forEach((s: any) => {
+  if (!allRapotSantri.find(x => x.id === s.id)) allRapotSantri.push(s)
+})
+setRapotSantriList(allRapotSantri)
     }
   }
 
@@ -1651,6 +1664,9 @@ export default function GuruDashboard() {
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             {santri.kelas && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{santri.kelas}</span>}
                             <span className="text-xs text-gray-500">{santri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
+{santri.guru_id_2 && (
+  <span className="text-xs text-orange-500">+ Guru Kedua</span>
+)}
                           </div>
                           <div className="mt-2">
                             <div className="flex justify-between text-xs text-gray-400 mb-1">
