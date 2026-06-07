@@ -31,6 +31,10 @@ export default function GuruDashboard() {
   const [rapotLoading, setRapotLoading] = useState(false)
   const [rapotMsg, setRapotMsg] = useState('')
   const [existingRapotId, setExistingRapotId] = useState<any>(null)
+  const [rapotActiveTab, setRapotActiveTab] = useState('input')
+  const [rapotRekapData, setRapotRekapData] = useState<any[]>([])
+  const [rapotRekapLoading, setRapotRekapLoading] = useState(false)
+  const [rapotRekapKelas, setRapotRekapKelas] = useState('')
 
   // Absensi
   const [absenSubuh, setAbsenSubuh] = useState(false)
@@ -209,6 +213,57 @@ export default function GuruDashboard() {
     fetchNilaiRapotSantri(selectedSantriRapot.id)
   }
 
+  const fetchRekapKelasByGuru = async (kelas: string) => {
+    if (!periodeAktif || !kelas) return
+    setRapotRekapLoading(true)
+    setRapotRekapData([])
+    const { data: nilaiSnapshot } = await supabase
+      .from('nilai_rapot')
+      .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
+      .eq('periode_id', periodeAktif.id)
+      .eq('kelas_snapshot', parseInt(kelas))
+    let nilaiList = nilaiSnapshot || []
+    if (nilaiList.length === 0) {
+      const { data: santriKelas } = await supabase
+        .from('santri').select('id')
+        .eq('jenjang', 'ula')
+        .eq('kelas_num', parseInt(kelas))
+      const ids = (santriKelas || []).map((s: any) => s.id)
+      if (ids.length > 0) {
+        const { data: nilaiFallback } = await supabase
+          .from('nilai_rapot')
+          .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
+          .eq('periode_id', periodeAktif.id)
+          .in('santri_id', ids)
+        nilaiList = nilaiFallback || []
+      }
+    }
+    const hitungRata = (n: any) => {
+      const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v: any) => v != null && v > 0)
+      const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v: any) => v != null && v > 0)
+      if (d.length === 0 && u.length === 0) return 0
+      const rd = d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : 0
+      const ru = u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : 0
+      if (d.length === 0) return ru
+      if (u.length === 0) return rd
+      return (rd + ru) / 2
+    }
+    const withRata = nilaiList.map((n: any) => ({
+      ...n,
+      rata_diiniyyah: (() => {
+        const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v: any) => v != null && v > 0)
+        return d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : null
+      })(),
+      rata_umum: (() => {
+        const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v: any) => v != null && v > 0)
+        return u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : null
+      })(),
+      rata_akhir: hitungRata(n)
+    })).sort((a: any, b: any) => b.rata_akhir - a.rata_akhir)
+    const withPeringkat = withRata.map((n: any, i: number) => ({ ...n, peringkat: i + 1 }))
+    setRapotRekapData(withPeringkat)
+    setRapotRekapLoading(false)
+  }
   const fetchNilaiUjian = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -1156,6 +1211,20 @@ export default function GuruDashboard() {
                 </div>
               </div>
 
+              {/* Tab */}
+              <div className="flex gap-2 mb-4">
+                {[
+                  { id: 'input', label: 'Input Nilai' },
+                  { id: 'rekap', label: 'Rekap Kelas' },
+                ].map(tab => (
+                  <button key={tab.id}
+                    onClick={() => setRapotActiveTab(tab.id)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${rapotActiveTab === tab.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               {!periodeAktif && (
                 <div className="bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-5 text-center mb-4">
                   <p className="text-yellow-800 font-semibold">Belum ada periode rapot aktif</p>
@@ -1164,7 +1233,8 @@ export default function GuruDashboard() {
                 </div>
               )}
 
-              {periodeAktif && (
+              {/* TAB INPUT NILAI */}
+              {rapotActiveTab === 'input' && periodeAktif && (
                 <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
                   {/* Pilih Santri */}
                   <div className="mb-4">
@@ -1200,7 +1270,6 @@ export default function GuruDashboard() {
 
                   {selectedSantriRapot && (
                     <>
-                      {/* A. Hifzhul Quran */}
                       <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
                         <p className="text-sm font-bold text-gray-700 mb-3">A. Hifzhul Qur'an</p>
                         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1224,8 +1293,6 @@ export default function GuruDashboard() {
                             placeholder="misal: 3,5 juz dari An-Nas hingga Al-Qomar" className={inputClass} />
                         </div>
                       </div>
-
-                      {/* B. Materi Diiniyyah */}
                       <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
                         <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah</p>
                         <div className="grid grid-cols-2 gap-3">
@@ -1246,8 +1313,6 @@ export default function GuruDashboard() {
                           ))}
                         </div>
                       </div>
-
-                      {/* C. Materi Umum */}
                       <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
                         <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum</p>
                         <div className="grid grid-cols-2 gap-3">
@@ -1266,8 +1331,6 @@ export default function GuruDashboard() {
                           ))}
                         </div>
                       </div>
-
-                      {/* Kepribadian */}
                       <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
                         <p className="text-sm font-bold text-gray-700 mb-3">Kepribadian</p>
                         <div className="grid grid-cols-3 gap-3">
@@ -1289,8 +1352,6 @@ export default function GuruDashboard() {
                           ))}
                         </div>
                       </div>
-
-                      {/* Ketidakhadiran */}
                       <div className="mb-4 p-4 bg-red-50 rounded-xl border border-red-200">
                         <p className="text-sm font-bold text-gray-700 mb-3">Ketidakhadiran</p>
                         <div className="grid grid-cols-3 gap-3">
@@ -1308,8 +1369,6 @@ export default function GuruDashboard() {
                           ))}
                         </div>
                       </div>
-
-                      {/* Ekskul */}
                       <div className="mb-4 p-4 bg-teal-50 rounded-xl border border-teal-200">
                         <p className="text-sm font-bold text-gray-700 mb-3">Ekstrakurikuler</p>
                         <div className="grid grid-cols-2 gap-3">
@@ -1327,27 +1386,136 @@ export default function GuruDashboard() {
                           </div>
                         </div>
                       </div>
-
-                      {/* Catatan */}
                       <div className="mb-5">
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan Guru</label>
                         <textarea value={nilaiRapot.catatan || ''}
                           onChange={e => setNilaiRapot({...nilaiRapot, catatan: e.target.value})}
                           placeholder="misal: Alhamdulillah terus semangat belajar..." rows={2} className={inputClass} />
                       </div>
-
                       {rapotMsg && (
                         <div className={`p-3 rounded-xl mb-4 text-sm ${rapotMsg.startsWith('✓') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
                           {rapotMsg}
                         </div>
                       )}
-
                       <button onClick={handleSimpanRapot} disabled={rapotLoading}
                         className="w-full text-white py-4 rounded-xl font-bold text-base shadow-lg disabled:opacity-50"
                         style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
                         {rapotLoading ? 'Menyimpan...' : existingRapotId ? '✓ Update Nilai Rapot' : '✓ Simpan Nilai Rapot'}
                       </button>
                     </>
+                  )}
+                </div>
+              )}
+
+              {/* TAB REKAP KELAS */}
+              {rapotActiveTab === 'rekap' && periodeAktif && (
+                <div>
+                  <div className="bg-white rounded-2xl shadow p-5 mb-4 border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-4">Rekap Nilai Kelas</h3>
+                    <div className="mb-4">
+                      <label className="block text-xs text-gray-500 mb-1">Pilih Kelas</label>
+                      <select value={rapotRekapKelas}
+                        onChange={e => {
+                          setRapotRekapKelas(e.target.value)
+                          setRapotRekapData([])
+                        }}
+                        className={inputClass}>
+                        <option value="">-- Pilih Kelas --</option>
+                        {[1,2,3,4,5,6].map(k => (
+                          <option key={k} value={k}>Kelas {k} Ula</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button onClick={() => fetchRekapKelasByGuru(rapotRekapKelas)}
+                      disabled={!rapotRekapKelas || rapotRekapLoading}
+                      className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                      {rapotRekapLoading ? 'Memuat...' : '🔍 Tampilkan Rekap Nilai'}
+                    </button>
+                  </div>
+
+                  {rapotRekapData.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                        <h3 className="text-white font-bold">Rekap Kelas {rapotRekapKelas} Ula</h3>
+                        <p className="text-blue-200 text-xs mt-0.5">{rapotRekapData.length} santri • {periodeAktif.nama}</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table style={{ minWidth: '900px', width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                          <thead>
+                            <tr style={{ background: '#f0f4ff' }}>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '35px' }}>No</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left', minWidth: '130px' }}>Nama Santri</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Klancaran</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Tajwid</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Aqidah</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Akhlak</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Fiqh</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Arab</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Siroh</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Khoth</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata D</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Ind</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Hitung</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPA</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPS</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata U</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Rata Akhir</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Peringkat</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rapotRekapData.map((n: any, i: number) => {
+                              const isComplete = n.rata_akhir > 0
+                              return (
+                                <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>
+                                    <div style={{ fontWeight: '600' }}>{n.santri?.nama || '-'}</div>
+                                  </td>
+                                  {[n.kelancaran, n.tajwid].map((v: any, idx: number) => (
+                                    <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? '#1e3a8a' : '#ccc' }}>{v ?? '-'}</td>
+                                  ))}
+                                  {[n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].map((v: any, idx: number) => (
+                                    <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>{v ?? '-'}</td>
+                                  ))}
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
+                                    {n.rata_diiniyyah ? n.rata_diiniyyah.toFixed(1) : '-'}
+                                  </td>
+                                  {[n.bhs_indonesia, n.berhitung, n.ipa, n.ips].map((v: any, idx: number) => (
+                                    <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>{v ?? '-'}</td>
+                                  ))}
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
+                                    {n.rata_umum ? n.rata_umum.toFixed(1) : '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3', fontWeight: 'bold', fontSize: '12px', color: isComplete ? '#92400e' : '#ccc' }}>
+                                    {n.rata_akhir ? n.rata_akhir.toFixed(1) : '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
+                                    {isComplete ? (
+                                      <span style={{
+                                        background: n.peringkat === 1 ? '#fbbf24' : n.peringkat === 2 ? '#9ca3af' : n.peringkat === 3 ? '#f97316' : '#e5e7eb',
+                                        color: n.peringkat <= 3 ? 'white' : '#374151',
+                                        padding: '2px 8px', borderRadius: '999px', fontWeight: 'bold', fontSize: '11px'
+                                      }}>{n.peringkat}</span>
+                                    ) : '-'}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="p-4">
+                        <p className="text-xs text-gray-400">Nilai merah = di bawah 60 • Peringkat dari Rata-rata Akhir (Diiniyyah + Umum) / 2</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {rapotRekapData.length === 0 && !rapotRekapLoading && rapotRekapKelas && (
+                    <div className="bg-white rounded-2xl p-8 text-center text-gray-400 shadow border border-gray-100">
+                      Belum ada data nilai untuk kelas ini
+                    </div>
                   )}
                 </div>
               )}
