@@ -81,17 +81,17 @@ export default function GuruDashboard() {
     setGuruProfile(profile)
 
     const { data: santri1 } = await supabase.from('santri')
-  .select('*, guru:guru_id(nama)').eq('guru_id', user.id)
-const { data: santri2 } = await supabase.from('santri')
-  .select('*, guru:guru_id(nama)').eq('guru_id_2', user.id)
-const allSantri = [...(santri1 || [])]
-;(santri2 || []).forEach((s: any) => {
-  if (!allSantri.find(x => x.id === s.id)) allSantri.push(s)
-})
-setSantriList(allSantri)
+      .select('*, guru:guru_id(nama)').eq('guru_id', user.id)
+    const { data: santri2 } = await supabase.from('santri')
+      .select('*, guru:guru_id(nama)').eq('guru_id_2', user.id)
+    const gabunganSantri = [...(santri1 || [])]
+    ;(santri2 || []).forEach((s: any) => {
+      if (!gabunganSantri.find(x => x.id === s.id)) gabunganSantri.push(s)
+    })
+    setSantriList(gabunganSantri)
 
-    const { data: allSantri } = await supabase.from('santri').select('*, guru:guru_id(nama)')
-    setAllSantriList(allSantri || [])
+    const { data: semuaSantri } = await supabase.from('santri').select('*, guru:guru_id(nama)')
+    setAllSantriList(semuaSantri || [])
 
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
     setSurahList(surah || [])
