@@ -23,12 +23,9 @@ async function hitungJuzDariSurah(supabase: any, surahAwalNomor: number, surahAk
   return Math.max(0, totalHalaman / 20)
 }
 
-// Helper: konversi tanggal Excel (angka serial) ke string YYYY-MM-DD
 function parseTanggal(val: any): string | null {
   if (!val) return null
-  // Kalau sudah string format YYYY-MM-DD atau DD/MM/YYYY
   if (typeof val === 'string') {
-    // Format DD/MM/YYYY
     if (val.includes('/')) {
       const parts = val.split('/')
       if (parts.length === 3) {
@@ -36,11 +33,9 @@ function parseTanggal(val: any): string | null {
         return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
       }
     }
-    // Format YYYY-MM-DD langsung
     if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return val
     return null
   }
-  // Kalau angka serial Excel
   if (typeof val === 'number') {
     const date = XLSX.SSF.parse_date_code(val)
     if (!date) return null
@@ -107,7 +102,7 @@ export async function POST(request: Request) {
         .from('santri').select('id').eq('nama', row.nama).maybeSingle()
       if (existing) { hasil.skip++; continue }
 
-      // Cari guru
+      // Cari guru utama
       let guruId = null
       if (row.email_guru) {
         const { data: users } = await supabaseAdmin.auth.admin.listUsers()
@@ -116,6 +111,18 @@ export async function POST(request: Request) {
           const { data: p } = await supabaseAdmin
             .from('profiles').select('id').eq('id', guruUser.id).single()
           if (p) guruId = p.id
+        }
+      }
+
+      // Cari guru kedua
+      let guruId2 = null
+      if (row.email_guru_2) {
+        const { data: users2 } = await supabaseAdmin.auth.admin.listUsers()
+        const guruUser2 = users2?.users?.find((u: any) => u.email === row.email_guru_2)
+        if (guruUser2) {
+          const { data: p2 } = await supabaseAdmin
+            .from('profiles').select('id').eq('id', guruUser2.id).single()
+          if (p2) guruId2 = p2.id
         }
       }
 
@@ -146,9 +153,9 @@ export async function POST(request: Request) {
         kelas_num: kelasNum,
         kelas: kelasLabel,
         guru_id: guruId,
+        guru_id_2: guruId2,
         total_hafalan_juz: totalJuz,
         surah_terakhir_nomor: surahTerakhirNomor,
-        // Kolom baru
         nik: row.nik?.toString() || null,
         nisn: row.nisn?.toString() || null,
         tempat_lahir: row.tempat_lahir?.toString() || null,

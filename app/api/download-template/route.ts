@@ -16,6 +16,7 @@ export async function GET() {
     { petunjuk: '6. tanggal_lahir: format DD/MM/YYYY contoh: 15/03/2010' },
     { petunjuk: '7. nik dan nisn boleh dikosongkan' },
     { petunjuk: '8. nama_santri di sheet Wali harus sama persis dengan sheet Santri' },
+    { petunjuk: '9. email_guru_2 boleh dikosongkan (hanya jika santri punya 2 guru)' },
   ]
 
   const guruData = [
@@ -29,6 +30,7 @@ export async function GET() {
       jenjang: 'wustha',
       kelas_num: 7,
       email_guru: 'ahmad@daarus.com',
+      email_guru_2: '',
       surah_awal_nomor: 114,
       surah_akhir_nomor: 78,
       nik: '3371234567890001',
@@ -42,6 +44,7 @@ export async function GET() {
       jenjang: 'ula',
       kelas_num: 4,
       email_guru: 'siti@daarus.com',
+      email_guru_2: '',
       surah_awal_nomor: 114,
       surah_akhir_nomor: 93,
       nik: '3371234567890002',
@@ -67,7 +70,7 @@ export async function GET() {
   wsPetunjuk['!cols'] = [{ wch: 60 }]
   wsGuru['!cols'] = [{ wch: 25 }, { wch: 25 }, { wch: 15 }]
   wsSantri['!cols'] = [
-    { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 25 },
+    { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 25 }, { wch: 25 },
     { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 14 },
     { wch: 18 }, { wch: 15 }, { wch: 35 }
   ]
