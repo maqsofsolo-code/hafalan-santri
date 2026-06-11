@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   const wb = XLSX.read(buffer, { type: 'array' })
 
   const hasil = {
-    guru: 0, santri: 0, wali: 0,
+    guru: 0, santri: 0, wali: 0, diupdate: 0,
     skip: 0, error: [] as string[]
   }
 
@@ -97,12 +97,7 @@ export async function POST(request: Request) {
     for (const row of rows) {
       if (!row.nama) continue
 
-      // Cek duplikat
-      const { data: existing } = await supabaseAdmin
-        .from('santri').select('id').eq('nama', row.nama).maybeSingle()
-      if (existing) { hasil.skip++; continue }
-
-      // Cari guru utama
+      // Cari guru utama dulu sebelum cek duplikat
       let guruId = null
       if (row.email_guru) {
         const { data: users } = await supabaseAdmin.auth.admin.listUsers()
@@ -114,7 +109,7 @@ export async function POST(request: Request) {
         }
       }
 
-      // Cari guru kedua
+      // Cari guru kedua dulu sebelum cek duplikat
       let guruId2 = null
       if (row.email_guru_2) {
         const { data: users2 } = await supabaseAdmin.auth.admin.listUsers()
@@ -126,7 +121,33 @@ export async function POST(request: Request) {
         }
       }
 
-      // Hitung total juz dari nomor surah
+      // Cek duplikat — jika sudah ada, update field yang masih kosong saja
+      const { data: existing } = await supabaseAdmin
+        .from('santri')
+        .select('id, nik, nisn, tempat_lahir, tanggal_lahir, alamat, guru_id, guru_id_2')
+        .eq('nama', row.nama)
+        .maybeSingle()
+
+      if (existing) {
+        const updateData: any = {}
+        if (!existing.nik && row.nik) updateData.nik = row.nik.toString()
+        if (!existing.nisn && row.nisn) updateData.nisn = row.nisn.toString()
+        if (!existing.tempat_lahir && row.tempat_lahir) updateData.tempat_lahir = row.tempat_lahir.toString()
+        if (!existing.tanggal_lahir && row.tanggal_lahir) updateData.tanggal_lahir = parseTanggal(row.tanggal_lahir)
+        if (!existing.alamat && row.alamat) updateData.alamat = row.alamat.toString()
+        if (!existing.guru_id && guruId) updateData.guru_id = guruId
+        if (!existing.guru_id_2 && guruId2) updateData.guru_id_2 = guruId2
+
+        if (Object.keys(updateData).length > 0) {
+          await supabaseAdmin.from('santri').update(updateData).eq('id', existing.id)
+          hasil.diupdate++
+        } else {
+          hasil.skip++
+        }
+        continue
+      }
+
+      // Santri baru — hitung total juz
       let totalJuz = 0
       let surahTerakhirNomor = null
       if (row.surah_awal_nomor && row.surah_akhir_nomor) {
@@ -205,7 +226,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    message: `Import selesai! Guru: ${hasil.guru}, Santri: ${hasil.santri}, Wali: ${hasil.wali}, Dilewati: ${hasil.skip}${hasil.error.length > 0 ? `, Error: ${hasil.error.length}` : ''}`,
+    message: `Import selesai! Guru: ${hasil.guru}, Santri: ${hasil.santri}, Diupdate: ${hasil.diupdate}, Wali: ${hasil.wali}, Dilewati: ${hasil.skip}${hasil.error.length > 0 ? `, Error: ${hasil.error.length}` : ''}`,
     detail: hasil
   })
 }
