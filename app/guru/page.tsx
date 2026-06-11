@@ -441,7 +441,34 @@ setRapotSantriList(allRapotSantri)
       const surahNomor = parseInt(surahBaru)
       const ayatMulaiNum = parseInt(ayatMulaiBaru)
       const ayatSelesaiNum = parseInt(ayatSelesaiBaru)
-      penambahanJuz = hitungPenambahanJuz(surahNomor, ayatMulaiNum, ayatSelesaiNum)
+
+      // Hitung penambahan dengan cek overlap
+      const surahTerakhir = selectedSantri.surah_terakhir_nomor
+      const ayatTerakhir = selectedSantri.ayat_terakhir || 0
+
+      if (status === 'rosib') {
+        // Rosib: tidak ada penambahan sama sekali
+        penambahanJuz = 0
+      } else if (!surahTerakhir) {
+        // Belum ada hafalan sama sekali, hitung penuh
+        penambahanJuz = hitungPenambahanJuz(surahNomor, ayatMulaiNum, ayatSelesaiNum)
+      } else if (surahNomor > surahTerakhir) {
+        // Mundur ke surah lebih besar (arah salah), tidak tambah
+        penambahanJuz = 0
+      } else if (surahNomor === surahTerakhir) {
+        // Surah sama, cek ayatnya
+        if (ayatSelesaiNum <= ayatTerakhir) {
+          // Ayat yang diinput sudah dimiliki semua, tidak tambah
+          penambahanJuz = 0
+        } else {
+          // Hanya hitung dari ayat baru saja (setelah ayat terakhir)
+          penambahanJuz = hitungPenambahanJuz(surahNomor, ayatTerakhir + 1, ayatSelesaiNum)
+        }
+      } else {
+        // Surah lebih kecil (maju), hitung penuh
+        penambahanJuz = hitungPenambahanJuz(surahNomor, ayatMulaiNum, ayatSelesaiNum)
+      }
+
       insertData = {
         ...insertData,
         surah_mulai_nomor: surahNomor, surah_selesai_nomor: surahNomor,
@@ -466,11 +493,27 @@ setRapotSantriList(allRapotSantri)
     }
     const { error } = await supabase.from('setoran').insert(insertData)
     if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
-    if (jenis === 'baru' && penambahanJuz > 0) {
-      const totalBaru = (selectedSantri.total_hafalan_juz || 0) + penambahanJuz
-      await supabase.from('santri').update({
-        total_hafalan_juz: totalBaru, surah_terakhir_nomor: parseInt(surahBaru), ayat_terakhir: parseInt(ayatSelesaiBaru)
-      }).eq('id', selectedSantri.id)
+    if (jenis === 'baru') {
+      // Update surah_terakhir hanya jika ada kemajuan nyata
+      const surahNomor = parseInt(surahBaru)
+      const ayatSelesaiNum = parseInt(ayatSelesaiBaru)
+      const surahTerakhir = selectedSantri.surah_terakhir_nomor
+      const ayatTerakhir = selectedSantri.ayat_terakhir || 0
+
+      const adaKemajuan = status === 'lancar' && (
+        !surahTerakhir ||
+        surahNomor < surahTerakhir ||
+        (surahNomor === surahTerakhir && ayatSelesaiNum > ayatTerakhir)
+      )
+
+      if (adaKemajuan) {
+        const totalBaru = (selectedSantri.total_hafalan_juz || 0) + penambahanJuz
+        await supabase.from('santri').update({
+          total_hafalan_juz: totalBaru,
+          surah_terakhir_nomor: surahNomor,
+          ayat_terakhir: ayatSelesaiNum
+        }).eq('id', selectedSantri.id)
+      }
     }
     // Refresh cek setoran lama jika baru saja input lama
     if (jenis === 'lama' && selectedSantri?.jenjang === 'ula') {
