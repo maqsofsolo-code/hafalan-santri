@@ -982,11 +982,30 @@ setRapotSantriList(allRapotSantri)
                             <input type="number" value={ayatSelesaiBaru} onChange={e => setAyatSelesaiBaru(e.target.value)} placeholder="5" className={inputClass} />
                           </div>
                         </div>
-                        {surahBaru && ayatMulaiBaru && ayatSelesaiBaru && (
-                          <div className="mt-2 text-xs text-blue-600 font-medium">
-                            + {hitungPenambahanJuz(parseInt(surahBaru), parseInt(ayatMulaiBaru), parseInt(ayatSelesaiBaru)).toFixed(4)} Juz
-                          </div>
-                        )}
+                        {surahBaru && ayatMulaiBaru && ayatSelesaiBaru && (() => {
+          const sNomor = parseInt(surahBaru)
+          const aMulai = parseInt(ayatMulaiBaru)
+          const aSelesai = parseInt(ayatSelesaiBaru)
+          const sTerakhir = selectedSantri?.surah_terakhir_nomor
+          const aTerakhir = selectedSantri?.ayat_terakhir || 0
+          let preview = 0
+          if (status === 'rosib') {
+            preview = 0
+          } else if (!sTerakhir) {
+            preview = hitungPenambahanJuz(sNomor, aMulai, aSelesai)
+          } else if (sNomor > sTerakhir) {
+            preview = 0
+          } else if (sNomor === sTerakhir) {
+            preview = aSelesai > aTerakhir ? hitungPenambahanJuz(sNomor, aTerakhir + 1, aSelesai) : 0
+          } else {
+            preview = hitungPenambahanJuz(sNomor, aMulai, aSelesai)
+          }
+          return (
+            <div className={`mt-2 text-xs font-medium ${preview > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+              {preview > 0 ? `+ ${preview.toFixed(4)} Juz` : '± 0 Juz (tidak ada penambahan)'}
+            </div>
+          )
+        })()}
                       </div>
                     )}
 
