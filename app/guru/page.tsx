@@ -12,6 +12,8 @@ export default function GuruDashboard() {
   const [loading, setLoading] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const [showPopupSukses, setShowPopupSukses] = useState(false)
+  const [popupSuksesMsg, setPopupSuksesMsg] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [riwayatList, setRiwayatList] = useState<any[]>([])
   const [editSetoran, setEditSetoran] = useState<any>(null)
@@ -404,6 +406,11 @@ setRapotSantriList(allRapotSantri)
       if (surah) setUjianAyatSelesai(String(surah.jumlah_ayat))
     }
   }
+const tampilPopupSukses = (msg: string) => {
+    setPopupSuksesMsg(msg)
+    setShowPopupSukses(true)
+    setTimeout(() => setShowPopupSukses(false), 3000)
+  }
 
   const handleInputSetoran = async () => {
     if (!selectedSantri) { setErrorMsg('Pilih santri dulu!'); return }
@@ -418,9 +425,8 @@ setRapotSantriList(allRapotSantri)
         guru_pengganti: guruPengganti, perlu_ulang: false, catatan
       })
       if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
-      setSuccessMsg(`Data kehadiran ${selectedSantri.nama} berhasil disimpan!`)
+      tampilPopupSukses(`✓ Kehadiran ${selectedSantri.nama} berhasil disimpan!`)
       resetForm(); setLoading(false)
-      setTimeout(() => setSuccessMsg(''), 3000)
       return
     }
     if (jenis === 'baru' && (!surahBaru || !ayatMulaiBaru || !ayatSelesaiBaru)) { setErrorMsg('Lengkapi data hafalan baru!'); return }
@@ -519,9 +525,8 @@ setRapotSantriList(allRapotSantri)
     if (jenis === 'lama' && selectedSantri?.jenjang === 'ula') {
       await cekSetoranLamaHariIni(selectedSantri.id)
     }
-    setSuccessMsg('Setoran berhasil disimpan!')
+    tampilPopupSukses('✓ Setoran berhasil disimpan!')
     resetForm(); setLoading(false)
-    setTimeout(() => setSuccessMsg(''), 3000)
     fetchGuruData()
   }
 
@@ -644,6 +649,34 @@ setRapotSantriList(allRapotSantri)
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+{/* POPUP SUKSES SETORAN */}
+      {showPopupSukses && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl px-6 py-5 max-w-sm w-full pointer-events-auto border-2 border-green-300">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">✓</span>
+              </div>
+              <div>
+                <div className="font-bold text-gray-800 text-base">Berhasil!</div>
+                <div className="text-green-700 text-sm mt-0.5">{popupSuksesMsg}</div>
+              </div>
+            </div>
+            <div className="mt-4 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+              <div className="h-1.5 bg-green-500 rounded-full"
+                style={{ animation: 'shrink 3s linear forwards' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes shrink {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+      `}</style>
 
       {/* POPUP KONFIRMASI ABSEN */}
       {showPopupAbsen && (
