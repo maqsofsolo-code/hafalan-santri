@@ -83,9 +83,9 @@ export default function GuruDashboard() {
     setGuruProfile(profile)
 
     const { data: santri1 } = await supabase.from('santri')
-      .select('*, guru:guru_id(nama)').eq('guru_id', user.id)
+      .select('*, guru:guru_id(nama)').eq('guru_id', user.id).eq('status', 'aktif')
     const { data: santri2 } = await supabase.from('santri')
-      .select('*, guru:guru_id(nama)').eq('guru_id_2', user.id)
+      .select('*, guru:guru_id(nama)').eq('guru_id_2', user.id).eq('status', 'aktif')
     const gabunganSantri = [...(santri1 || [])]
     ;(santri2 || []).forEach((s: any) => {
       if (!gabunganSantri.find(x => x.id === s.id)) gabunganSantri.push(s)
