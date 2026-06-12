@@ -1369,7 +1369,7 @@ const AlumniList = () => {
               <div className="space-y-3">
                 {guruFiltered.length === 0 && <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Tidak ada data guru</div>}
                 {guruFiltered.map((guru) => {
-                  const jumlahSantri = santriList.filter(s => s.guru_id === guru.id).length
+                  const jumlahSantri = santriList.filter(s => s.guru_id === guru.id || s.guru_id_2 === guru.id).length
                   return (
                     <div key={guru.id} className="bg-white rounded-xl shadow p-4 border border-gray-100 hover:shadow-md transition">
                       <div className="flex justify-between items-center">
