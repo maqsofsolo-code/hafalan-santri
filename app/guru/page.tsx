@@ -594,7 +594,7 @@ const tampilPopupSukses = (msg: string) => {
   const getJadwalJenjang = (jenjang: string) => {
     if (jenjang === 'ula') return { baru: '08.00 - 09.00', lama: '09.00 - 10.00', adaLama: true }
     if (jenjang === 'wustha') return { baru: '04.30', lama: '08.00 - 09.45', adaLama: true }
-    if (jenjang === 'ulya') return { baru: '04.30', lama: null, adaLama: false }
+    if (jenjang === 'ulya') return { baru: '-', lama: '04.30', adaLama: true }
     return { baru: '-', lama: '-', adaLama: true }
   }
 
@@ -925,9 +925,6 @@ const tampilPopupSukses = (msg: string) => {
                             {getJadwalJenjang(selectedSantri.jenjang).adaLama && (
                               <span className="text-xs text-gray-600">Murojaah: <span className="font-semibold text-purple-700">{getJadwalJenjang(selectedSantri.jenjang).lama}</span></span>
                             )}
-                            {!getJadwalJenjang(selectedSantri.jenjang).adaLama && (
-                              <span className="text-xs text-gray-400 italic">Tidak ada setoran murojaah (Ulya)</span>
-                            )}
                           </div>
                         </div>
                       )}
@@ -1022,12 +1019,30 @@ const tampilPopupSukses = (msg: string) => {
                         <label className="block text-sm font-semibold text-gray-700 mb-3">Detail Hafalan Baru</label>
                         <input type="text" value={searchSurahBaru} onChange={e => setSearchSurahBaru(e.target.value)}
                           placeholder="🔍 Cari surah..." className={inputClass + ' mb-2'} />
-                        <select value={surahBaru} onChange={e => { setSurahBaru(e.target.value); setAyatMulaiBaru('1') }} className={inputClass + ' mb-3'}>
-                          <option value="">-- Pilih Surah --</option>
-                          {surahList
-                            .filter(s => !searchSurahBaru || s.nama_latin.toLowerCase().includes(searchSurahBaru.toLowerCase()) || String(s.nomor).includes(searchSurahBaru))
-                            .map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin} ({s.jumlah_ayat} ayat)</option>)}
-                        </select>
+                        {!surahBaru && (
+                          <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto mb-3">
+                            {surahList
+                              .filter(s => !searchSurahBaru || s.nama_latin.toLowerCase().includes(searchSurahBaru.toLowerCase()) || String(s.nomor).includes(searchSurahBaru))
+                              .map(s => (
+                                <button key={s.nomor} onClick={() => { setSurahBaru(String(s.nomor)); setAyatMulaiBaru('1') }}
+                                  className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-0 text-sm">
+                                  <span className="font-medium">{s.nama_latin}</span>
+                                  <span className="text-gray-400 text-xs ml-2">{s.nomor} • {s.jumlah_ayat} ayat</span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        {surahBaru && (
+                          <div className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl mb-3">
+                            <span className="text-sm font-semibold text-blue-700">
+                              {surahList.find(s => s.nomor === parseInt(surahBaru))?.nama_latin}
+                              <span className="text-gray-400 font-normal ml-2 text-xs">
+                                ({surahList.find(s => s.nomor === parseInt(surahBaru))?.jumlah_ayat} ayat)
+                              </span>
+                            </span>
+                            <button onClick={() => { setSurahBaru(''); setSearchSurahBaru(''); setAyatMulaiBaru(''); setAyatSelesaiBaru('') }} className="text-gray-400 text-lg">×</button>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs text-gray-500 mb-1">Ayat Mulai</label>
@@ -1085,29 +1100,57 @@ const tampilPopupSukses = (msg: string) => {
                             <label className="block text-xs text-gray-500 mb-1">Dari Surah</label>
                             <input type="text" value={searchSurahMulai} onChange={e => setSearchSurahMulai(e.target.value)}
                               placeholder="🔍 Cari surah mulai..." className={inputClass + ' mb-1'} />
-                            <select value={surahMulai} onChange={e => { setSurahMulai(e.target.value); setAyatMulaiMurojaah('1') }} className={inputClass}>
-                              <option value="">-- Pilih Surah Mulai --</option>
-                              {surahList
-                                .filter(s => !searchSurahMulai || s.nama_latin.toLowerCase().includes(searchSurahMulai.toLowerCase()) || String(s.nomor).includes(searchSurahMulai))
-                                .map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
-                            </select>
+                            {!surahMulai && (
+                              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto mb-1">
+                                {surahList
+                                  .filter(s => !searchSurahMulai || s.nama_latin.toLowerCase().includes(searchSurahMulai.toLowerCase()) || String(s.nomor).includes(searchSurahMulai))
+                                  .map(s => (
+                                    <button key={s.nomor} onClick={() => { setSurahMulai(String(s.nomor)); setAyatMulaiMurojaah('1') }}
+                                      className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b last:border-0 text-sm">
+                                      <span className="font-medium">{s.nama_latin}</span>
+                                      <span className="text-gray-400 text-xs ml-2">{s.nomor}</span>
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                            {surahMulai && (
+                              <div className="flex items-center justify-between px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl mb-1">
+                                <span className="text-sm font-semibold text-purple-700">
+                                  {surahList.find(s => s.nomor === parseInt(surahMulai))?.nama_latin}
+                                </span>
+                                <button onClick={() => { setSurahMulai(''); setSearchSurahMulai('') }} className="text-gray-400 text-lg">×</button>
+                              </div>
+                            )}
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-xs text-gray-500 mb-1">Ayat Mulai</label>
-                              <input type="number" value={ayatMulaiMurojaah} onChange={e => setAyatMulaiMurojaah(e.target.value)} placeholder="1" className={inputClass} />
-                            </div>
-                            <div>
-                              <label className="block text-xs text-gray-500 mb-1">Surah Selesai</label>
-                              <input type="text" value={searchSurahSelesai} onChange={e => setSearchSurahSelesai(e.target.value)}
-                                placeholder="🔍 Cari..." className={inputClass + ' mb-1'} />
-                              <select value={surahSelesai} onChange={e => handleSurahSelesaiChange(e.target.value)} className={inputClass}>
-                                <option value="">-- Pilih --</option>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Ayat Mulai</label>
+                            <input type="number" value={ayatMulaiMurojaah} onChange={e => setAyatMulaiMurojaah(e.target.value)} placeholder="1" className={inputClass} />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Surah Selesai</label>
+                            <input type="text" value={searchSurahSelesai} onChange={e => setSearchSurahSelesai(e.target.value)}
+                              placeholder="🔍 Cari surah selesai..." className={inputClass + ' mb-1'} />
+                            {!surahSelesai && (
+                              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
                                 {surahList
                                   .filter(s => !searchSurahSelesai || s.nama_latin.toLowerCase().includes(searchSurahSelesai.toLowerCase()) || String(s.nomor).includes(searchSurahSelesai))
-                                  .map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
-                              </select>
-                            </div>
+                                  .map(s => (
+                                    <button key={s.nomor} onClick={() => handleSurahSelesaiChange(String(s.nomor))}
+                                      className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b last:border-0 text-sm">
+                                      <span className="font-medium">{s.nama_latin}</span>
+                                      <span className="text-gray-400 text-xs ml-2">{s.nomor}</span>
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                            {surahSelesai && (
+                              <div className="flex items-center justify-between px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl">
+                                <span className="text-sm font-semibold text-purple-700">
+                                  {surahList.find(s => s.nomor === parseInt(surahSelesai))?.nama_latin}
+                                </span>
+                                <button onClick={() => { setSurahSelesai(''); setSearchSurahSelesai('') }} className="text-gray-400 text-lg">×</button>
+                              </div>
+                            )}
                           </div>
                           {surahSelesai && (
                             <div>
