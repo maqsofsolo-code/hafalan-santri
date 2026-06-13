@@ -57,6 +57,9 @@ export default function GuruDashboard() {
   const [ayatMulaiMurojaah, setAyatMulaiMurojaah] = useState('1')
   const [surahSelesai, setSurahSelesai] = useState('')
   const [ayatSelesaiMurojaah, setAyatSelesaiMurojaah] = useState('')
+  const [searchSurahBaru, setSearchSurahBaru] = useState('')
+  const [searchSurahMulai, setSearchSurahMulai] = useState('')
+  const [searchSurahSelesai, setSearchSurahSelesai] = useState('')
   const [status, setStatus] = useState('lancar')
   const [catatan, setCatatan] = useState('')
 
@@ -563,6 +566,7 @@ const tampilPopupSukses = (msg: string) => {
     setSelectedSantri(null); setJenis('baru'); setStatus('lancar')
     setSurahBaru(''); setAyatMulaiBaru(''); setAyatSelesaiBaru('')
     setSurahMulai(''); setAyatMulaiMurojaah('1'); setSurahSelesai(''); setAyatSelesaiMurojaah('')
+    setSearchSurahBaru(''); setSearchSurahMulai(''); setSearchSurahSelesai('')
     setCatatan(''); setStatusKehadiran('hadir'); setSearchSantri(''); setGuruPengganti(false)
     setSetoranLamaHariIni(null)
   }
@@ -851,24 +855,35 @@ const tampilPopupSukses = (msg: string) => {
                     Pilih Santri {guruPengganti && <span className="text-blue-500 text-xs">(semua santri)</span>}
                   </label>
                   <input type="text" value={searchSantri} onChange={e => setSearchSantri(e.target.value)}
-                    placeholder="Cari nama santri..." className={inputClass + ' mb-2'} />
-                  {searchSantri && (
-                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                    placeholder="🔍 Cari nama santri..." className={inputClass + ' mb-2'} />
+                  {!selectedSantri && (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
+                      {santriTampil.length === 0 && (
+                        <div className="px-4 py-3 text-sm text-gray-400 text-center">Tidak ditemukan</div>
+                      )}
                       {santriTampil.map(s => (
                         <button key={s.id} onClick={() => {
                           setSelectedSantri(s)
                           setSearchSantri(s.nama)
                           setSetoranLamaHariIni(null)
-                          setJenis('baru')
+                          setJenis(s.jenjang === 'ulya' ? 'lama' : 'baru')
                           if (s.jenjang === 'ula') cekSetoranLamaHariIni(s.id)
                         }}
                           className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
-                          <span className="font-medium">{s.nama}</span>
-                          {s.kelas && <span className="text-gray-400 text-xs ml-2">{s.kelas}</span>}
-                          {guruPengganti && <span className="text-blue-400 text-xs ml-2">({s.guru?.nama || '-'})</span>}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-medium">{s.nama}</span>
+                              {s.kelas && <span className="text-gray-400 text-xs ml-2">{s.kelas}</span>}
+                              {guruPengganti && <span className="text-blue-400 text-xs ml-2">({s.guru?.nama || '-'})</span>}
+                            </div>
+                            {s.jenjang && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${s.jenjang === 'ula' ? 'bg-green-100 text-green-700' : s.jenjang === 'wustha' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                {s.jenjang}
+                              </span>
+                            )}
+                          </div>
                         </button>
                       ))}
-                      {santriTampil.length === 0 && <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
                     </div>
                   )}
                   {selectedSantri && (
@@ -967,6 +982,10 @@ const tampilPopupSukses = (msg: string) => {
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           onClick={() => {
+                            if (selectedSantri?.jenjang === 'ulya') {
+                              setErrorMsg('Santri Ulya tidak menyetorkan hafalan baru — hafalan baru bersifat mandiri!')
+                              return
+                            }
                             if (selectedSantri?.jenjang === 'ula') {
                               if (!setoranLamaHariIni) {
                                 setErrorMsg('Santri Ula wajib setor Murojaah terlebih dahulu!')
@@ -980,20 +999,20 @@ const tampilPopupSukses = (msg: string) => {
                             setJenis('baru')
                             setErrorMsg('')
                           }}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${ulaBlokHafalanBaru ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                          <div className="text-sm font-bold text-gray-800">Hafalan Baru</div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {selectedSantri?.jenjang === 'ula' ? 'Setelah murojaah lancar' : 'Tambah hafalan baru'}
-                          </div>
+                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${ulaBlokHafalanBaru || selectedSantri?.jenjang === 'ulya' ? 'opacity-40 cursor-not-allowed' : ''}`}>
+          <div className="text-sm font-bold text-gray-800">Hafalan Baru</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            {selectedSantri?.jenjang === 'ulya' ? 'Mandiri (tidak disetorkan)' : selectedSantri?.jenjang === 'ula' ? 'Setelah murojaah lancar' : 'Tambah hafalan baru'}
+          </div>
                         </button>
                         <button
                           onClick={() => { setJenis('lama'); setErrorMsg('') }}
-                          disabled={selectedSantri?.jenjang === 'ulya'}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'lama' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'} ${selectedSantri?.jenjang === 'ulya' ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                          <div className="text-sm font-bold text-gray-800">Murojaah</div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {selectedSantri?.jenjang === 'ulya' ? 'Tidak ada (Ulya)' : selectedSantri?.jenjang === 'ula' ? 'Wajib setor dulu' : 'Mengulang hafalan lama'}
-                          </div>
+                          disabled={false}
+          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'lama' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
+          <div className="text-sm font-bold text-gray-800">Murojaah</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            {selectedSantri?.jenjang === 'ula' ? 'Wajib setor dulu' : 'Mengulang hafalan lama'}
+          </div>
                         </button>
                       </div>
                     </div>
@@ -1001,9 +1020,13 @@ const tampilPopupSukses = (msg: string) => {
                     {jenis === 'baru' && (
                       <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
                         <label className="block text-sm font-semibold text-gray-700 mb-3">Detail Hafalan Baru</label>
+                        <input type="text" value={searchSurahBaru} onChange={e => setSearchSurahBaru(e.target.value)}
+                          placeholder="🔍 Cari surah..." className={inputClass + ' mb-2'} />
                         <select value={surahBaru} onChange={e => { setSurahBaru(e.target.value); setAyatMulaiBaru('1') }} className={inputClass + ' mb-3'}>
                           <option value="">-- Pilih Surah --</option>
-                          {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin} ({s.jumlah_ayat} ayat)</option>)}
+                          {surahList
+                            .filter(s => !searchSurahBaru || s.nama_latin.toLowerCase().includes(searchSurahBaru.toLowerCase()) || String(s.nomor).includes(searchSurahBaru))
+                            .map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin} ({s.jumlah_ayat} ayat)</option>)}
                         </select>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -1060,9 +1083,13 @@ const tampilPopupSukses = (msg: string) => {
                         <div className="space-y-3">
                           <div>
                             <label className="block text-xs text-gray-500 mb-1">Dari Surah</label>
+                            <input type="text" value={searchSurahMulai} onChange={e => setSearchSurahMulai(e.target.value)}
+                              placeholder="🔍 Cari surah mulai..." className={inputClass + ' mb-1'} />
                             <select value={surahMulai} onChange={e => { setSurahMulai(e.target.value); setAyatMulaiMurojaah('1') }} className={inputClass}>
                               <option value="">-- Pilih Surah Mulai --</option>
-                              {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
+                              {surahList
+                                .filter(s => !searchSurahMulai || s.nama_latin.toLowerCase().includes(searchSurahMulai.toLowerCase()) || String(s.nomor).includes(searchSurahMulai))
+                                .map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
                             </select>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
@@ -1072,9 +1099,13 @@ const tampilPopupSukses = (msg: string) => {
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">Surah Selesai</label>
+                              <input type="text" value={searchSurahSelesai} onChange={e => setSearchSurahSelesai(e.target.value)}
+                                placeholder="🔍 Cari..." className={inputClass + ' mb-1'} />
                               <select value={surahSelesai} onChange={e => handleSurahSelesaiChange(e.target.value)} className={inputClass}>
                                 <option value="">-- Pilih --</option>
-                                {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
+                                {surahList
+                                  .filter(s => !searchSurahSelesai || s.nama_latin.toLowerCase().includes(searchSurahSelesai.toLowerCase()) || String(s.nomor).includes(searchSurahSelesai))
+                                  .map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
                               </select>
                             </div>
                           </div>
