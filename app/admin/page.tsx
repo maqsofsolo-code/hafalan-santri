@@ -57,6 +57,7 @@ useEffect(() => {
   const [formTanggalLahir, setFormTanggalLahir] = useState('')
   const [formAlamat, setFormAlamat] = useState('')
   const [formStatus, setFormStatus] = useState('aktif')
+  const [formJenisKelas, setFormJenisKelas] = useState('banin')
   const [formTahunLulus, setFormTahunLulus] = useState('')
   const [formKeteranganKeluar, setFormKeteranganKeluar] = useState('')
 
@@ -114,6 +115,7 @@ useEffect(() => {
   const [filterJenjang, setFilterJenjang] = useState('semua')
   const [filterKelas, setFilterKelas] = useState('semua')
   const [filterGuruId, setFilterGuruId] = useState('semua')
+  const [filterJenisKelas, setFilterJenisKelas] = useState('semua')
   const [searchSantri, setSearchSantri] = useState('')
   const [searchGuru, setSearchGuru] = useState('')
   const [searchWali, setSearchWali] = useState('')
@@ -391,7 +393,8 @@ const fetchPeriode = async () => {
     if (!formNama || !formJenjang || !formKelasNum) { setErrorMsg('Nama, jenjang dan kelas wajib diisi!'); setLoading(false); return }
     const { error } = await supabase.from('santri').insert({
       nama: formNama, jenjang: formJenjang, kelas_num: parseInt(formKelasNum),
-      kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
+      kelas: kelasLabel(parseInt(formKelasNum), formJenjang, formJenisKelas),
+      jenis_kelas: formJenisKelas,
       guru_id: formGuruId || null, guru_id_2: formGuruId2 || null, wali_id: formWaliId || null,
       total_hafalan_juz: hitungTotalJuzAwal(),
       surah_terakhir_nomor: formSurahAkhir ? parseInt(formSurahAkhir) : null,
@@ -419,7 +422,7 @@ const fetchPeriode = async () => {
     setFormTempatLahir(santri.tempat_lahir || '')
     setFormTanggalLahir(santri.tanggal_lahir || '')
     setFormAlamat(santri.alamat || '')
-    setFormStatus(santri.status || 'aktif')
+    setFormJenisKelas(santri.jenis_kelas || 'banin')
     setFormTahunLulus(santri.tahun_lulus || '')
     setFormKeteranganKeluar(santri.keterangan_keluar || '')
     setShowForm(true); setFormType('santri')
@@ -429,7 +432,8 @@ const fetchPeriode = async () => {
     setLoading(true); setErrorMsg('')
     let updateData: any = {
       nama: formNama, jenjang: formJenjang, kelas_num: parseInt(formKelasNum),
-      kelas: `Kelas ${formKelasNum} ${jenjangLabel(formJenjang)}`,
+      kelas: kelasLabel(parseInt(formKelasNum), formJenjang, formJenisKelas),
+      jenis_kelas: formJenisKelas,
       guru_id: formGuruId || null, guru_id_2: formGuruId2 || null, wali_id: formWaliId || null,
       nik: formNik || null, nisn: formNisn || null,
       tempat_lahir: formTempatLahir || null,
@@ -754,12 +758,11 @@ const fetchPeriode = async () => {
         continue
       }
 
-      const jenjangBaruLabel = jenjangBaru === 'ula' ? 'Ula' : jenjangBaru === 'wustha' ? 'Wustha' : 'Ulya'
       await supabase.from('santri').update({
         kelas_num: kelasBaruNum,
         jenjang: jenjangBaru,
-        kelas: `Kelas ${kelasBaruNum} ${jenjangBaruLabel}`,
-        guru_id: null // Putuskan ikatan guru lama
+        kelas: kelasLabel(kelasBaruNum, jenjangBaru, santri.jenis_kelas || 'banin'),
+        guru_id: null
       }).eq('id', santri.id)
     }
 
@@ -788,6 +791,7 @@ const fetchPeriode = async () => {
     setFormSurahAwal(''); setFormAyatAwal('1'); setFormSurahAkhir(''); setFormAyatAkhir('')
     setFormNik(''); setFormNisn(''); setFormTempatLahir(''); setFormTanggalLahir(''); setFormAlamat('')
     setFormStatus('aktif'); setFormTahunLulus(''); setFormKeteranganKeluar('')
+    setFormJenisKelas('banin')
     setNaikKelasPreview([]); setNaikKelasChecked({}); setNaikKelasMsg('')
     setShowPassword(false)
     setFormKalNama(''); setFormKalTipe('libur'); setFormKalSemester('1')
@@ -810,11 +814,22 @@ const fetchPeriode = async () => {
     return []
   }
 
-  const jenjangLabel = (j: string) => {
+const jenjangLabel = (j: string) => {
     if (j === 'ula') return 'Ula'
     if (j === 'wustha') return 'Wustha'
     if (j === 'ulya') return 'Ulya'
     return j
+  }
+
+  const kelasLabel = (kelasNum: number, jenjang: string, jenisKelas: string) => {
+    if (!kelasNum || !jenjang) return '-'
+    if (jenjang === 'ulya') {
+      if (jenisKelas === 'tn_a') return `Kelas ${kelasNum}A TN`
+      if (jenisKelas === 'tn_b') return `Kelas ${kelasNum}B TN`
+      return `Kelas ${kelasNum}` // banin ulya
+    }
+    if (jenisKelas === 'banat') return `Kelas ${kelasNum} Banat`
+    return `Kelas ${kelasNum} Banin` // default banin
   }
 
   const tipeKalenderLabel = (t: string) => {
@@ -836,6 +851,7 @@ const fetchPeriode = async () => {
     if (filterJenjang !== 'semua' && s.jenjang !== filterJenjang) return false
     if (filterKelas !== 'semua' && s.kelas_num?.toString() !== filterKelas) return false
     if (filterGuruId !== 'semua' && s.guru_id !== filterGuruId) return false
+    if (filterJenisKelas !== 'semua' && s.jenis_kelas !== filterJenisKelas) return false
     if (searchSantri && !s.nama?.toLowerCase().includes(searchSantri.toLowerCase())) return false
     return true
   })
@@ -1410,7 +1426,7 @@ const AlumniList = () => {
 
               {/* Filter Santri */}
               <div className="bg-white rounded-2xl shadow p-4 mb-4 border border-gray-100">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
                     <select value={filterJenjang} onChange={e => { setFilterJenjang(e.target.value); setFilterKelas('semua') }} className={inputClass}>
@@ -1435,6 +1451,16 @@ const AlumniList = () => {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-xs text-gray-500 mb-1">Jenis Kelas</label>
+                    <select value={filterJenisKelas} onChange={e => setFilterJenisKelas(e.target.value)} className={inputClass}>
+                      <option value="semua">Semua</option>
+                      <option value="banin">Banin</option>
+                      <option value="banat">Banat</option>
+                      <option value="tn_a">TN A</option>
+                      <option value="tn_b">TN B</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-xs text-gray-500 mb-1">Cari Nama</label>
                     <input type="text" value={searchSantri} onChange={e => setSearchSantri(e.target.value)}
                       placeholder="Cari santri..." className={inputClass} />
@@ -1450,7 +1476,25 @@ const AlumniList = () => {
                   <h3 className="font-bold text-base mb-4">{editSantriId ? 'Edit Data Santri' : 'Tambah Santri Baru'}</h3>
                   <div className="space-y-3">
                     <input placeholder="Nama Santri *" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
-
+{/* Jenis Kelas */}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Jenis Kelas</label>
+                      <select value={formJenisKelas} onChange={e => setFormJenisKelas(e.target.value)} className={inputClass}>
+                        {formJenjang !== 'ulya' && <>
+                          <option value="banin">Banin (Putra)</option>
+                          <option value="banat">Banat (Putri)</option>
+                        </>}
+                        {formJenjang === 'ulya' && <>
+                          <option value="banin">Banin (Putra)</option>
+                          <option value="tn_a">TN A (Putri - Kelas A)</option>
+                          <option value="tn_b">TN B (Putri - Kelas B)</option>
+                        </>}
+                        {!formJenjang && <>
+                          <option value="banin">Banin (Putra)</option>
+                          <option value="banat">Banat (Putri)</option>
+                        </>}
+                      </select>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <select value={formJenjang} onChange={e => { setFormJenjang(e.target.value); setFormKelasNum('') }} className={inputClass}>
                         <option value="">-- Jenjang *</option>
@@ -1582,7 +1626,7 @@ const AlumniList = () => {
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             {santri.jenjang && (
                               <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">
-                                Kelas {santri.kelas_num} {jenjangLabel(santri.jenjang)}
+                                {santri.kelas || kelasLabel(santri.kelas_num, santri.jenjang, santri.jenis_kelas)}
                               </span>
                             )}
                             <span className="text-xs text-gray-400">{santri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
