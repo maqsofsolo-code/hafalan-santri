@@ -503,25 +503,43 @@ const tampilPopupSukses = (msg: string) => {
     const { error } = await supabase.from('setoran').insert(insertData)
     if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
     if (jenis === 'baru') {
-      // Update surah_terakhir hanya jika ada kemajuan nyata
       const surahNomor = parseInt(surahBaru)
       const ayatSelesaiNum = parseInt(ayatSelesaiBaru)
       const surahTerakhir = selectedSantri.surah_terakhir_nomor
       const ayatTerakhir = selectedSantri.ayat_terakhir || 0
+      const totalHafalanSekarang = selectedSantri.total_hafalan_juz || 0
 
-      const adaKemajuan = status === 'lancar' && (
-        !surahTerakhir ||
-        surahNomor < surahTerakhir ||
-        (surahNomor === surahTerakhir && ayatSelesaiNum > ayatTerakhir)
-      )
-
-      if (adaKemajuan) {
-        const totalBaru = (selectedSantri.total_hafalan_juz || 0) + penambahanJuz
+      if (status === 'lancar' && totalHafalanSekarang === 0 && !surahTerakhir) {
+        // Data hafalan masih kosong — set data awal dari surah ini sampai An-Nas
+        const surahIni = surahList.find(s => s.nomor === surahNomor)
+        const surahAnNas = surahList.find(s => s.nomor === 114)
+        let totalAwal = 0
+        if (surahIni && surahAnNas) {
+          const totalHalaman = surahAnNas.halaman_selesai - surahIni.halaman_mulai + 1
+          totalAwal = Math.max(0, totalHalaman / 20)
+        }
         await supabase.from('santri').update({
-          total_hafalan_juz: totalBaru,
+          total_hafalan_juz: totalAwal,
           surah_terakhir_nomor: surahNomor,
           ayat_terakhir: ayatSelesaiNum
         }).eq('id', selectedSantri.id)
+
+      } else {
+        // Data hafalan sudah ada — logika normal
+        const adaKemajuan = status === 'lancar' && (
+          !surahTerakhir ||
+          surahNomor < surahTerakhir ||
+          (surahNomor === surahTerakhir && ayatSelesaiNum > ayatTerakhir)
+        )
+
+        if (adaKemajuan) {
+          const totalBaru = totalHafalanSekarang + penambahanJuz
+          await supabase.from('santri').update({
+            total_hafalan_juz: totalBaru,
+            surah_terakhir_nomor: surahNomor,
+            ayat_terakhir: ayatSelesaiNum
+          }).eq('id', selectedSantri.id)
+        }
       }
     }
     // Refresh cek setoran lama jika baru saja input lama
