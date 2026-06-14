@@ -162,8 +162,20 @@ export async function POST(request: Request) {
       // Tentukan label kelas
       const jenjang = row.jenjang?.toLowerCase() || null
       const kelasNum = row.kelas_num ? parseInt(row.kelas_num) : null
-      const jenjangLabel = jenjang === 'ula' ? 'Ula' : jenjang === 'wustha' ? 'Wustha' : jenjang === 'ulya' ? 'Ulya' : ''
-      const kelasLabel = kelasNum && jenjangLabel ? `Kelas ${kelasNum} ${jenjangLabel}` : null
+      const jenisKelas = row.jenis_kelas?.toLowerCase() || 'banin'
+
+      const buatKelasLabel = (num: number | null, jnj: string | null, jenis: string) => {
+        if (!num || !jnj) return null
+        if (jnj === 'ulya') {
+          if (jenis === 'tn_a') return `Kelas ${num}A TN`
+          if (jenis === 'tn_b') return `Kelas ${num}B TN`
+          return `Kelas ${num}`
+        }
+        if (jenis === 'banat') return `Kelas ${num} Banat`
+        return `Kelas ${num} Banin`
+      }
+
+      const kelasLabel = buatKelasLabel(kelasNum, jenjang, jenisKelas)
 
       // Parse tanggal lahir
       const tanggalLahir = parseTanggal(row.tanggal_lahir)
@@ -173,6 +185,7 @@ export async function POST(request: Request) {
         jenjang: jenjang,
         kelas_num: kelasNum,
         kelas: kelasLabel,
+        jenis_kelas: jenisKelas,
         guru_id: guruId,
         guru_id_2: guruId2,
         total_hafalan_juz: totalJuz,
