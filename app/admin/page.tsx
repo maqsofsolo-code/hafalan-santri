@@ -4,6 +4,47 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 
+function FormEmailPassword({ 
+  isEdit, 
+  formEmail, 
+  setFormEmail, 
+  formPassword, 
+  setFormPassword,
+  showPassword,
+  setShowPassword
+}: { 
+  isEdit: boolean
+  formEmail: string
+  setFormEmail: (v: string) => void
+  formPassword: string
+  setFormPassword: (v: string) => void
+  showPassword: boolean
+  setShowPassword: (v: boolean) => void
+}) {
+  return (
+    <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+      <p className="text-xs font-semibold text-yellow-800 mb-3">
+        {isEdit ? '✏️ Ubah Email / Password (kosongkan jika tidak ingin diubah)' : '🔐 Akun Login'}
+      </p>
+      <div className="space-y-2">
+        <input placeholder="Email" type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300" />
+        <div className="relative">
+          <input placeholder={isEdit ? "Password baru (kosongkan jika tidak diubah)" : "Password"}
+            type={showPassword ? 'text' : 'password'} value={formPassword} onChange={e => setFormPassword(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300 pr-12" />
+          <button type="button" onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-3 text-gray-400 text-sm px-1">{showPassword ? '🙈' : '👁'}</button>
+        </div>
+        {showPassword && formPassword && (
+          <div className="p-2 bg-white rounded-lg border border-yellow-200">
+            <p className="text-xs text-gray-500">Password: <span className="font-bold text-gray-800">{formPassword}</span></p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [guruList, setGuruList] = useState<any[]>([])
@@ -717,7 +758,7 @@ const fetchPeriode = async () => {
   const handlePreviewNaikKelas = async () => {
     if (!naikKelasNum) return
     const { data } = await supabase.from('santri')
-      .select('id, nama, kelas_num, jenjang, kelas')
+      .select('id, nama, kelas_num, jenjang, kelas, jenis_kelas')
       .eq('jenjang', naikKelasJenjang)
       .eq('kelas_num', parseInt(naikKelasNum))
       .eq('status', 'aktif')
@@ -888,28 +929,6 @@ const jenjangLabel = (j: string) => {
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
   const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
 
-  const FormEmailPassword = ({ isEdit }: { isEdit: boolean }) => (
-    <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-      <p className="text-xs font-semibold text-yellow-800 mb-3">
-        {isEdit ? '✏️ Ubah Email / Password (kosongkan jika tidak ingin diubah)' : '🔐 Akun Login'}
-      </p>
-      <div className="space-y-2">
-        <input placeholder="Email" type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputClass} />
-        <div className="relative">
-          <input placeholder={isEdit ? "Password baru (kosongkan jika tidak diubah)" : "Password"}
-            type={showPassword ? 'text' : 'password'} value={formPassword} onChange={e => setFormPassword(e.target.value)}
-            className={inputClass + ' pr-12'} />
-          <button type="button" onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-3 text-gray-400 text-sm px-1">{showPassword ? '🙈' : '👁'}</button>
-        </div>
-        {showPassword && formPassword && (
-          <div className="p-2 bg-white rounded-lg border border-yellow-200">
-            <p className="text-xs text-gray-500">Password: <span className="font-bold text-gray-800">{formPassword}</span></p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
 const AlumniList = () => {
     const [alumniData, setAlumniData] = useState<any[]>([])
     const [filterStatusAlumni, setFilterStatusAlumni] = useState('semua')
@@ -1370,7 +1389,15 @@ const AlumniList = () => {
                   <div className="space-y-3">
                     <input placeholder="Nama Guru" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
-                    <FormEmailPassword isEdit={!!editGuruId} />
+                    <FormEmailPassword
+  isEdit={!!editGuruId}
+  formEmail={formEmail}
+  setFormEmail={setFormEmail}
+  formPassword={formPassword}
+  setFormPassword={setFormPassword}
+  showPassword={showPassword}
+  setShowPassword={setShowPassword}
+/>
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
@@ -1677,7 +1704,15 @@ const AlumniList = () => {
                   <div className="space-y-3">
                     <input placeholder="Nama Wali" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
-                    <FormEmailPassword isEdit={!!editWaliId} />
+                    <FormEmailPassword
+  isEdit={!!editWaliId}
+  formEmail={formEmail}
+  setFormEmail={setFormEmail}
+  formPassword={formPassword}
+  setFormPassword={setFormPassword}
+  showPassword={showPassword}
+  setShowPassword={setShowPassword}
+/>
                   </div>
                   {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
                   <div className="flex gap-2 mt-4">
