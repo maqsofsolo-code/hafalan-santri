@@ -405,7 +405,161 @@ async function notifNaikPeringkat() {
 
   return { message: `Notif naik peringkat selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
 }
+// ===== NOTIF WALI KELAS (jam 11.00 WIB) =====
+async function notifWaliKelas() {
+  const today = getWIBDate()
+  const tanggalFormatted = formatTanggal(today)
+  if (await cekLibur(today)) return { message: 'Hari libur' }
 
+  // Ambil semua guru yang adalah wali kelas
+  const { data: waliKelasList } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('role', 'guru')
+    .eq('is_wali_kelas', true)
+  if (!waliKelasList || waliKelasList.length === 0) return { message: 'Tidak ada wali kelas' }
+
+  // Ambil semua setoran hari ini
+  const { data: setoranHariIni } = await supabase
+    .from('setoran').select('*').eq('tanggal', today)
+
+  let terkirim = 0, gagal = 0
+
+  for (const wali of waliKelasList) {
+    if (!wali.no_wa) continue
+    if (!wali.wali_kelas_num || !wali.wali_kelas_jenis) continue
+
+    // Ambil semua santri di kelas yang diwali
+    // TN: gabung tn_a dan tn_b
+    let queryJenisKelas = supabase
+      .from('santri')
+      .select('*')
+      .eq('kelas_num', wali.wali_kelas_num)
+      .eq('status', 'aktif')
+
+    if (wali.wali_kelas_jenis === 'tn') {
+      queryJenisKelas = queryJenisKelas.in('jenis_kelas', ['tn_a', 'tn_b'])
+    } else {
+      queryJenisKelas = queryJenisKelas.eq('jenis_kelas', wali.wali_kelas_jenis)
+    }
+
+    const { data: santriKelas } = await queryJenisKelas.order('nama')
+    if (!santriKelas || santriKelas.length === 0) continue
+
+    // Kelompokkan per santri
+    const sudahSetor: string[] = []
+    const belumMurojaah: string[] = []
+    const belumHafalanBaru: string[] = []
+    const belumKeduanya: string[] = []
+    const tidakHadir: { nama: string, status: string }[] = []
+
+    for (const santri of santriKelas) {
+      const setoranSantri = (setoranHariIni || []).filter((s: any) => s.santri_id === santri.id)
+      const statusKehadiran = setoranSantri[0]?.status_kehadiran
+
+      // Tidak hadir
+      if (setoranSantri.length > 0 && statusKehadiran !== 'hadir') {
+        tidakHadir.push({
+          nama: santri.nama,
+          status: statusKehadiran === 'sakit' ? 'Sakit' : statusKehadiran === 'izin' ? 'Izin' : 'Alpha'
+        })
+        continue
+      }
+
+      const setoranHadir = setoranSantri.filter((s: any) => s.status_kehadiran === 'hadir')
+      const sudahSetorLama = setoranHadir.some((s: any) => s.jenis === 'lama')
+      const sudahSetorBaru = setoranHadir.some((s: any) => s.jenis === 'baru')
+
+      const jenjang = santri.jenjang
+
+      if (jenjang === 'ulya') {
+        // Ulya: hanya murojaah
+        if (sudahSetorLama) {
+          sudahSetor.push(santri.nama)
+        } else {
+          belumMurojaah.push(santri.nama)
+        }
+      } else if (jenjang === 'ula') {
+        // Ula: wajib murojaah dulu, baru hafalan baru
+        if (sudahSetorLama && sudahSetorBaru) {
+          sudahSetor.push(santri.nama)
+        } else if (!sudahSetorLama && !sudahSetorBaru) {
+          belumKeduanya.push(santri.nama)
+        } else if (!sudahSetorLama) {
+          belumMurojaah.push(santri.nama)
+        } else {
+          belumHafalanBaru.push(santri.nama)
+        }
+      } else if (jenjang === 'wustha') {
+        // Wustha: hafalan baru dan murojaah
+        if (sudahSetorBaru && sudahSetorLama) {
+          sudahSetor.push(santri.nama)
+        } else if (!sudahSetorBaru && !sudahSetorLama) {
+          belumKeduanya.push(santri.nama)
+        } else if (!sudahSetorBaru) {
+          belumHafalanBaru.push(santri.nama)
+        } else {
+          belumMurojaah.push(santri.nama)
+        }
+      } else {
+        // Jenjang belum diset — cek setor apapun
+        if (setoranHadir.length > 0) {
+          sudahSetor.push(santri.nama)
+        } else {
+          belumKeduanya.push(santri.nama)
+        }
+      }
+    }
+
+    // Hitung total belum setor
+    const totalBelum = belumMurojaah.length + belumHafalanBaru.length + belumKeduanya.length
+    const totalSantri = santriKelas.length
+
+    // Buat label kelas
+    const labelJenis = wali.wali_kelas_jenis === 'banin' ? 'Banin'
+      : wali.wali_kelas_jenis === 'banat' ? 'Banat' : 'TN'
+    const labelKelas = `Kelas ${wali.wali_kelas_num} ${labelJenis}`
+
+    // Susun pesan
+    let isiPesan = ''
+
+    if (totalBelum === 0 && tidakHadir.length === 0) {
+      isiPesan = `✅ *Alhamdulillah!* Semua santri ${labelKelas} (${sudahSetor.length} santri) sudah menyelesaikan setoran hari ini.`
+    } else {
+      // Belum setor
+      if (belumKeduanya.length > 0) {
+        isiPesan += `\n❌ *Belum setor sama sekali (${belumKeduanya.length} santri):*\n`
+        belumKeduanya.forEach((n, i) => { isiPesan += `${i + 1}. ${n}\n` })
+      }
+      if (belumMurojaah.length > 0) {
+        isiPesan += `\n⚠️ *Belum setor murojaah (${belumMurojaah.length} santri):*\n`
+        belumMurojaah.forEach((n, i) => { isiPesan += `${i + 1}. ${n}\n` })
+      }
+      if (belumHafalanBaru.length > 0) {
+        isiPesan += `\n📖 *Belum setor hafalan baru (${belumHafalanBaru.length} santri):*\n`
+        belumHafalanBaru.forEach((n, i) => { isiPesan += `${i + 1}. ${n}\n` })
+      }
+      if (sudahSetor.length > 0) {
+        isiPesan += `\n✅ *Sudah selesai (${sudahSetor.length} santri):*\n`
+        sudahSetor.forEach((n, i) => { isiPesan += `${i + 1}. ${n}\n` })
+      }
+    }
+
+    // Ketidakhadiran
+    if (tidakHadir.length > 0) {
+      isiPesan += `\n🏥 *Tidak hadir (${tidakHadir.length} santri):*\n`
+      tidakHadir.forEach((s, i) => { isiPesan += `${i + 1}. ${s.nama} — ${s.status}\n` })
+    }
+
+    const pesan = `Bismillahirrahmanirrahim\n\nYkh. Ustadz/Ustadzah *${wali.nama}*\n(Wali ${labelKelas})\n\n📅 *${tanggalFormatted}*\n🕙 Laporan Setoran hingga pukul 11.00\n\n━━━━━━━━━━━━━━━\n📊 *Rekap ${labelKelas}*\nTotal santri: ${totalSantri} | Sudah: ${sudahSetor.length} | Belum: ${totalBelum}\n━━━━━━━━━━━━━━━\n${isiPesan.trim()}\n\nMohon ditindaklanjuti jika diperlukan.\n\nJazakumullahu khairan.\n${FOOTER}`
+
+    const hasil = await kirimWA(wali.no_wa, pesan)
+    if (hasil.status) terkirim++
+    else gagal++
+  }
+
+  return { message: `Notif wali kelas selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
+}
 export async function POST(request: Request) {
   const { jenis } = await request.json()
   if (jenis === 'notif-wali') return NextResponse.json(await notifWali())
@@ -414,5 +568,6 @@ export async function POST(request: Request) {
   if (jenis === 'reminder-guru-siang') return NextResponse.json(await reminderGuru('siang'))
   if (jenis === 'reminder-guru-sore') return NextResponse.json(await reminderGuru('sore'))
   if (jenis === 'notif-naik-peringkat') return NextResponse.json(await notifNaikPeringkat())
+  if (jenis === 'notif-wali-kelas') return NextResponse.json(await notifWaliKelas())
   return NextResponse.json({ error: 'Jenis tidak valid' }, { status: 400 })
 }
