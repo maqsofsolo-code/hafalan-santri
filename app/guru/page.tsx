@@ -95,7 +95,7 @@ export default function GuruDashboard() {
     })
     setSantriList(gabunganSantri)
 
-    const { data: semuaSantri } = await supabase.from('santri').select('*, guru:guru_id(nama)')
+    const { data: semuaSantri } = await supabase.from('santri').select('*, guru:guru_id(nama)').eq('status', 'aktif')
     setAllSantriList(semuaSantri || [])
 
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
@@ -602,7 +602,16 @@ const tampilPopupSukses = (msg: string) => {
   const tanggal = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const sesiAktif = getSesiAktif()
   const santriTampil = guruPengganti
-    ? allSantriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
+    ? allSantriList.filter(s => {
+        if (!s.nama.toLowerCase().includes(searchSantri.toLowerCase())) return false
+        // Filter berdasarkan jenis_kelas guru yang login
+        const guruJenis = guruProfile?.jenis_kelas
+        if (!guruJenis) return true // jika belum diset, tampilkan semua
+        if (guruJenis === 'banin') return s.jenis_kelas === 'banin'
+        if (guruJenis === 'banat') return s.jenis_kelas === 'banat' || s.jenis_kelas === 'tn_a' || s.jenis_kelas === 'tn_b'
+        if (guruJenis === 'tn') return s.jenis_kelas === 'tn_a' || s.jenis_kelas === 'tn_b'
+        return true
+      })
     : santriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
   const santriTampilUjian = allSantriList.filter(s => s.nama.toLowerCase().includes(searchSantriUjian.toLowerCase()))
   const targetMurojaah = selectedSantri ? hitungTargetMurojaah(selectedSantri) : null
@@ -768,7 +777,14 @@ const tampilPopupSukses = (msg: string) => {
             <div className="mt-3 bg-blue-800 bg-opacity-60 rounded-xl px-3 py-2 border border-blue-600">
               <div className="text-blue-300 text-xs">Masuk sebagai</div>
               <div className="text-white font-semibold text-sm">{guruProfile?.nama || 'Guru'}</div>
-              <div className="text-blue-300 text-xs">Guru Musami'</div>
+              <div className="text-blue-300 text-xs">
+                Guru Musami'
+                {guruProfile?.is_wali_kelas && (
+                  <span className="ml-1 bg-yellow-400 text-yellow-900 px-1.5 py-0.5 rounded-full text-xs font-bold">
+                    Wali Kelas {guruProfile.wali_kelas_num} {guruProfile.wali_kelas_jenis === 'banin' ? 'Banin' : guruProfile.wali_kelas_jenis === 'banat' ? 'Banat' : 'TN'}
+                  </span>
+                )}
+              </div>
             </div>
             <TombolAbsen mode="sidebar" />
           </div>
@@ -870,7 +886,7 @@ const tampilPopupSukses = (msg: string) => {
                 {/* Pilih Santri */}
                 <div className="mb-4">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Pilih Santri {guruPengganti && <span className="text-blue-500 text-xs">(semua santri)</span>}
+                    Pilih Santri {guruPengganti && <span className="text-blue-500 text-xs">(mode pengganti)</span>}
                   </label>
                   <input type="text" value={searchSantri} onChange={e => setSearchSantri(e.target.value)}
                     placeholder="🔍 Cari nama santri..." className={inputClass + ' mb-2'} />
@@ -1830,57 +1846,97 @@ const tampilPopupSukses = (msg: string) => {
                   <p className="text-green-200 text-sm mt-1">{santriList.length} santri dalam kelompok</p>
                 </div>
               </div>
-              <div className="space-y-3">
-                {santriList.length === 0 && (
-                  <div className="bg-white rounded-2xl p-10 text-center shadow border border-gray-100">
-                    <p className="text-gray-400">Belum ada santri</p>
-                  </div>
-                )}
-                {santriList.map(santri => {
-                  const target = hitungTargetMurojaah(santri)
-                  const jadwal = getJadwalJenjang(santri.jenjang)
-                  return (
-                    <div key={santri.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-                          style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
-                          {santri.nama?.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-semibold">{santri.nama}</div>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {santri.kelas && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{santri.kelas}</span>}
-                            <span className="text-xs text-gray-500">{santri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
-{santri.guru_id_2 && (
-  <span className="text-xs text-orange-500">+ Guru Kedua</span>
-)}
-                          </div>
-                          <div className="mt-2">
-                            <div className="flex justify-between text-xs text-gray-400 mb-1">
-                              <span>Progress 30 Juz</span>
-                              <span>{Math.round(((santri.total_hafalan_juz || 0) / 30) * 100)}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div className="h-2 rounded-full"
-                                style={{ width: `${Math.min(((santri.total_hafalan_juz || 0) / 30) * 100, 100)}%`, background: 'linear-gradient(135deg, #166534, #16a34a)' }} />
-                            </div>
-                          </div>
-                          {target && (
-                            <div className="mt-1 text-xs text-purple-600">
-                              Target murojaah: <span className="font-semibold">{target.targetHalaman} hal/hari</span>
-                              <span className="text-gray-400 ml-1">(≈ {target.targetLembar} lembar)</span>
-                            </div>
-                          )}
-                          <div className="mt-1 text-xs text-gray-400">
-                            Baru: <span className="font-semibold text-blue-600">{jadwal.baru}</span>
-                            {jadwal.adaLama && <> • Murojaah: <span className="font-semibold text-purple-600">{jadwal.lama}</span></>}
-                          </div>
-                        </div>
+
+              {/* Peringkat Per Kelas */}
+              {(() => {
+                // Kelompokkan santri berdasarkan kelas + jenis_kelas
+                const kelasMap: Record<string, any[]> = {}
+                santriList.forEach(s => {
+                  const key = `${s.kelas_num}-${s.jenis_kelas}`
+                  if (!kelasMap[key]) kelasMap[key] = []
+                  kelasMap[key].push(s)
+                })
+
+                // Hitung peringkat per kelompok kelas
+                const santriDenganPeringkat: Record<string, number> = {}
+                Object.values(kelasMap).forEach(kelompok => {
+                  const sorted = [...kelompok].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
+                  sorted.forEach((s, i) => { santriDenganPeringkat[s.id] = i + 1 })
+                })
+
+                // Total per kelas untuk label "dari X santri"
+                // Kita ambil dari allSantriList agar total akurat
+                const totalPerKelas: Record<string, number> = {}
+                allSantriList.filter(s => s.status === 'aktif').forEach(s => {
+                  const key = `${s.kelas_num}-${s.jenis_kelas}`
+                  totalPerKelas[key] = (totalPerKelas[key] || 0) + 1
+                })
+
+                return (
+                  <div className="space-y-3">
+                    {santriList.length === 0 && (
+                      <div className="bg-white rounded-2xl p-10 text-center shadow border border-gray-100">
+                        <p className="text-gray-400">Belum ada santri</p>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )}
+                    {santriList.map(santri => {
+                      const target = hitungTargetMurojaah(santri)
+                      const jadwal = getJadwalJenjang(santri.jenjang)
+                      const peringkat = santriDenganPeringkat[santri.id]
+                      const totalKelas = totalPerKelas[`${santri.kelas_num}-${santri.jenis_kelas}`] || kelasMap[`${santri.kelas_num}-${santri.jenis_kelas}`]?.length || 1
+
+                      return (
+                        <div key={santri.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+                              style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                              {santri.nama?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <div className="font-semibold">{santri.nama}</div>
+                                {/* Badge Peringkat */}
+                                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0
+                                  ${peringkat === 1 ? 'bg-yellow-400 text-white' : peringkat === 2 ? 'bg-gray-300 text-white' : peringkat === 3 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                  <span>{peringkat === 1 ? '🥇' : peringkat === 2 ? '🥈' : peringkat === 3 ? '🥉' : `#${peringkat}`}</span>
+                                  <span>dari {totalKelas}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {santri.kelas && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{santri.kelas}</span>}
+                                <span className="text-xs text-gray-500">{santri.total_hafalan_juz?.toFixed(2) || 0} Juz</span>
+                                {santri.guru_id_2 && (
+                                  <span className="text-xs text-orange-500">+ Guru Kedua</span>
+                                )}
+                              </div>
+                              <div className="mt-2">
+                                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                  <span>Progress 30 Juz</span>
+                                  <span>{Math.round(((santri.total_hafalan_juz || 0) / 30) * 100)}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div className="h-2 rounded-full"
+                                    style={{ width: `${Math.min(((santri.total_hafalan_juz || 0) / 30) * 100, 100)}%`, background: 'linear-gradient(135deg, #166534, #16a34a)' }} />
+                                </div>
+                              </div>
+                              {target && (
+                                <div className="mt-1 text-xs text-purple-600">
+                                  Target murojaah: <span className="font-semibold">{target.targetHalaman} hal/hari</span>
+                                  <span className="text-gray-400 ml-1">(≈ {target.targetLembar} lembar)</span>
+                                </div>
+                              )}
+                              <div className="mt-1 text-xs text-gray-400">
+                                Baru: <span className="font-semibold text-blue-600">{jadwal.baru}</span>
+                                {jadwal.adaLama && <> • Murojaah: <span className="font-semibold text-purple-600">{jadwal.lama}</span></>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </div>
           )}
 
