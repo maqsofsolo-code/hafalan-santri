@@ -158,6 +158,10 @@ useEffect(() => {
   const [filterKelas, setFilterKelas] = useState('semua')
   const [filterGuruId, setFilterGuruId] = useState('semua')
   const [filterJenisKelas, setFilterJenisKelas] = useState('semua')
+  const [formGuruJenisKelas, setFormGuruJenisKelas] = useState('')
+  const [formGuruIsWaliKelas, setFormGuruIsWaliKelas] = useState(false)
+  const [formGuruWaliKelasNum, setFormGuruWaliKelasNum] = useState('')
+  const [formGuruWaliKelasJenis, setFormGuruWaliKelasJenis] = useState('')
   const [searchSantri, setSearchSantri] = useState('')
   const [searchGuru, setSearchGuru] = useState('')
   const [searchWali, setSearchWali] = useState('')
@@ -385,12 +389,24 @@ const fetchPeriode = async () => {
 
   const handleEditGuru = (guru: any) => {
     setEditGuruId(guru.id); setFormNama(guru.nama); setFormNoWa(guru.no_wa || '')
-    setFormEmail(''); setFormPassword(''); setShowPassword(false); setShowForm(true); setFormType('guru')
+    setFormEmail(''); setFormPassword(''); setShowPassword(false)
+    setFormGuruJenisKelas(guru.jenis_kelas || '')
+    setFormGuruIsWaliKelas(guru.is_wali_kelas || false)
+    setFormGuruWaliKelasNum(guru.wali_kelas_num?.toString() || '')
+    setFormGuruWaliKelasJenis(guru.wali_kelas_jenis || '')
+    setShowForm(true); setFormType('guru')
   }
 
   const handleUpdateGuru = async () => {
     setLoading(true); setErrorMsg('')
-    const { error } = await supabase.from('profiles').update({ nama: formNama, no_wa: formNoWa || null }).eq('id', editGuruId)
+    const { error } = await supabase.from('profiles').update({
+      nama: formNama,
+      no_wa: formNoWa || null,
+      jenis_kelas: formGuruJenisKelas || null,
+      is_wali_kelas: formGuruIsWaliKelas,
+      wali_kelas_num: formGuruIsWaliKelas && formGuruWaliKelasNum ? parseInt(formGuruWaliKelasNum) : null,
+      wali_kelas_jenis: formGuruIsWaliKelas ? formGuruWaliKelasJenis || null : null,
+    }).eq('id', editGuruId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
     if (formEmail || formPassword) {
       const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -839,6 +855,8 @@ const fetchPeriode = async () => {
     setFormKalNama(''); setFormKalTipe('libur'); setFormKalSemester('1')
     setFormKalMulai(''); setFormKalSelesai(''); setFormKalKeterangan('')
     setEditSantriId(null); setEditGuruId(null); setEditWaliId(null); setEditKalenderId(null)
+    setFormGuruJenisKelas(''); setFormGuruIsWaliKelas(false)
+    setFormGuruWaliKelasNum(''); setFormGuruWaliKelasJenis('')
   }
 
   const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/' }
@@ -1407,6 +1425,57 @@ const AlumniList = () => {
                   <div className="space-y-3">
                     <input placeholder="Nama Guru" value={formNama} onChange={e => setFormNama(e.target.value)} className={inputClass} />
                     <input placeholder="No WhatsApp" value={formNoWa} onChange={e => setFormNoWa(e.target.value)} className={inputClass} />
+
+                    {/* Jenis Kelas Guru */}
+                    {editGuruId && (
+                      <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 space-y-3">
+                        <p className="text-xs font-semibold text-blue-800">⚙️ Pengaturan Guru</p>
+                        
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Jenis Kelas (untuk filter mode pengganti)</label>
+                          <select value={formGuruJenisKelas} onChange={e => setFormGuruJenisKelas(e.target.value)} className={inputClass}>
+                            <option value="">-- Belum diset --</option>
+                            <option value="banin">Banin (Guru Putra)</option>
+                            <option value="banat">Banat (Guru Putri)</option>
+                          </select>
+                        </div>
+
+                        <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-xl border border-blue-200">
+                          <div onClick={() => setFormGuruIsWaliKelas(!formGuruIsWaliKelas)}
+                            className={`w-10 h-5 rounded-full transition-all flex-shrink-0 ${formGuruIsWaliKelas ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                            <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-all ${formGuruIsWaliKelas ? 'ml-5' : 'ml-0.5'}`} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-gray-700">Wali Kelas</div>
+                            <div className="text-xs text-gray-400">Aktifkan jika guru ini adalah wali kelas</div>
+                          </div>
+                        </label>
+
+                        {formGuruIsWaliKelas && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Kelas yang Diwali</label>
+                              <select value={formGuruWaliKelasNum} onChange={e => setFormGuruWaliKelasNum(e.target.value)} className={inputClass}>
+                                <option value="">-- Pilih Kelas --</option>
+                                {[1,2,3,4,5,6,7,8,9,10,11,12].map(k => (
+                                  <option key={k} value={k}>Kelas {k}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Jenis Kelas</label>
+                              <select value={formGuruWaliKelasJenis} onChange={e => setFormGuruWaliKelasJenis(e.target.value)} className={inputClass}>
+                                <option value="">-- Pilih --</option>
+                                <option value="banin">Banin</option>
+                                <option value="banat">Banat</option>
+                                <option value="tn">TN</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <FormEmailPassword
   isEdit={!!editGuruId}
   formEmail={formEmail}
