@@ -45,10 +45,19 @@ export default function WaliDashboard() {
   const fetchDataKelas = async (santri: any) => {
     if (!santri.kelas_num || !santri.jenjang) return
 
-    // Ambil semua santri sekelas
-    const { data: seKelas } = await supabase
-      .from('santri').select('id, nama, total_hafalan_juz, kelas_num, jenjang')
-      .eq('kelas_num', santri.kelas_num).eq('jenjang', santri.jenjang)
+    // Ambil semua santri sekelas — pisah banin/banat/TN
+    let query = supabase
+      .from('santri').select('id, nama, total_hafalan_juz, kelas_num, jenjang, jenis_kelas')
+      .eq('kelas_num', santri.kelas_num).eq('jenjang', santri.jenjang).eq('status', 'aktif')
+
+    // TN A dan TN B digabung dalam satu kelompok
+    if (santri.jenis_kelas === 'tn_a' || santri.jenis_kelas === 'tn_b') {
+      query = query.in('jenis_kelas', ['tn_a', 'tn_b'])
+    } else {
+      query = query.eq('jenis_kelas', santri.jenis_kelas)
+    }
+
+    const { data: seKelas } = await query.order('nama')
     setAllSantriKelas(seKelas || [])
 
     // Ambil setoran 7 hari terakhir untuk ranking konsistensi & semangat
@@ -602,7 +611,12 @@ setRankingSemangatKelas(semangatList)
                     <div className="relative z-10">
                       <h2 className="font-bold text-xl">Peringkat Santri</h2>
                       <p className="text-yellow-100 text-sm mt-1">{selectedSantri.kelas || 'Kelas belum diset'}</p>
-                      <p className="text-yellow-200 text-xs mt-0.5">{allSantriKelas.length} santri sekelas</p>
+                      <p className="text-yellow-200 text-xs mt-0.5">
+                        {allSantriKelas.length} santri • {
+                          selectedSantri.jenis_kelas === 'banin' ? 'Banin' :
+                          selectedSantri.jenis_kelas === 'banat' ? 'Banat' : 'TN'
+                        }
+                      </p>
                     </div>
                   </div>
 
