@@ -317,7 +317,9 @@ async function notifNaikPeringkat() {
 
   const perKelas: Record<string, any[]> = {}
   santriList.forEach(s => {
-    const key = `${s.kelas_num}-${s.jenjang}`
+    // TN A dan TN B digabung dalam satu kelompok
+    const jenisKelas = (s.jenis_kelas === 'tn_a' || s.jenis_kelas === 'tn_b') ? 'tn' : (s.jenis_kelas || 'banin')
+    const key = `${s.kelas_num}-${s.jenjang}-${jenisKelas}`
     if (!perKelas[key]) perKelas[key] = []
     perKelas[key].push(s)
   })
