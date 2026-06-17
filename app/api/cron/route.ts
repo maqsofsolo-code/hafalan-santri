@@ -15,7 +15,8 @@ export async function GET(request: Request) {
     'reminder-guru-siang',
     'reminder-guru-sore',
     'notif-wali',
-    'notif-naik-peringkat'
+    'notif-naik-peringkat',
+    'notif-wali-kelas'
   ]
 
   if (!jadwal || !jadwalValid.includes(jadwal)) {
