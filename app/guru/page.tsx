@@ -969,18 +969,27 @@ const tampilPopupSukses = (msg: string) => {
                 {/* Status Kehadiran */}
                 <div className="mb-4">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Status Kehadiran Santri</label>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 gap-2 mb-2">
                     {[
                       { value: 'hadir', label: 'Hadir', color: 'border-green-500 bg-green-50 text-green-700' },
                       { value: 'sakit', label: 'Sakit', color: 'border-yellow-500 bg-yellow-50 text-yellow-700' },
                       { value: 'izin', label: 'Izin', color: 'border-blue-500 bg-blue-50 text-blue-700' },
-                      { value: 'alpha', label: 'Alpha', color: 'border-red-500 bg-red-50 text-red-700' },
                     ].map(s => (
                       <button key={s.value} onClick={() => setStatusKehadiran(s.value)}
                         className={`py-2.5 rounded-xl text-xs font-bold border-2 transition ${statusKehadiran === s.value ? s.color : 'border-gray-200 bg-white text-gray-500'}`}>
                         {s.label}
                       </button>
                     ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setStatusKehadiran('alpha')}
+                      className={`py-2.5 rounded-xl text-xs font-bold border-2 transition ${statusKehadiran === 'alpha' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                      Alpha
+                    </button>
+                    <button onClick={() => setStatusKehadiran('hadir_tidak_setor')}
+                      className={`py-2.5 rounded-xl text-xs font-bold border-2 transition ${statusKehadiran === 'hadir_tidak_setor' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                      Hadir, Tdk Setor
+                    </button>
                   </div>
                 </div>
 
@@ -1222,7 +1231,7 @@ const tampilPopupSukses = (msg: string) => {
                 <div className="mb-5">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan (Opsional)</label>
                   <textarea value={catatan} onChange={e => setCatatan(e.target.value)}
-                    placeholder={statusKehadiran !== 'hadir' ? 'Keterangan tambahan...' : 'Catatan untuk wali santri...'}
+                    placeholder={statusKehadiran === 'hadir_tidak_setor' ? 'Alasan tidak setor (opsional)...' : statusKehadiran !== 'hadir' ? 'Keterangan tambahan...' : 'Catatan untuk wali santri...'}
                     rows={2} className={inputClass} />
                 </div>
 
@@ -1231,7 +1240,7 @@ const tampilPopupSukses = (msg: string) => {
                 <button onClick={handleInputSetoran} disabled={loading || !selectedSantri}
                   className="w-full text-white py-4 rounded-xl font-bold transition disabled:opacity-50 text-base shadow-lg"
                   style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%)' }}>
-                  {loading ? 'Menyimpan...' : statusKehadiran !== 'hadir' ? 'Simpan Ketidakhadiran' : 'Simpan Setoran'}
+                  {loading ? 'Menyimpan...' : statusKehadiran === 'hadir_tidak_setor' ? 'Simpan Status' : statusKehadiran !== 'hadir' ? 'Simpan Ketidakhadiran' : 'Simpan Setoran'}
                 </button>
               </div>
             </div>
