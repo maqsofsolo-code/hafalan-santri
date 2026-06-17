@@ -56,7 +56,7 @@ async function cekLibur(today: string) {
 
 const FOOTER = `_Pondok Pesantren Daarus Salaf Sukoharjo_\n\n_Nomor ini adalah nomor digitalisasi ma'had. Untuk informasi lebih lanjut seputar perkembangan ananda, silakan menghubungi wali kelas masing-masing._`
 
-// ===== NOTIF WALI SANTRI (jam 17.00 WIB) =====
+// ===== NOTIF WALI SANTRI (jam 17.00 WIB) - LAPORAN HARIAN =====
 async function notifWali() {
   const today = getWIBDate()
   const tanggalFormatted = formatTanggal(today)
@@ -69,14 +69,6 @@ async function notifWali() {
   const { data: setoranHariIni } = await supabase
     .from('setoran').select('*').eq('tanggal', today)
 
-  const nowWIB = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  nowWIB.setDate(nowWIB.getDate() - 14)
-  const tglMulaiRosib = `${nowWIB.getFullYear()}-${String(nowWIB.getMonth() + 1).padStart(2, '0')}-${String(nowWIB.getDate()).padStart(2, '0')}`
-
-  const { data: riwayatRosib } = await supabase
-    .from('setoran').select('santri_id, surah, status, jenis')
-    .eq('status', 'rosib').eq('jenis', 'lama').gte('tanggal', tglMulaiRosib)
-
   let terkirim = 0, gagal = 0
 
   for (const santri of santriList) {
@@ -85,77 +77,93 @@ async function notifWali() {
 
     const jenjang = santri.jenjang
     const setoranSantri = (setoranHariIni || []).filter((s: any) => s.santri_id === santri.id)
-    const sudahSetor = setoranSantri.length > 0
-    const setoranHadir = setoranSantri.filter((s: any) => s.status_kehadiran === 'hadir')
-    const statusKehadiran = setoranSantri[0]?.status_kehadiran
     const namaSantri = santri.nama
     const namaWali = santri.wali?.nama || 'Wali Santri'
 
-    const setoranBaru = setoranHadir.filter((s: any) => s.jenis === 'baru')
-    const setoranLama = setoranHadir.filter((s: any) => s.jenis === 'lama')
-    const sudahSetorBaru = setoranBaru.length > 0
-    const sudahSetorLama = setoranLama.length > 0
-    const adaRosib = setoranHadir.some((s: any) => s.status === 'rosib')
+    // Cek status ketidakhadiran (ambil dari entry manapun yang statusnya bukan hadir)
+    const entryTidakHadir = setoranSantri.find((s: any) =>
+      s.status_kehadiran && s.status_kehadiran !== 'hadir' && s.status_kehadiran !== 'hadir_tidak_setor'
+    )
 
     let pesan = ''
 
     // ===== 1. SAKIT =====
-    if (statusKehadiran === 'sakit') {
+    if (entryTidakHadir?.status_kehadiran === 'sakit') {
       pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak dapat hadir karena *sakit*.\n\nSemoga Allah segera memberikan kesembuhan kepada ananda.\n\nاللَّهُمَّ رَبَّ النَّاسِ أَذْهِبِ الْبَاسَ وَاشْفِ أَنْتَ الشَّافِي لَا شِفَاءَ إِلَّا شِفَاؤُكَ شِفَاءً لَا يُغَادِرُ سَقَمَاً\n\n_"Ya Allah, Tuhan manusia, hilangkanlah penyakit dan sembuhkanlah, Engkaulah Yang Maha Menyembuhkan, tidak ada kesembuhan kecuali dari-Mu."_\n\nJazakumullahu khairan.\n${FOOTER}`
     }
 
     // ===== 2. IZIN =====
-    else if (statusKehadiran === 'izin') {
+    else if (entryTidakHadir?.status_kehadiran === 'izin') {
       pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* tidak hadir karena *izin*.\n\nKami berpesan agar ananda tetap dimotivasi untuk *murojaah hafalannya di rumah*, karena hafalan yang kuat adalah hafalan yang senantiasa diulang.\n\n_"Jagalah hafalan Al-Qur'an ini, demi Allah, hafalan ini lebih mudah lepas dari hati daripada lepasnya unta dari ikatannya."_ (HR. Bukhari)\n\nJazakumullahu khairan.\n${FOOTER}`
     }
 
     // ===== 3. ALPHA =====
-    else if (statusKehadiran === 'alpha') {
+    else if (entryTidakHadir?.status_kehadiran === 'alpha') {
       pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* *tidak hadir tanpa keterangan (alpha)*.\n\nMohon Bapak/Ibu dapat menghubungi wali kelas ananda untuk memberikan keterangan.\n\nJazakumullahu khairan.\n${FOOTER}`
     }
 
-    // ===== 4. ROSIB =====
-    else if (adaRosib) {
-      const daftarRosib = setoranHadir
-        .filter((s: any) => s.status === 'rosib')
-        .map((s: any) => `- ${s.jenis === 'baru' ? 'Hafalan Baru' : 'Murojaah'}: ${s.surah || '-'} ayat ${s.ayat_mulai}-${s.ayat_selesai}`)
-        .join('\n')
-      pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* perlu mengulang hafalannya (rosib) pada:\n\n${daftarRosib}\n\nMohon bantu muroja'ah di rumah agar hafalan semakin kuat dan lancar. Ini adalah hal yang wajar dalam proses menghafal, semoga Allah memudahkan ananda.\n\nJazakumullahu khairan.\n${FOOTER}`
-    }
+    // ===== 4. LAPORAN HARIAN LENGKAP =====
+    else {
+      // Jika sama sekali tidak ada entry apapun hari itu, skip (tidak kirim notif)
+      if (setoranSantri.length === 0) continue
 
-    // ===== 5. BELUM SETOR =====
-    else if (!sudahSetor || (jenjang === 'wustha' && (!sudahSetorBaru || !sudahSetorLama))) {
-      let belumSetor = ''
+      const setoranBaru = setoranSantri.find((s: any) => s.jenis === 'baru')
+      const setoranLama = setoranSantri.find((s: any) => s.jenis === 'lama')
+      const adaEntryHadirTidakSetor = setoranSantri.some((s: any) => s.status_kehadiran === 'hadir_tidak_setor')
 
-      if (jenjang === 'ulya') {
-        if (!sudahSetorLama) belumSetor = 'murojaah (hafalan lama)'
-      } else if (jenjang === 'ula') {
-        if (!sudahSetorLama && !sudahSetorBaru) belumSetor = 'hafalan lama (murojaah) dan hafalan baru'
-        else if (!sudahSetorLama) belumSetor = 'hafalan lama (murojaah)'
-      } else if (jenjang === 'wustha') {
-        if (!sudahSetorBaru && !sudahSetorLama) belumSetor = 'hafalan baru dan murojaah'
-        else if (!sudahSetorBaru) belumSetor = 'hafalan baru'
-        else if (!sudahSetorLama) belumSetor = 'murojaah (hafalan lama)'
+      let bagianHafalan = ''
+      let adaRosib = false
+      let adaNajih = false
+      let adaTidakSetor = false
+      const semuaCatatan: string[] = []
+
+      // ----- BAGIAN HAFALAN BARU (skip total untuk Ulya) -----
+      if (jenjang !== 'ulya') {
+        if (setoranBaru) {
+          const statusLabel = setoranBaru.status === 'lancar' ? '✅ Najih (Lancar)' : '🔁 Rosib (Perlu Diulang)'
+          if (setoranBaru.status === 'lancar') adaNajih = true
+          else adaRosib = true
+          bagianHafalan += `\n📖 *Hafalan Baru:*\nSurah ${setoranBaru.surah || '-'} ayat ${setoranBaru.ayat_mulai}-${setoranBaru.ayat_selesai}\nStatus: ${statusLabel}\n`
+          if (setoranBaru.catatan) semuaCatatan.push(`Hafalan Baru: ${setoranBaru.catatan}`)
+        } else if (jenjang === 'ula' && setoranLama?.status === 'rosib') {
+          // Khusus Ula: hafalan baru ditiadakan karena murojaah rosib
+          bagianHafalan += `\n📖 *Hafalan Baru:*\nDitiadakan karena murojaah ananda rosib\n`
+        } else {
+          // Tidak ada entry sama sekali — santri tidak setor
+          adaTidakSetor = true
+          bagianHafalan += `\n📖 *Hafalan Baru:*\nTidak disetorkan\n`
+        }
+      }
+
+      // ----- BAGIAN MUROJAAH (HAFALAN LAMA) -----
+      if (setoranLama) {
+        const statusLabel = setoranLama.status === 'lancar' ? '✅ Najih (Lancar)' : '🔁 Rosib (Perlu Diulang)'
+        if (setoranLama.status === 'lancar') adaNajih = true
+        else adaRosib = true
+        bagianHafalan += `\n📗 *Murojaah (Hafalan Lama):*\nSurah ${setoranLama.surah || '-'} ayat ${setoranLama.ayat_mulai}-${setoranLama.ayat_selesai}\nStatus: ${statusLabel}\n`
+        if (setoranLama.catatan) semuaCatatan.push(`Murojaah: ${setoranLama.catatan}`)
       } else {
-        if (!sudahSetor) belumSetor = 'hafalan Al-Qur\'an'
+        adaTidakSetor = true
+        bagianHafalan += `\n📗 *Murojaah (Hafalan Lama):*\nTidak disetorkan\n`
       }
 
-      if (belumSetor) {
-        pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa hari ini *${namaSantri}* belum menyetorkan *${belumSetor}*.\n\nMohon kiranya Bapak/Ibu dapat memberikan tasyji' dan semangat kepada ananda di rumah.\n\nSemoga Allah membalas kebaikan Bapak/Ibu, menjadikan jerih payah ini sebagai pahala jariyah, dan menjadikan ananda sebagai hafidzul Qur'an yang memberikan mahkota kemuliaan di hari kiamat kelak.\n\nJazakumullahu khairan katsiran.\n${FOOTER}`
-      }
-    }
+      // Catatan tambahan dari entry hadir_tidak_setor (kalau ada)
+      const entryHTS = setoranSantri.find((s: any) => s.status_kehadiran === 'hadir_tidak_setor')
+      if (entryHTS?.catatan) semuaCatatan.push(`Catatan: ${entryHTS.catatan}`)
 
-    // ===== 6. CEK 3x ROSIB SURAT SAMA =====
-    if (!pesan) {
-      const rosibPerSurah: Record<string, number> = {}
-      ;(riwayatRosib || []).filter((r: any) => r.santri_id === santri.id).forEach((r: any) => {
-        rosibPerSurah[r.surah || 'unknown'] = (rosibPerSurah[r.surah || 'unknown'] || 0) + 1
-      })
-      const surahRosib3x = Object.entries(rosibPerSurah)
-        .filter(([, c]) => c >= 3).map(([s]) => s)
-      if (surahRosib3x.length > 0) {
-        pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n\nKami informasikan bahwa *${namaSantri}* telah rosib sebanyak *3 kali atau lebih* pada surah:\n\n*${surahRosib3x.join(', ')}*\n\nMohon perhatian dan dukungan ekstra dari Bapak/Ibu agar ananda lebih semangat muroja'ah di rumah.\n\nTeruslah berjuang! Kelak seorang hafidz Al-Qur'an akan memakaikan mahkota kemuliaan kepada kedua orang tuanya di hari kiamat.\n\n_"Barang siapa menghafal Al-Qur'an, ia akan datang pada hari kiamat dan Al-Qur'an berkata: Ya Rabb, pakaikanlah dia mahkota kemuliaan."_ (HR. Tirmidzi)\n\nJazakumullahu khairan.\n${FOOTER}`
+      const catatanGabungan = semuaCatatan.length > 0 ? semuaCatatan.join('\n') : 'Tidak ada catatan'
+
+      // ----- KALIMAT PENUTUP -----
+      let penutup = ''
+      if (adaTidakSetor) {
+        penutup = `Kami mohon perhatian khusus dari Bapak/Ibu. Kedisiplinan dalam menjaga hafalan Al-Qur'an sangatlah penting, terlebih ananda tinggal di asrama dan jauh dari pengawasan langsung Bapak/Ibu. Mohon kiranya dapat memberikan motivasi dan nasihat kepada ananda agar lebih disiplin dan bersungguh-sungguh dalam menjaga hafalannya esok hari.\n\n_"Sesungguhnya Allah mencintai pekerjaan yang apabila dikerjakan dilakukan secara itqan (sungguh-sungguh)."_ (HR. Thabrani)`
+      } else if (adaRosib) {
+        penutup = `Mohon bantu ananda untuk *muroja'ah di rumah* agar hafalan semakin kuat dan lancar. Berikan semangat dan motivasi agar ananda lebih giat dalam menghafal Al-Qur'an. Ini adalah hal yang wajar dalam proses menghafal, semoga Allah memudahkan ananda.`
+      } else if (adaNajih) {
+        penutup = `Alhamdulillah, seluruh setoran ananda hari ini *najih (lancar)*. Segala puji bagi Allah atas pertolongan-Nya. Sesungguhnya kemudahan dalam menghafal Al-Qur'an adalah murni karunia dan pertolongan dari Allah Ta'ala semata. Semoga Allah terus meneguhkan hati ananda di atas hafalan-Nya.`
       }
+
+      pesan = `Bismillahirrahmanirrahim\n\nYkh. ${namaWali} (Wali dari *${namaSantri}*)\n\n📅 *${tanggalFormatted}*\n🕔 Laporan Hafalan Harian\n\n━━━━━━━━━━━━━━━${bagianHafalan}━━━━━━━━━━━━━━━\n\n📝 *Catatan Guru:*\n${catatanGabungan}\n\n${penutup}\n\nJazakumullahu khairan.\n${FOOTER}`
     }
 
     if (pesan) {
@@ -165,7 +173,7 @@ async function notifWali() {
     }
   }
 
-  return { message: `Notif wali selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
+  return { message: `Notif wali (laporan harian) selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
 }
 
 // ===== REMINDER GURU =====
