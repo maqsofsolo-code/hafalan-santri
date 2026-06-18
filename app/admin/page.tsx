@@ -170,6 +170,8 @@ useEffect(() => {
   const [errorMsg, setErrorMsg] = useState('')
   const [importLoading, setImportLoading] = useState(false)
   const [importMsg, setImportMsg] = useState('')
+  const [importWaliLoading, setImportWaliLoading] = useState(false)
+  const [importWaliMsg, setImportWaliMsg] = useState('')
 
   useEffect(() => { fetchData() }, [])
 
@@ -842,7 +844,19 @@ const fetchPeriode = async () => {
     const result = await res.json()
     setImportMsg(result.message); setImportLoading(false); fetchData()
   }
-
+const handleImportWali = async (e: any) => {
+    const file = e.target.files[0]; if (!file) return
+    setImportWaliLoading(true); setImportWaliMsg('')
+    const formData = new FormData(); formData.append('file', file)
+    const res = await fetch('/api/import-wali', { method: 'POST', body: formData })
+    const result = await res.json()
+    let msg = result.message
+    if (result.detail && result.detail.length > 0) {
+      msg += '\n\nDetail:\n' + result.detail.join('\n')
+    }
+    setImportWaliMsg(msg); setImportWaliLoading(false); fetchData()
+  }
+  
   const resetForm = () => {
     setFormNama(''); setFormEmail(''); setFormPassword(''); setFormNoWa('')
     setFormGuruId(''); setFormGuruId2(''); setFormWaliId(''); setFormJenjang(''); setFormKelasNum('')
@@ -1782,6 +1796,22 @@ const AlumniList = () => {
                 <input type="text" value={searchWali} onChange={e => setSearchWali(e.target.value)}
                   placeholder="🔍 Cari nama atau no. WA wali..." className={inputClass} />
                 <p className="text-xs text-gray-400 mt-2">Menampilkan {waliFiltered.length} dari {waliList.length} wali</p>
+              </div>
+
+              {/* Import Excel Wali */}
+              <div className="bg-white rounded-2xl shadow p-4 mb-4 border border-gray-100">
+                <p className="text-sm font-semibold text-gray-700 mb-1">Import Data Wali dari Excel</p>
+                <p className="text-xs text-gray-400 mb-3">Kolom: nama_wali, email_wali, no_wa_wali, password, nama_santri</p>
+                <label className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm text-center cursor-pointer shadow flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
+                  {importWaliLoading ? 'Mengimport...' : '⬆ Upload File Excel Wali'}
+                  <input type="file" accept=".xlsx,.xls" onChange={handleImportWali} className="hidden" disabled={importWaliLoading} />
+                </label>
+                {importWaliMsg && (
+                  <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-700 text-xs whitespace-pre-line">
+                    {importWaliMsg}
+                  </div>
+                )}
               </div>
 
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
