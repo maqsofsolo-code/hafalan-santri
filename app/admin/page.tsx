@@ -45,6 +45,18 @@ function FormEmailPassword({
   )
 }
 
+function getTanggalWIB() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function getHariWIB() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
+}
+
 export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [guruList, setGuruList] = useState<any[]>([])
@@ -181,7 +193,7 @@ useEffect(() => {
     const { data: wali } = await supabase.from('profiles').select('*').eq('role', 'wali').order('nama')
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
     const { data: kalender } = await supabase.from('kalender_akademik').select('*').order('tanggal_mulai', { ascending: true })
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTanggalWIB()
     const { data: setoran } = await supabase.from('setoran').select('*, santri:santri_id(nama)').eq('tanggal', today).order('created_at', { ascending: false })
 
     setGuruList(guru || [])
@@ -334,8 +346,8 @@ const fetchPeriode = async () => {
   }
 
   // Status hari ini
-  const today = new Date().toISOString().split('T')[0]
-  const hariMinggu = new Date().getDay()
+  const today = getTanggalWIB()
+  const hariMinggu = getHariWIB()
   const isLiburMingguan = hariMinggu === 0 || hariMinggu === 5
   const kalenderAktif = kalenderList.find(k => today >= k.tanggal_mulai && today <= k.tanggal_selesai)
   const isLiburAkademik = isLiburMingguan || kalenderAktif?.tipe === 'libur'
@@ -876,8 +888,9 @@ const handleImportWali = async (e: any) => {
   const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/' }
 
   const tanggal = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-  const santriSudahSetor = [...new Set(setoranHariIni.map(s => s.santri_id))]
-  const santriBelumSetor = santriList.filter(s => !santriSudahSetor.includes(s.id))
+  const santriSudahSetorIds = [...new Set(setoranHariIni.filter((s: any) => s.status_kehadiran === 'hadir').map((s: any) => s.santri_id))]
+  const santriSudahSetor = santriList.filter(s => santriSudahSetorIds.includes(s.id))
+  const santriBelumSetor = santriList.filter(s => !santriSudahSetorIds.includes(s.id))
   const guruSudahInput = [...new Set(setoranHariIni.map(s => s.guru_id))]
   const guruBelumInput = guruList.filter(g => !guruSudahInput.includes(g.id))
 
