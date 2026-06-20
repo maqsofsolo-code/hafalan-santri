@@ -272,8 +272,9 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
   const isLibur = isLiburMingguan || kalenderAktif?.tipe === 'libur'
   const isUjian = kalenderAktif && (kalenderAktif.tipe === 'mid_semester' || kalenderAktif.tipe === 'semester')
 
-  const santriSudahSetor = [...new Set(setoranHariIni.map(s => s.santri_id))]
-  const santriBelumSetor = santriList.filter(s => !santriSudahSetor.includes(s.id))
+  const santriSudahSetorIds = [...new Set(setoranHariIni.filter((s: any) => s.status_kehadiran === 'hadir').map((s: any) => s.santri_id))]
+  const santriSudahSetor = santriList.filter(s => santriSudahSetorIds.includes(s.id))
+  const santriBelumSetor = santriList.filter(s => !santriSudahSetorIds.includes(s.id))
   const guruAbsenSubuh = absensiGuru.filter(a => a.sesi === 'subuh').map(a => a.guru_id)
   const guruAbsenPagi = absensiGuru.filter(a => a.sesi === 'pagi').map(a => a.guru_id)
 
@@ -329,9 +330,20 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
   }
 
   // Data monitoring berdasarkan tanggal yang dipilih
-  const santriSudahSetorTanggal = [...new Set(setoranTanggalDipilih.map(s => s.santri_id))]
   const guruAbsenSubuhTanggal = absensiTanggalDipilih.filter(a => a.sesi === 'subuh').map(a => a.guru_id)
   const guruAbsenPagiTanggal = absensiTanggalDipilih.filter(a => a.sesi === 'pagi').map(a => a.guru_id)
+
+  // Kategorisasi status setoran per santri — supaya guru tidak salah disangka lalai
+  const getStatusKategori = (santriId: string) => {
+    const entries = setoranTanggalDipilih.filter((s: any) => s.santri_id === santriId)
+    if (entries.length === 0) return 'belum_diinput'
+    if (entries.some((e: any) => e.status_kehadiran === 'hadir')) return 'sudah_setor'
+    if (entries.some((e: any) => e.status_kehadiran === 'hadir_tidak_setor')) return 'hadir_tidak_setor'
+    if (entries.some((e: any) => e.status_kehadiran === 'sakit')) return 'sakit'
+    if (entries.some((e: any) => e.status_kehadiran === 'izin')) return 'izin'
+    if (entries.some((e: any) => e.status_kehadiran === 'alpha')) return 'alpha'
+    return 'belum_diinput'
+  }
 
   // Filter santri untuk monitoring
   const santriMonitoringFiltered = santriList.filter(s => {
@@ -339,10 +351,13 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
     if (filterMonitoringKelas !== 'semua' && s.kelas_num?.toString() !== filterMonitoringKelas) return false
     if (searchMonitoring && !s.nama?.toLowerCase().includes(searchMonitoring.toLowerCase())) return false
     return true
-  })
+  }).map(s => ({ ...s, kategoriSetor: getStatusKategori(s.id) }))
 
-  const santriSudahSetorFiltered = santriMonitoringFiltered.filter(s => santriSudahSetorTanggal.includes(s.id))
-  const santriBelumSetorFiltered = santriMonitoringFiltered.filter(s => !santriSudahSetorTanggal.includes(s.id))
+  const santriSudahSetorFiltered = santriMonitoringFiltered.filter(s => s.kategoriSetor === 'sudah_setor')
+  const santriHadirTidakSetorFiltered = santriMonitoringFiltered.filter(s => s.kategoriSetor === 'hadir_tidak_setor')
+  const santriTidakHadirFiltered = santriMonitoringFiltered.filter(s => ['sakit', 'izin', 'alpha'].includes(s.kategoriSetor))
+  const santriBelumDiinputFiltered = santriMonitoringFiltered.filter(s => s.kategoriSetor === 'belum_diinput')
+  const santriPerluPerhatianFiltered = santriMonitoringFiltered.filter(s => s.kategoriSetor !== 'sudah_setor')
 
   // Hitung monitor murojaah dari tanggal yang dipilih
   const hasilMonitorMurojaah = santriList
@@ -614,10 +629,12 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
               </div>
 
               {/* Statistik tanggal dipilih */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
                 {[
                   { label: 'Sudah Setor', count: santriSudahSetorFiltered.length, color: 'from-green-500 to-green-700' },
-                  { label: 'Belum Setor', count: santriBelumSetorFiltered.length, color: 'from-red-500 to-red-700' },
+                  { label: 'Hadir, Tdk Setor', count: santriHadirTidakSetorFiltered.length, color: 'from-orange-500 to-orange-700' },
+                  { label: 'Tidak Hadir', count: santriTidakHadirFiltered.length, color: 'from-yellow-500 to-yellow-700' },
+                  { label: 'Belum Diinput', count: santriBelumDiinputFiltered.length, color: 'from-red-500 to-red-700' },
                   { label: 'Hadir Subuh', count: guruAbsenSubuhTanggal.length, color: 'from-blue-500 to-blue-700' },
                   { label: 'Hadir Pagi', count: guruAbsenPagiTanggal.length, color: 'from-purple-500 to-purple-700' },
                 ].map((item, i) => (
@@ -706,22 +723,30 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
                 </div>
                 <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3 bg-gradient-to-r from-red-500 to-red-700">
-                    <h3 className="text-white font-semibold text-sm">Belum Setor ({santriBelumSetorFiltered.length})</h3>
+                    <h3 className="text-white font-semibold text-sm">Perlu Perhatian ({santriPerluPerhatianFiltered.length})</h3>
                   </div>
                   <div className="p-3 max-h-80 overflow-y-auto">
-                    {santriBelumSetorFiltered.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 py-2 border-b last:border-0">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-red-400">
-                          {s.nama?.charAt(0).toUpperCase()}
+                    {santriPerluPerhatianFiltered.map(s => {
+                      const badge =
+                        s.kategoriSetor === 'hadir_tidak_setor' ? { label: 'Hadir, Tdk Setor', color: 'bg-orange-100 text-orange-700' }
+                        : s.kategoriSetor === 'sakit' ? { label: 'Sakit', color: 'bg-yellow-100 text-yellow-700' }
+                        : s.kategoriSetor === 'izin' ? { label: 'Izin', color: 'bg-blue-100 text-blue-700' }
+                        : s.kategoriSetor === 'alpha' ? { label: 'Alpha', color: 'bg-red-100 text-red-700' }
+                        : { label: 'Belum Diinput', color: 'bg-gray-200 text-gray-600' }
+                      return (
+                        <div key={s.id} className="flex items-center gap-2 py-2 border-b last:border-0">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gray-400">
+                            {s.nama?.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{s.nama}</div>
+                            <div className="text-xs text-gray-400">{s.kelas || '-'} • {s.guru?.nama || '-'}</div>
+                          </div>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${badge.color}`}>{badge.label}</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{s.nama}</div>
-                          <div className="text-xs text-gray-400">{s.kelas || '-'} • {s.guru?.nama || '-'}</div>
-                        </div>
-                        <span className="text-red-400 text-xs font-semibold flex-shrink-0">Belum</span>
-                      </div>
-                    ))}
-                    {santriBelumSetorFiltered.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Semua sudah setor!</p>}
+                      )
+                    })}
+                    {santriPerluPerhatianFiltered.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Semua sudah setor!</p>}
                   </div>
                 </div>
               </div>
