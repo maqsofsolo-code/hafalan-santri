@@ -3,6 +3,18 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 
+function getTanggalWIB() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function getHariWIB() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
+}
+
 export default function GuruDashboard() {
   const [activeMenu, setActiveMenu] = useState('input')
   const [santriList, setSantriList] = useState<any[]>([])
@@ -101,7 +113,7 @@ export default function GuruDashboard() {
     const { data: surah } = await supabase.from('surah').select('*').order('nomor', { ascending: false })
     setSurahList(surah || [])
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTanggalWIB()
 
     const { data: absensiList } = await supabase.from('absensi_guru').select('*').eq('guru_id', user.id).eq('tanggal', today)
     const absensiData = absensiList || []
@@ -295,7 +307,7 @@ setRapotSantriList(allRapotSantri)
   }
 
   const cekSetoranLamaHariIni = async (santriId: string) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTanggalWIB()
     const { data } = await supabase
       .from('setoran')
       .select('*')
@@ -326,8 +338,8 @@ setRapotSantriList(allRapotSantri)
     setEditLoading(false)
   }
 
-  const today = new Date().toISOString().split('T')[0]
-  const hariMinggu = new Date().getDay()
+  const today = getTanggalWIB()
+  const hariMinggu = getHariWIB()
   const isLiburMingguan = hariMinggu === 0 || hariMinggu === 5
   const isLibur = isLiburMingguan || kalenderAktif?.tipe === 'libur'
   const isUjian = kalenderAktif && (kalenderAktif.tipe === 'mid_semester' || kalenderAktif.tipe === 'semester')
@@ -350,7 +362,7 @@ setRapotSantriList(allRapotSantri)
     setShowPopupAbsen(false)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTanggalWIB()
     if (isBatalAbsen) {
       await supabase.from('absensi_guru').delete().eq('guru_id', user.id).eq('tanggal', today).eq('sesi', sesiAbsen)
       if (sesiAbsen === 'subuh') setAbsenSubuh(false)
@@ -424,7 +436,7 @@ const tampilPopupSukses = (msg: string) => {
       const { error } = await supabase.from('setoran').insert({
         santri_id: selectedSantri.id, guru_id: user.id,
         jenis: 'baru', status: 'lancar', status_kehadiran: statusKehadiran,
-        tanggal: new Date().toISOString().split('T')[0],
+        tanggal: getTanggalWIB(),
         guru_pengganti: guruPengganti, perlu_ulang: false, catatan
       })
       if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
@@ -443,7 +455,7 @@ const tampilPopupSukses = (msg: string) => {
       santri_id: selectedSantri.id, guru_id: user.id,
       jenis, status, catatan, status_kehadiran: 'hadir',
       perlu_ulang: status === 'rosib',
-      tanggal: new Date().toISOString().split('T')[0],
+      tanggal: getTanggalWIB(),
       guru_pengganti: guruPengganti
     }
     if (jenis === 'baru') {
