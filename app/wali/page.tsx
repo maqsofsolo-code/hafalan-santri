@@ -3,6 +3,22 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 
+function getTanggalWIB() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function getStatusKehadiranInfo(status: string) {
+  if (status === 'sakit') return { label: 'Tidak Hadir — Sakit', color: 'bg-yellow-100 text-yellow-700' }
+  if (status === 'izin') return { label: 'Tidak Hadir — Izin', color: 'bg-blue-100 text-blue-700' }
+  if (status === 'alpha') return { label: 'Tidak Hadir — Alpha', color: 'bg-red-100 text-red-700' }
+  if (status === 'hadir_tidak_setor') return { label: 'Hadir, Tidak Setor', color: 'bg-orange-100 text-orange-700' }
+  return { label: status, color: 'bg-gray-100 text-gray-700' }
+}
+
 export default function WaliDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [waliProfile, setWaliProfile] = useState<any>(null)
@@ -61,7 +77,8 @@ export default function WaliDashboard() {
     setAllSantriKelas(seKelas || [])
 
     // Ambil setoran 7 hari terakhir untuk ranking konsistensi & semangat
-    const tujuhHariLalu = new Date()
+    const today = getTanggalWIB()
+    const tujuhHariLalu = new Date(today)
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
 
@@ -80,7 +97,6 @@ const { data: semuaLibur } = await supabase
 const liburAkademik = semuaLibur || []
 
 // Hitung hari aktif (skip Jumat, Ahad, libur akademik)
-const today = new Date().toISOString().split('T')[0]
 const hitungHariAktif = (mulai: string, selesai: string) => {
   const aktif: string[] = []
   const cur = new Date(mulai)
@@ -491,8 +507,8 @@ setRankingSemangatKelas(semangatList)
                         <div className="flex justify-between items-start mb-1">
                           <div>
                             {item.status_kehadiran && item.status_kehadiran !== 'hadir' ? (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' : item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-                                Tidak Hadir — {item.status_kehadiran.charAt(0).toUpperCase() + item.status_kehadiran.slice(1)}
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusKehadiranInfo(item.status_kehadiran).color}`}>
+                                {getStatusKehadiranInfo(item.status_kehadiran).label}
                               </span>
                             ) : (
                               <div className="font-semibold text-sm text-gray-800">{item.surah} ayat {item.ayat_mulai}–{item.ayat_selesai}</div>
@@ -780,8 +796,8 @@ setRankingSemangatKelas(semangatList)
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-2">
                             {item.status_kehadiran && item.status_kehadiran !== 'hadir' ? (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status_kehadiran === 'sakit' ? 'bg-yellow-100 text-yellow-700' : item.status_kehadiran === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-                                {item.status_kehadiran.charAt(0).toUpperCase() + item.status_kehadiran.slice(1)}
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusKehadiranInfo(item.status_kehadiran).color}`}>
+                                {getStatusKehadiranInfo(item.status_kehadiran).label}
                               </span>
                             ) : (
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.jenis === 'baru' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
