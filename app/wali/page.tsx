@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
+import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 
 function getTanggalWIB() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
@@ -37,8 +38,25 @@ export default function WaliDashboard() {
   const [activeRanking, setActiveRanking] = useState('hafalan')
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [notifAktif, setNotifAktif] = useState(false)
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [notifPesan, setNotifPesan] = useState('')
 
   useEffect(() => { fetchWaliData() }, [])
+
+  useEffect(() => {
+    cekStatusNotifikasi().then(setNotifAktif)
+  }, [])
+
+  const handleAktifkanNotif = async () => {
+    if (!waliProfile) return
+    setNotifLoading(true)
+    setNotifPesan('')
+    const hasil = await daftarkanNotifikasi(waliProfile.id, 'wali')
+    setNotifPesan(hasil.message)
+    if (hasil.ok) setNotifAktif(true)
+    setNotifLoading(false)
+  }
 
   const fetchWaliData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -623,7 +641,38 @@ setRankingSemangatKelas(semangatList)
                       )}
                     </div>
                   </div>
+{/* ===== KARTU AKTIFKAN NOTIFIKASI ===== */}
+                  {!notifAktif && (
+                    <div className="bg-white rounded-2xl shadow-lg border-2 border-green-200 overflow-hidden mb-5">
+                      <div className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="text-3xl flex-shrink-0">🔔</div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-gray-800 text-sm mb-1">Aktifkan Notifikasi</h3>
+                            <p className="text-xs text-gray-500 leading-relaxed mb-3">
+                              Dapatkan pemberitahuan langsung di HP setiap ada laporan hafalan ananda yang baru, tanpa perlu membuka aplikasi.
+                            </p>
+                            <button onClick={handleAktifkanNotif} disabled={notifLoading}
+                              className="w-full text-white py-2.5 rounded-xl font-semibold text-sm shadow disabled:opacity-50"
+                              style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                              {notifLoading ? 'Memproses...' : '🔔 Aktifkan Notifikasi Sekarang'}
+                            </button>
+                            {notifPesan && (
+                              <p className={`text-xs mt-2 ${notifAktif ? 'text-green-600' : 'text-red-500'}`}>{notifPesan}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
+                  {notifAktif && (
+                    <div className="bg-green-50 rounded-2xl border border-green-200 p-3 mb-5 flex items-center gap-2">
+                      <span className="text-lg">✅</span>
+                      <span className="text-sm text-green-700 font-medium">Notifikasi sudah aktif di perangkat ini</span>
+                    </div>
+                  )}
+                  
                   {/* Nilai Ujian Terakhir */}
                   {nilaiUjianList.length > 0 && (
                     <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
