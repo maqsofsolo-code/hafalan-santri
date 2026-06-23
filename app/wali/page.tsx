@@ -10,6 +10,9 @@ function getTanggalWIB() {
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
 }
+function getHariWIB() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
+}
 
 function getStatusKehadiranInfo(status: string) {
   if (status === 'sakit') return { label: 'Tidak Hadir — Sakit', color: 'bg-yellow-100 text-yellow-700' }
@@ -27,6 +30,7 @@ export default function WaliDashboard() {
   const [riwayatSetoran, setRiwayatSetoran] = useState<any[]>([])
   const [allSantriKelas, setAllSantriKelas] = useState<any[]>([])
   const [nilaiUjianList, setNilaiUjianList] = useState<any[]>([])
+  const [laporanHariIni, setLaporanHariIni] = useState<any[]>([])
   const [rankingKonsistensiKelas, setRankingKonsistensiKelas] = useState<any[]>([])
   const [rankingSemangatKelas, setRankingSemangatKelas] = useState<any[]>([])
   const [activeRanking, setActiveRanking] = useState('hafalan')
@@ -51,6 +55,7 @@ export default function WaliDashboard() {
       setSelectedSantri(s)
       fetchRiwayat(s.id)
       fetchNilaiUjian(s.id)
+      fetchLaporanHariIni(s.id)
       if (s.kelas_num && s.jenjang) {
         await fetchDataKelas(s)
       }
@@ -207,6 +212,14 @@ setRankingSemangatKelas(semangatList)
     setRiwayatSetoran(data || [])
   }
 
+  const fetchLaporanHariIni = async (santriId: any) => {
+    const today = getTanggalWIB()
+    const { data } = await supabase
+      .from('setoran').select('*').eq('santri_id', santriId).eq('tanggal', today)
+      .order('created_at', { ascending: true })
+    setLaporanHariIni(data || [])
+  }
+
   const fetchNilaiUjian = async (santriId: any) => {
     const { data } = await supabase
       .from('nilai_ujian')
@@ -219,6 +232,7 @@ setRankingSemangatKelas(semangatList)
     setSelectedSantri(santri)
     fetchRiwayat(santri.id)
     fetchNilaiUjian(santri.id)
+    fetchLaporanHariIni(santri.id)
     await fetchDataKelas(santri)
   }
 
@@ -251,6 +265,62 @@ setRankingSemangatKelas(semangatList)
   const peringkatSemangat = selectedSantri
     ? rankingSemangatKelas.findIndex(s => s.id === selectedSantri.id) + 1
     : null
+
+  // ===== LAPORAN HARI INI (kartu utama) =====
+  const tanggalHariIni = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const hariNomorWIB = getHariWIB()
+  const isLiburHariIni = hariNomorWIB === 0 || hariNomorWIB === 5
+  const isUlyaSantri = selectedSantri?.jenjang === 'ulya'
+
+  const entriesHariIni = laporanHariIni
+  const adaEntry = entriesHariIni.length > 0
+  const adaHadir = entriesHariIni.some((e: any) => e.status_kehadiran === 'hadir')
+  const adaHadirTidakSetor = entriesHariIni.some((e: any) => e.status_kehadiran === 'hadir_tidak_setor')
+  const entryTidakHadir = entriesHariIni.find((e: any) => ['sakit', 'izin', 'alpha'].includes(e.status_kehadiran))
+  const hafalanBaruHariIni = entriesHariIni.find((e: any) => e.jenis === 'baru' && e.status_kehadiran === 'hadir')
+  const murojaahHariIni = entriesHariIni.find((e: any) => e.jenis === 'lama' && e.status_kehadiran === 'hadir')
+  const catatanHariIni = entriesHariIni.filter((e: any) => e.catatan && e.catatan.trim() !== '').map((e: any) => e.catatan)
+
+  // Status badge
+  let statusBadge = { label: 'Belum Diinput', color: 'bg-gray-100 text-gray-600' }
+  if (!adaEntry) {
+    statusBadge = { label: isLiburHariIni ? 'Libur' : 'Belum Diinput', color: 'bg-gray-100 text-gray-600' }
+  } else if (adaHadir) {
+    statusBadge = { label: 'Hadir', color: 'bg-green-100 text-green-700' }
+  } else if (adaHadirTidakSetor) {
+    statusBadge = { label: 'Hadir, Tidak Setor', color: 'bg-orange-100 text-orange-700' }
+  } else if (entryTidakHadir) {
+    const a = entryTidakHadir.status_kehadiran
+    statusBadge = {
+      label: a === 'sakit' ? 'Sakit' : a === 'izin' ? 'Izin' : 'Tidak Hadir (Alpha)',
+      color: a === 'sakit' ? 'bg-yellow-100 text-yellow-700' : a === 'izin' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+    }
+  }
+
+  // Pesan otomatis sesuai keadaan
+  let pesanOtomatis = ''
+  let pesanWarna = 'bg-blue-50 text-blue-700 border-blue-200'
+  if (isLiburHariIni && !adaEntry) {
+    pesanOtomatis = 'Hari ini libur, tidak ada kegiatan setoran.'
+    pesanWarna = 'bg-gray-50 text-gray-600 border-gray-200'
+  } else if (!adaEntry) {
+    pesanOtomatis = 'Belum ada laporan untuk hari ini. Data akan muncul setelah ustadz/ustadzah menyelesaikan input setoran.'
+    pesanWarna = 'bg-gray-50 text-gray-600 border-gray-200'
+  } else if (entryTidakHadir && !adaHadir && !adaHadirTidakSetor) {
+    const alasan = entryTidakHadir.status_kehadiran
+    if (alasan === 'sakit') { pesanOtomatis = 'Ananda tercatat sakit hari ini. Semoga Allah segera memberikan kesembuhan. Mohon istirahat yang cukup.'; pesanWarna = 'bg-yellow-50 text-yellow-700 border-yellow-200' }
+    else if (alasan === 'izin') { pesanOtomatis = 'Ananda tercatat izin hari ini sehingga tidak mengikuti setoran.'; pesanWarna = 'bg-blue-50 text-blue-700 border-blue-200' }
+    else { pesanOtomatis = 'Ananda tercatat tidak hadir (alpha) hari ini tanpa keterangan. Mohon perhatian dan tindak lanjut dari Bapak/Ibu.'; pesanWarna = 'bg-red-50 text-red-700 border-red-200' }
+  } else if (adaHadirTidakSetor && !adaHadir) {
+    pesanOtomatis = 'Ananda hadir hari ini namun belum menyetorkan hafalan. Mohon dukungan Bapak/Ibu untuk memotivasi ananda agar lebih semangat menyetorkan hafalannya.'
+    pesanWarna = 'bg-orange-50 text-orange-700 border-orange-200'
+  } else if (adaHadir) {
+    const adaRosib = entriesHariIni.some((e: any) => e.status_kehadiran === 'hadir' && e.status === 'rosib')
+    const adaNajih = entriesHariIni.some((e: any) => e.status_kehadiran === 'hadir' && e.status === 'lancar')
+    if (adaRosib && adaNajih) { pesanOtomatis = 'Alhamdulillah ananda telah menyetorkan hafalan hari ini. Sebagian sudah lancar, sebagian masih perlu diperbaiki. Mohon dukungan muroja\'ah di rumah.'; pesanWarna = 'bg-blue-50 text-blue-700 border-blue-200' }
+    else if (adaRosib) { pesanOtomatis = 'Ananda telah berusaha menyetorkan hafalan hari ini, namun masih perlu perbaikan (rosib). Mohon bantu ananda muroja\'ah di rumah.'; pesanWarna = 'bg-yellow-50 text-yellow-700 border-yellow-200' }
+    else { pesanOtomatis = 'Alhamdulillah, ananda menyetorkan hafalan dengan lancar hari ini. Semoga Allah memudahkan hafalannya. Mohon tetap dijaga dengan muroja\'ah di rumah.'; pesanWarna = 'bg-green-50 text-green-700 border-green-200' }
+  }
 
   const menuItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: '◈' },
@@ -452,22 +522,78 @@ setRankingSemangatKelas(semangatList)
               {/* RINGKASAN */}
               {activeMenu === 'dashboard' && (
                 <div>
-                  {/* 3 kartu peringkat ringkas */}
-                  <div className="grid grid-cols-3 gap-3 mb-5">
-                    {[
-                      { label: 'Peringkat Hafalan', nilai: peringkatHafalan?.peringkat, satuan: `dari ${peringkatHafalan?.total}`, color: 'from-yellow-500 to-yellow-600' },
-                      { label: 'Konsistensi Setor', nilai: peringkatKonsistensi || '-', satuan: `dari ${allSantriKelas.length}`, color: 'from-blue-500 to-blue-700' },
-                      { label: 'Semangat Hafal', nilai: peringkatSemangat || '-', satuan: `dari ${allSantriKelas.length}`, color: 'from-purple-500 to-purple-700' },
-                    ].map((item, i) => (
-                      <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-3 shadow text-white relative overflow-hidden`}>
-                        <div className="absolute -bottom-2 -right-2 text-4xl opacity-10">◆</div>
-                        <div className="text-2xl font-bold">{item.nilai ?? '-'}</div>
-                        <div className="text-white text-opacity-80 text-xs mt-0.5">{item.label}</div>
-                        <div className="text-white text-opacity-60 text-xs">{item.satuan}</div>
+                  {/* ===== KARTU LAPORAN HARI INI ===== */}
+                  <div className="bg-white rounded-2xl shadow-lg border-2 border-blue-100 overflow-hidden mb-5">
+                    <div className="px-5 py-3" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-white font-bold text-base flex items-center gap-2">📋 Laporan Hari Ini</h3>
+                        <span className="text-blue-200 text-xs text-right">{tanggalHariIni}</span>
                       </div>
-                    ))}
+                    </div>
+                    <div className="p-5">
+                      {/* Status Kehadiran */}
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm font-semibold text-gray-600">Status Kehadiran</span>
+                        <span className={`px-3 py-1 rounded-full text-sm font-bold ${statusBadge.color}`}>{statusBadge.label}</span>
+                      </div>
+
+                      {/* Detail setoran — hanya tampil jika hadir & ada setoran */}
+                      {adaHadir && (
+                        <div className="space-y-3 mb-4">
+                          {/* Hafalan Baru (skip untuk Ulya) */}
+                          {!isUlyaSantri && (
+                            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100">
+                              <div className="text-xs font-semibold text-blue-800 mb-1">📖 Hafalan Baru</div>
+                              {hafalanBaruHariIni ? (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-gray-800 font-medium">{hafalanBaruHariIni.surah} ayat {hafalanBaruHariIni.ayat_mulai}–{hafalanBaruHariIni.ayat_selesai}</span>
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${hafalanBaruHariIni.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {hafalanBaruHariIni.status === 'lancar' ? '✓ Lancar' : '✗ Rosib'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="text-sm text-gray-400 italic">Tidak ada setoran hafalan baru hari ini</div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Murojaah */}
+                          <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
+                            <div className="text-xs font-semibold text-purple-800 mb-1">🔄 Murojaah (Hafalan Lama)</div>
+                            {murojaahHariIni ? (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-800 font-medium">{murojaahHariIni.surah} ayat {murojaahHariIni.ayat_mulai}–{murojaahHariIni.ayat_selesai}</span>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${murojaahHariIni.status === 'lancar' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {murojaahHariIni.status === 'lancar' ? '✓ Lancar' : '✗ Rosib'}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-gray-400 italic">Tidak ada setoran murojaah hari ini</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Catatan Guru */}
+                      {catatanHariIni.length > 0 && (
+                        <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                          <div className="text-xs font-semibold text-amber-800 mb-1">📝 Catatan dari Ustadz/Ustadzah</div>
+                          {catatanHariIni.map((c, i) => (
+                            <div key={i} className="text-sm text-amber-900">• {c}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Pesan Otomatis */}
+                      {pesanOtomatis && (
+                        <div className={`p-3 rounded-xl border text-sm leading-relaxed ${pesanWarna}`}>
+                          {pesanOtomatis}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Nilai Ujian Terakhir */}
                   {nilaiUjianList.length > 0 && (
                     <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
                       <h3 className="font-bold text-gray-800 mb-3">Nilai Ujian Terakhir</h3>
@@ -484,6 +610,23 @@ setRankingSemangatKelas(semangatList)
                     </div>
                   )}
 
+                  {/* 3 kartu peringkat ringkas */}
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    {[
+                      { label: 'Peringkat Hafalan', nilai: peringkatHafalan?.peringkat, satuan: `dari ${peringkatHafalan?.total}`, color: 'from-yellow-500 to-yellow-600' },
+                      { label: 'Konsistensi Setor', nilai: peringkatKonsistensi || '-', satuan: `dari ${allSantriKelas.length}`, color: 'from-blue-500 to-blue-700' },
+                      { label: 'Semangat Hafal', nilai: peringkatSemangat || '-', satuan: `dari ${allSantriKelas.length}`, color: 'from-purple-500 to-purple-700' },
+                    ].map((item, i) => (
+                      <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-3 shadow text-white relative overflow-hidden`}>
+                        <div className="absolute -bottom-2 -right-2 text-4xl opacity-10">◆</div>
+                        <div className="text-2xl font-bold">{item.nilai ?? '-'}</div>
+                        <div className="text-white text-opacity-80 text-xs mt-0.5">{item.label}</div>
+                        <div className="text-white text-opacity-60 text-xs">{item.satuan}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Ringkasan 30 setoran terakhir */}
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Ringkasan 30 Setoran Terakhir</h3>
                   <div className="grid grid-cols-2 gap-3 mb-5">
                     {[
