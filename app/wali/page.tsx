@@ -31,6 +31,7 @@ export default function WaliDashboard() {
   const [allSantriKelas, setAllSantriKelas] = useState<any[]>([])
   const [nilaiUjianList, setNilaiUjianList] = useState<any[]>([])
   const [laporanHariIni, setLaporanHariIni] = useState<any[]>([])
+  const [tanggalLaporan, setTanggalLaporan] = useState(getTanggalWIB())
   const [rankingKonsistensiKelas, setRankingKonsistensiKelas] = useState<any[]>([])
   const [rankingSemangatKelas, setRankingSemangatKelas] = useState<any[]>([])
   const [activeRanking, setActiveRanking] = useState('hafalan')
@@ -212,12 +213,24 @@ setRankingSemangatKelas(semangatList)
     setRiwayatSetoran(data || [])
   }
 
-  const fetchLaporanHariIni = async (santriId: any) => {
-    const today = getTanggalWIB()
+  const fetchLaporanHariIni = async (santriId: any, tgl?: string) => {
+    const tanggal = tgl || getTanggalWIB()
     const { data } = await supabase
-      .from('setoran').select('*').eq('santri_id', santriId).eq('tanggal', today)
+      .from('setoran').select('*').eq('santri_id', santriId).eq('tanggal', tanggal)
       .order('created_at', { ascending: true })
     setLaporanHariIni(data || [])
+  }
+
+  const handleGantiTanggalLaporan = (arah: number) => {
+    if (!selectedSantri) return
+    const tgl = new Date(tanggalLaporan)
+    tgl.setDate(tgl.getDate() + arah)
+    const today = getTanggalWIB()
+    const tglStr = `${tgl.getFullYear()}-${String(tgl.getMonth() + 1).padStart(2, '0')}-${String(tgl.getDate()).padStart(2, '0')}`
+    // Jangan boleh maju melebihi hari ini
+    if (tglStr > today) return
+    setTanggalLaporan(tglStr)
+    fetchLaporanHariIni(selectedSantri.id, tglStr)
   }
 
   const fetchNilaiUjian = async (santriId: any) => {
@@ -230,9 +243,11 @@ setRankingSemangatKelas(semangatList)
 
   const handlePilihSantri = async (santri: any) => {
     setSelectedSantri(santri)
+    const today = getTanggalWIB()
+    setTanggalLaporan(today)
     fetchRiwayat(santri.id)
     fetchNilaiUjian(santri.id)
-    fetchLaporanHariIni(santri.id)
+    fetchLaporanHariIni(santri.id, today)
     await fetchDataKelas(santri)
   }
 
@@ -267,10 +282,11 @@ setRankingSemangatKelas(semangatList)
     : null
 
   // ===== LAPORAN HARI INI (kartu utama) =====
-  const tanggalHariIni = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const hariNomorWIB = getHariWIB()
+  const tanggalHariIni = new Date(tanggalLaporan + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const hariNomorWIB = new Date(tanggalLaporan + 'T00:00:00').getDay()
   const isLiburHariIni = hariNomorWIB === 0 || hariNomorWIB === 5
   const isUlyaSantri = selectedSantri?.jenjang === 'ulya'
+  const isHariIni = tanggalLaporan === getTanggalWIB()
 
   const entriesHariIni = laporanHariIni
   const adaEntry = entriesHariIni.length > 0
@@ -524,10 +540,23 @@ setRankingSemangatKelas(semangatList)
                 <div>
                   {/* ===== KARTU LAPORAN HARI INI ===== */}
                   <div className="bg-white rounded-2xl shadow-lg border-2 border-blue-100 overflow-hidden mb-5">
-                    <div className="px-5 py-3" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
+                    <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
                       <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-white font-bold text-base flex items-center gap-2">📋 Laporan Hari Ini</h3>
-                        <span className="text-blue-200 text-xs text-right">{tanggalHariIni}</span>
+                        <button onClick={() => handleGantiTanggalLaporan(-1)}
+                          className="w-8 h-8 rounded-full bg-white bg-opacity-20 hover:bg-opacity-30 flex items-center justify-center text-white text-lg flex-shrink-0 transition">
+                          ‹
+                        </button>
+                        <div className="text-center flex-1 min-w-0">
+                          <h3 className="text-white font-bold text-sm flex items-center justify-center gap-1.5">
+                            📋 {isHariIni ? 'Laporan Hari Ini' : 'Laporan'}
+                          </h3>
+                          <div className="text-blue-200 text-xs mt-0.5">{tanggalHariIni}</div>
+                        </div>
+                        <button onClick={() => handleGantiTanggalLaporan(1)}
+                          disabled={isHariIni}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-lg flex-shrink-0 transition ${isHariIni ? 'bg-white bg-opacity-5 text-opacity-30 cursor-not-allowed' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
+                          ›
+                        </button>
                       </div>
                     </div>
                     <div className="p-5">
