@@ -541,21 +541,23 @@ setRankingSemangatKelas(semangatList)
                   {/* ===== KARTU LAPORAN HARI INI ===== */}
                   <div className="bg-white rounded-2xl shadow-lg border-2 border-blue-100 overflow-hidden mb-5">
                     <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="text-center mb-3">
+                        <h3 className="text-white font-bold text-sm flex items-center justify-center gap-1.5">
+                          📋 {isHariIni ? 'Laporan Hari Ini' : 'Laporan'}
+                        </h3>
+                        <div className="text-blue-200 text-xs mt-0.5">{tanggalHariIni}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
                         <button onClick={() => handleGantiTanggalLaporan(-1)}
-                          className="w-8 h-8 rounded-full bg-white bg-opacity-20 hover:bg-opacity-30 flex items-center justify-center text-white text-lg flex-shrink-0 transition">
-                          ‹
+                          className="flex items-center justify-center gap-1.5 bg-gray-900 hover:bg-black text-white rounded-xl px-3 py-2 transition">
+                          <span className="text-base">‹</span>
+                          <span className="text-xs font-medium leading-tight text-left">Lihat hari<br />sebelumnya</span>
                         </button>
-                        <div className="text-center flex-1 min-w-0">
-                          <h3 className="text-white font-bold text-sm flex items-center justify-center gap-1.5">
-                            📋 {isHariIni ? 'Laporan Hari Ini' : 'Laporan'}
-                          </h3>
-                          <div className="text-blue-200 text-xs mt-0.5">{tanggalHariIni}</div>
-                        </div>
                         <button onClick={() => handleGantiTanggalLaporan(1)}
                           disabled={isHariIni}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-lg flex-shrink-0 transition ${isHariIni ? 'bg-white bg-opacity-5 text-opacity-30 cursor-not-allowed' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
-                          ›
+                          className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 transition ${isHariIni ? 'bg-gray-700 bg-opacity-40 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
+                          <span className="text-xs font-medium leading-tight text-right">Lihat hari<br />setelahnya</span>
+                          <span className="text-base">›</span>
                         </button>
                       </div>
                     </div>
