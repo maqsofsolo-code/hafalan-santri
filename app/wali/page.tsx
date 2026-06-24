@@ -57,7 +57,24 @@ export default function WaliDashboard() {
     if (hasil.ok) setNotifAktif(true)
     setNotifLoading(false)
   }
-
+const handleTestNotif = async () => {
+    if (!waliProfile) return
+    setNotifLoading(true)
+    setNotifPesan('')
+    try {
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: waliProfile.id }),
+      })
+      const data = await res.json()
+      setNotifPesan(data.message)
+    } catch (err: any) {
+      setNotifPesan('Gagal kirim test: ' + err.message)
+    }
+    setNotifLoading(false)
+  }
+  
   const fetchWaliData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/'; return }
@@ -667,12 +684,19 @@ setRankingSemangatKelas(semangatList)
                   )}
 
                   {notifAktif && (
-                    <div className="bg-green-50 rounded-2xl border border-green-200 p-3 mb-5 flex items-center gap-2">
-                      <span className="text-lg">✅</span>
-                      <span className="text-sm text-green-700 font-medium">Notifikasi sudah aktif di perangkat ini</span>
+                    <div className="bg-green-50 rounded-2xl border border-green-200 p-3 mb-5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">✅</span>
+                        <span className="text-sm text-green-700 font-medium">Notifikasi sudah aktif di perangkat ini</span>
+                      </div>
+                      <button onClick={handleTestNotif} disabled={notifLoading}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-xs font-semibold disabled:opacity-50">
+                        {notifLoading ? 'Mengirim...' : '📤 Kirim Test Notifikasi'}
+                      </button>
+                      {notifPesan && <p className="text-xs mt-2 text-gray-600">{notifPesan}</p>}
                     </div>
                   )}
-                  
+
                   {/* Nilai Ujian Terakhir */}
                   {nilaiUjianList.length > 0 && (
                     <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
