@@ -18,7 +18,6 @@ export async function daftarkanNotifikasi(userId: string, role: string): Promise
     }
 
     const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    console.log('DEBUG VAPID KEY:', vapidKey ? `ADA (${vapidKey.length} karakter)` : 'KOSONG/UNDEFINED')
     if (!vapidKey) {
       return { ok: false, message: 'Konfigurasi notifikasi belum lengkap (VAPID key).' }
     }
