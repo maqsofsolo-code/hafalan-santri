@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { kirimPushKeUser } from '../../lib/sendPush'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -174,6 +175,66 @@ async function notifWali() {
   }
 
   return { message: `Notif wali (laporan harian) selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
+}
+
+// ===== NOTIF WALI via PUSH PWA (jam 15.00 WIB) =====
+async function notifWaliPush() {
+  const today = getWIBDate()
+  if (await cekLibur(today)) return { message: 'Hari libur' }
+
+  const { data: santriList } = await supabase
+    .from('santri').select('id, nama, jenjang, wali_id')
+  if (!santriList) return { message: 'Tidak ada santri' }
+
+  const { data: setoranHariIni } = await supabase
+    .from('setoran').select('*').eq('tanggal', today)
+
+  let terkirim = 0, gagal = 0, dilewati = 0
+
+  for (const santri of santriList) {
+    if (!santri.wali_id) { dilewati++; continue }
+
+    const setoranSantri = (setoranHariIni || []).filter((s: any) => s.santri_id === santri.id)
+    if (setoranSantri.length === 0) { dilewati++; continue }
+
+    const namaSantri = santri.nama
+    const adaHadir = setoranSantri.some((s: any) => s.status_kehadiran === 'hadir')
+    const adaHadirTidakSetor = setoranSantri.some((s: any) => s.status_kehadiran === 'hadir_tidak_setor')
+    const entryTidakHadir = setoranSantri.find((s: any) => ['sakit', 'izin', 'alpha'].includes(s.status_kehadiran))
+
+    // Tentukan judul + isi notif sesuai keadaan
+    let title = '🔔 Laporan Hafalan Daarus Salaf'
+    let body = ''
+
+    if (adaHadir) {
+      const adaRosib = setoranSantri.some((s: any) => s.status_kehadiran === 'hadir' && s.status === 'rosib')
+      if (adaRosib) {
+        body = `Laporan hafalan ${namaSantri} hari ini sudah tersedia. Ketuk untuk melihat detailnya.`
+      } else {
+        body = `Alhamdulillah, laporan hafalan ${namaSantri} hari ini sudah tersedia. Ketuk untuk melihat.`
+      }
+    } else if (adaHadirTidakSetor) {
+      body = `${namaSantri} hari ini hadir namun belum menyetorkan hafalan. Ketuk untuk detail.`
+    } else if (entryTidakHadir) {
+      const a = entryTidakHadir.status_kehadiran
+      const label = a === 'sakit' ? 'sakit' : a === 'izin' ? 'izin' : 'tidak hadir'
+      body = `${namaSantri} tercatat ${label} hari ini. Ketuk untuk detail.`
+    } else {
+      dilewati++
+      continue
+    }
+
+    const hasil = await kirimPushKeUser(santri.wali_id, {
+      title,
+      body,
+      url: '/wali',
+      tag: `laporan-${santri.id}`,
+    })
+    terkirim += hasil.terkirim
+    gagal += hasil.gagal
+  }
+
+  return { message: `Notif wali (push) selesai. Terkirim: ${terkirim}, Gagal: ${gagal}, Dilewati: ${dilewati}` }
 }
 
 // ===== REMINDER GURU =====
@@ -573,6 +634,7 @@ async function notifWaliKelas() {
 export async function POST(request: Request) {
   const { jenis } = await request.json()
   if (jenis === 'notif-wali') return NextResponse.json(await notifWali())
+  if (jenis === 'notif-wali-push') return NextResponse.json(await notifWaliPush())
   if (jenis === 'reminder-guru-subuh') return NextResponse.json(await reminderGuru('subuh'))
   if (jenis === 'reminder-guru-pagi') return NextResponse.json(await reminderGuru('pagi'))
   if (jenis === 'reminder-guru-siang') return NextResponse.json(await reminderGuru('siang'))

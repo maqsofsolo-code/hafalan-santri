@@ -684,16 +684,9 @@ setRankingSemangatKelas(semangatList)
                   )}
 
                   {notifAktif && (
-                    <div className="bg-green-50 rounded-2xl border border-green-200 p-3 mb-5">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">✅</span>
-                        <span className="text-sm text-green-700 font-medium">Notifikasi sudah aktif di perangkat ini</span>
-                      </div>
-                      <button onClick={handleTestNotif} disabled={notifLoading}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-xs font-semibold disabled:opacity-50">
-                        {notifLoading ? 'Mengirim...' : '📤 Kirim Test Notifikasi'}
-                      </button>
-                      {notifPesan && <p className="text-xs mt-2 text-gray-600">{notifPesan}</p>}
+                    <div className="bg-green-50 rounded-2xl border border-green-200 p-3 mb-5 flex items-center gap-2">
+                      <span className="text-lg">✅</span>
+                      <span className="text-sm text-green-700 font-medium">Notifikasi sudah aktif di perangkat ini</span>
                     </div>
                   )}
 
