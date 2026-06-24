@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
+import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 
 function getTanggalWIB() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
@@ -22,6 +23,9 @@ export default function GuruDashboard() {
   const [surahList, setSurahList] = useState<any[]>([])
   const [guruProfile, setGuruProfile] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [notifAktif, setNotifAktif] = useState(false)
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [notifPesan, setNotifPesan] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [showPopupSukses, setShowPopupSukses] = useState(false)
@@ -89,6 +93,20 @@ export default function GuruDashboard() {
   const [nilaiUjianList, setNilaiUjianList] = useState<any[]>([])
 
   useEffect(() => { fetchGuruData() }, [])
+
+  useEffect(() => {
+    cekStatusNotifikasi().then(setNotifAktif)
+  }, [])
+
+  const handleAktifkanNotif = async () => {
+    if (!guruProfile) return
+    setNotifLoading(true)
+    setNotifPesan('')
+    const hasil = await daftarkanNotifikasi(guruProfile.id, 'guru')
+    setNotifPesan(hasil.message)
+    if (hasil.ok) setNotifAktif(true)
+    setNotifLoading(false)
+  }
 
   const fetchGuruData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -878,6 +896,36 @@ const tampilPopupSukses = (msg: string) => {
                 </div>
               )}
 
+{!notifAktif && (
+                <div className="bg-white rounded-2xl shadow-lg border-2 border-green-200 overflow-hidden mb-4">
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="text-3xl flex-shrink-0">🔔</div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-gray-800 text-sm mb-1">Aktifkan Notifikasi Pengingat</h3>
+                        <p className="text-xs text-gray-500 leading-relaxed mb-3">
+                          Dapatkan pengingat input setoran langsung di HP, tanpa tergantung WhatsApp. Cukup aktifkan sekali.
+                        </p>
+                        <button onClick={handleAktifkanNotif} disabled={notifLoading}
+                          className="w-full text-white py-2.5 rounded-xl font-semibold text-sm shadow disabled:opacity-50"
+                          style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
+                          {notifLoading ? 'Memproses...' : '🔔 Aktifkan Notifikasi Sekarang'}
+                        </button>
+                        {notifPesan && (
+                          <p className={`text-xs mt-2 ${notifAktif ? 'text-green-600' : 'text-red-500'}`}>{notifPesan}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {notifAktif && (
+                <div className="bg-green-50 rounded-2xl border border-green-200 p-3 mb-4 flex items-center gap-2">
+                  <span className="text-lg">✅</span>
+                  <span className="text-sm text-green-700 font-medium">Notifikasi pengingat sudah aktif di perangkat ini</span>
+                </div>
+              )}
               {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
 
               <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
