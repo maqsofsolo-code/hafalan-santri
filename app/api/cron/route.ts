@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     'reminder-guru-siang',
     'reminder-guru-sore',
     'notif-wali',
+    'notif-wali-push',
     'notif-naik-peringkat',
     'notif-wali-kelas'
   ]
