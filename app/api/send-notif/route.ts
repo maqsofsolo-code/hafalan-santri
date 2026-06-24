@@ -306,6 +306,40 @@ async function reminderGuru(sesi: string) {
   return { message: `Reminder guru ${sesi} selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
 }
 
+// ===== REMINDER GURU via PUSH PWA =====
+async function reminderGuruPush(sesi: string) {
+  const today = getWIBDate()
+  if (await cekLibur(today)) return { message: 'Hari libur' }
+
+  const { data: guruList } = await supabase
+    .from('profiles').select('id, nama').eq('role', 'guru')
+  if (!guruList) return { message: 'Tidak ada guru' }
+
+  const pesanPerSesi: Record<string, { title: string; body: string }> = {
+    subuh: { title: '🌅 Pengingat Setoran Subuh', body: 'Sesi setoran Subuh (04.30) akan dimulai. Jangan lupa input data hafalan santri setelah sesi.' },
+    pagi: { title: '☀️ Pengingat Setoran Pagi', body: 'Sesi setoran Pagi akan dimulai. Jangan lupa input data hafalan santri setelah sesi.' },
+    siang: { title: '🕛 Pengingat Input Data', body: 'Mohon pastikan data hafalan santri sesi pagi sudah diinput ke sistem.' },
+    sore: { title: '🕒 Pengingat Akhir Hari', body: 'Mohon pastikan semua data hafalan santri hari ini sudah diinput sebelum laporan dikirim ke wali.' },
+  }
+
+  const pesan = pesanPerSesi[sesi]
+  if (!pesan) return { message: 'Sesi tidak valid' }
+
+  let terkirim = 0, gagal = 0
+  for (const guru of guruList) {
+    const hasil = await kirimPushKeUser(guru.id, {
+      title: pesan.title,
+      body: pesan.body,
+      url: '/guru',
+      tag: `reminder-${sesi}`,
+    })
+    terkirim += hasil.terkirim
+    gagal += hasil.gagal
+  }
+
+  return { message: `Reminder guru push (${sesi}) selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
+}
+
 // ===== NOTIF NAIK PERINGKAT (Senin jam 17.00) =====
 async function notifNaikPeringkat() {
   const today = getWIBDate()
@@ -635,6 +669,10 @@ export async function POST(request: Request) {
   const { jenis } = await request.json()
   if (jenis === 'notif-wali') return NextResponse.json(await notifWali())
   if (jenis === 'notif-wali-push') return NextResponse.json(await notifWaliPush())
+  if (jenis === 'reminder-guru-push-subuh') return NextResponse.json(await reminderGuruPush('subuh'))
+  if (jenis === 'reminder-guru-push-pagi') return NextResponse.json(await reminderGuruPush('pagi'))
+  if (jenis === 'reminder-guru-push-siang') return NextResponse.json(await reminderGuruPush('siang'))
+  if (jenis === 'reminder-guru-push-sore') return NextResponse.json(await reminderGuruPush('sore'))
   if (jenis === 'reminder-guru-subuh') return NextResponse.json(await reminderGuru('subuh'))
   if (jenis === 'reminder-guru-pagi') return NextResponse.json(await reminderGuru('pagi'))
   if (jenis === 'reminder-guru-siang') return NextResponse.json(await reminderGuru('siang'))
