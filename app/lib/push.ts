@@ -55,14 +55,26 @@ export async function daftarkanNotifikasi(userId: string, role: string): Promise
   }
 }
 
-export async function cekStatusNotifikasi(): Promise<boolean> {
+export async function cekStatusNotifikasi(userId?: string): Promise<boolean> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
   if (Notification.permission !== 'granted') return false
   try {
     const registration = await navigator.serviceWorker.getRegistration()
     if (!registration) return false
     const sub = await registration.pushManager.getSubscription()
-    return !!sub
+    if (!sub) return false
+
+    // Kalau tidak ada userId, cukup cek ada langganan di browser
+    if (!userId) return true
+
+    // Cek ke database: apakah user INI sudah terdaftar dengan endpoint ini
+    const res = await fetch('/api/push/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, endpoint: sub.endpoint }),
+    })
+    const data = await res.json()
+    return !!data.terdaftar
   } catch {
     return false
   }

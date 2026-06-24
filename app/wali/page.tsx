@@ -45,8 +45,8 @@ export default function WaliDashboard() {
   useEffect(() => { fetchWaliData() }, [])
 
   useEffect(() => {
-    cekStatusNotifikasi().then(setNotifAktif)
-  }, [])
+    if (waliProfile?.id) cekStatusNotifikasi(waliProfile.id).then(setNotifAktif)
+  }, [waliProfile])
 
   const handleAktifkanNotif = async () => {
     if (!waliProfile) return

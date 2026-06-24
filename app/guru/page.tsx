@@ -95,8 +95,8 @@ export default function GuruDashboard() {
   useEffect(() => { fetchGuruData() }, [])
 
   useEffect(() => {
-    cekStatusNotifikasi().then(setNotifAktif)
-  }, [])
+    if (guruProfile?.id) cekStatusNotifikasi(guruProfile.id).then(setNotifAktif)
+  }, [guruProfile])
 
   const handleAktifkanNotif = async () => {
     if (!guruProfile) return
