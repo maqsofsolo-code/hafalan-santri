@@ -1972,6 +1972,25 @@ const AlumniList = () => {
                 </div>
               </div>
 
+                {/* Tombol Download PDF Peringkat */}
+                {rankingLevel === 'kelas' && filterJenjang !== 'semua' && filterJenisKelas !== 'semua' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    
+                      href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow"
+                      style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}
+                    >
+                      📄 Download PDF Peringkat 1–3 Per Kelas
+                    </a>
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      Pilih Jenjang + Jenis Kelas terlebih dahulu. Setelah terbuka, klik &quot;Cetak / Simpan PDF&quot;.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Tab Jenis Ranking */}
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {[
