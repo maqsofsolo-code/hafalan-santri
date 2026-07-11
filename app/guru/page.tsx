@@ -93,6 +93,8 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   const [ujianJumlahLupa, setUjianJumlahLupa] = useState('0')
   const [ujianCatatan, setUjianCatatan] = useState('')
   const [nilaiUjianList, setNilaiUjianList] = useState<any[]>([])
+const [ujianHasMore, setUjianHasMore] = useState(true)
+const [ujianLoadingMore, setUjianLoadingMore] = useState(false)
 
   useEffect(() => { fetchGuruData() }, [])
 
@@ -338,8 +340,24 @@ setRapotSantriList(allRapotSantri)
       .select('*, santri:santri_id(nama, kelas), surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin)')
       .eq('guru_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .range(0, 49)
     setNilaiUjianList(data || [])
+    setUjianHasMore((data || []).length === 50)
+  }
+
+  const fetchMoreNilaiUjian = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    setUjianLoadingMore(true)
+    const { data } = await supabase
+      .from('nilai_ujian')
+      .select('*, santri:santri_id(nama, kelas), surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin)')
+      .eq('guru_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(nilaiUjianList.length, nilaiUjianList.length + 49)
+    setNilaiUjianList(prev => [...prev, ...(data || [])])
+    setUjianHasMore((data || []).length === 50)
+    setUjianLoadingMore(false)
   }
 
   const cekSetoranLamaHariIni = async (santriId: string) => {
@@ -1489,6 +1507,12 @@ const tampilPopupSukses = (msg: string) => {
                         <div className={`text-2xl font-bold ${item.nilai_akhir >= 8 ? 'text-green-600' : item.nilai_akhir >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>{item.nilai_akhir}</div>
                       </div>
                     ))}
+                    {ujianHasMore && nilaiUjianList.length > 0 && (
+                      <button onClick={fetchMoreNilaiUjian} disabled={ujianLoadingMore}
+                        className="w-full py-3 rounded-xl text-sm font-semibold border-2 border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                        {ujianLoadingMore ? 'Memuat...' : 'Muat Lebih Banyak'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
