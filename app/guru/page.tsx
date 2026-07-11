@@ -32,6 +32,8 @@ export default function GuruDashboard() {
   const [popupSuksesMsg, setPopupSuksesMsg] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [riwayatList, setRiwayatList] = useState<any[]>([])
+const [riwayatHasMore, setRiwayatHasMore] = useState(true)
+const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   const [editSetoran, setEditSetoran] = useState<any>(null)
   const [editStatus, setEditStatus] = useState('lancar')
   const [editCatatan, setEditCatatan] = useState('')
@@ -150,8 +152,24 @@ export default function GuruDashboard() {
       .select('*, santri:santri_id(nama), surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin)')
       .eq('guru_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .range(0, 49)
     setRiwayatList(data || [])
+    setRiwayatHasMore((data || []).length === 50)
+  }
+
+  const fetchMoreRiwayat = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    setRiwayatLoadingMore(true)
+    const { data } = await supabase
+      .from('setoran')
+      .select('*, santri:santri_id(nama), surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin)')
+      .eq('guru_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(riwayatList.length, riwayatList.length + 49)
+    setRiwayatList(prev => [...prev, ...(data || [])])
+    setRiwayatHasMore((data || []).length === 50)
+    setRiwayatLoadingMore(false)
   }
 
   const fetchPeriodeAktif = async () => {
@@ -1900,6 +1918,12 @@ const tampilPopupSukses = (msg: string) => {
                     )}
                   </div>
                 ))}
+                {riwayatHasMore && riwayatList.length > 0 && (
+                  <button onClick={fetchMoreRiwayat} disabled={riwayatLoadingMore}
+                    className="w-full py-3 rounded-xl text-sm font-semibold border-2 border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                    {riwayatLoadingMore ? 'Memuat...' : 'Muat Lebih Banyak'}
+                  </button>
+                )}
               </div>
             </div>
           )}
