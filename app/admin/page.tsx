@@ -1975,7 +1975,7 @@ const AlumniList = () => {
                 {/* Tombol Download PDF Peringkat */}
                 {rankingLevel === 'kelas' && filterJenjang !== 'semua' && filterJenisKelas !== 'semua' && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    
+                    <a
                       href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3`}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -1989,7 +1989,6 @@ const AlumniList = () => {
                     </p>
                   </div>
                 )}
-              </div>
 
               {/* Tab Jenis Ranking */}
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
