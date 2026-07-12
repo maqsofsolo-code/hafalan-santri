@@ -57,6 +57,23 @@ function getHariWIB() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
 }
 
+type CreateUserRequest = {
+  email?: string
+  password?: string
+  nama?: string
+  role?: 'guru' | 'wali'
+  no_wa?: string
+  userId?: string
+  isUpdate?: boolean
+  isDelete?: boolean
+}
+
+type CreateUserResponse = {
+  success?: boolean
+  error?: string
+  user?: unknown
+}
+
 export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [guruList, setGuruList] = useState<any[]>([])
@@ -392,12 +409,36 @@ const fetchPeriode = async () => {
     await supabase.from('kalender_akademik').delete().eq('id', id); fetchData()
   }
 
+  const requestCreateUser = async (payload: CreateUserRequest): Promise<CreateUserResponse> => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session?.access_token) {
+      return { error: 'Session tidak tersedia atau sudah berakhir. Silakan login kembali.' }
+    }
+
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    const result = await res.json() as CreateUserResponse
+
+    if (res.status === 401) {
+      return { ...result, error: 'Session tidak valid atau sudah berakhir. Silakan login kembali.' }
+    }
+    if (res.status === 403) {
+      return { ...result, error: 'Akses ditolak. Hanya admin yang dapat mengelola akun.' }
+    }
+
+    return result
+  }
+
   // ===== GURU =====
   const handleTambahGuru = async () => {
     setLoading(true); setErrorMsg('')
-    const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: formEmail, password: formPassword, nama: formNama, role: 'guru', no_wa: formNoWa }) })
-    const result = await res.json()
+    const result = await requestCreateUser({ email: formEmail, password: formPassword, nama: formNama, role: 'guru', no_wa: formNoWa })
     if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     setSuccessMsg('Guru berhasil ditambahkan!'); setShowForm(false); resetForm(); fetchData(); setLoading(false)
   }
@@ -424,9 +465,7 @@ const fetchPeriode = async () => {
     }).eq('id', editGuruId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
     if (formEmail || formPassword) {
-      const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isUpdate: true, userId: editGuruId, email: formEmail || undefined, password: formPassword || undefined }) })
-      const result = await res.json()
+      const result = await requestCreateUser({ isUpdate: true, userId: editGuruId, email: formEmail || undefined, password: formPassword || undefined })
       if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     }
     setSuccessMsg('Data guru berhasil diupdate!'); setShowForm(false); setEditGuruId(null); resetForm(); fetchData(); setLoading(false)
@@ -435,9 +474,7 @@ const fetchPeriode = async () => {
   // ===== WALI =====
   const handleTambahWali = async () => {
     setLoading(true); setErrorMsg('')
-    const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: formEmail, password: formPassword, nama: formNama, role: 'wali', no_wa: formNoWa }) })
-    const result = await res.json()
+    const result = await requestCreateUser({ email: formEmail, password: formPassword, nama: formNama, role: 'wali', no_wa: formNoWa })
     if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     setSuccessMsg('Wali berhasil ditambahkan!'); setShowForm(false); resetForm(); fetchData(); setLoading(false)
   }
@@ -452,9 +489,7 @@ const fetchPeriode = async () => {
     const { error } = await supabase.from('profiles').update({ nama: formNama, no_wa: formNoWa || null }).eq('id', editWaliId)
     if (error) { setErrorMsg(error.message); setLoading(false); return }
     if (formEmail || formPassword) {
-      const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isUpdate: true, userId: editWaliId, email: formEmail || undefined, password: formPassword || undefined }) })
-      const result = await res.json()
+      const result = await requestCreateUser({ isUpdate: true, userId: editWaliId, email: formEmail || undefined, password: formPassword || undefined })
       if (result.error) { setErrorMsg(result.error); setLoading(false); return }
     }
     setSuccessMsg('Data wali berhasil diupdate!'); setShowForm(false); setEditWaliId(null); resetForm(); fetchData(); setLoading(false)
@@ -528,16 +563,14 @@ const fetchPeriode = async () => {
 
   const handleHapusGuru = async (id: any) => {
     if (!confirm('Yakin hapus guru ini?')) return
-    const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isDelete: true, userId: id }) })
-    const result = await res.json()
+    const result = await requestCreateUser({ isDelete: true, userId: id })
     if (result.error) { alert('Gagal hapus: ' + result.error); return }
     setSuccessMsg('Guru berhasil dihapus!'); fetchData()
   }
 
   const handleHapusWali = async (id: any) => {
     if (!confirm('Yakin hapus wali ini?')) return
-    const res = await fetch('/api/create-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isDelete: true, userId: id }) })
-    const result = await res.json()
+    const result = await requestCreateUser({ isDelete: true, userId: id })
     if (result.error) { alert('Gagal hapus: ' + result.error); return }
     setSuccessMsg('Wali berhasil dihapus!'); fetchData()
   }
