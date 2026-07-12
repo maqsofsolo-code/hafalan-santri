@@ -1,6 +1,13 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { kirimPushKeUser } from '../../lib/sendPush'
+
+function secretSama(secretDiterima: string, secretDiharapkan: string) {
+  const hashDiterima = createHash('sha256').update(secretDiterima).digest()
+  const hashDiharapkan = createHash('sha256').update(secretDiharapkan).digest()
+  return timingSafeEqual(hashDiterima, hashDiharapkan)
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -666,6 +673,17 @@ async function notifWaliKelas() {
   return { message: `Notif wali kelas selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
 }
 export async function POST(request: Request) {
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'Konfigurasi server tidak tersedia' }, { status: 500 })
+  }
+
+  const authorization = request.headers.get('authorization')
+  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
+  if (!bearerMatch || !secretSama(bearerMatch[1], cronSecret)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { jenis } = await request.json()
   if (jenis === 'notif-wali') return NextResponse.json(await notifWali())
   if (jenis === 'notif-wali-push') return NextResponse.json(await notifWaliPush())
