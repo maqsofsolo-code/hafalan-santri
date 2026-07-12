@@ -35,6 +35,14 @@ type StatsRanking = {
   najihBaru: number
   rosibBaru: number
   totalJuzBaru: number
+  totalPoin: number
+  totalPenambahanBaru: number
+  kombinasiKonsistensi: Map<string, {
+    jenis: 'lama' | 'baru'
+    adaLancar: boolean
+    adaRosib: boolean
+    penambahanBaruMaks: number
+  }>
 }
 
 type BarisRanking = {
@@ -43,10 +51,15 @@ type BarisRanking = {
   nilai: string
   detail?: string
   rincianKonsistensi?: {
+    mode: 'poin' | 'ulya'
     najihLama: number
     rosibLama: number
     najihBaru: number
     rosibBaru: number
+    totalPoin: number
+    poinMaksimal: number
+    persentase: number
+    totalPenambahanBaru: number
   }
 }
 
@@ -92,7 +105,15 @@ function statsKosong(): StatsRanking {
     najihBaru: 0,
     rosibBaru: 0,
     totalJuzBaru: 0,
+    totalPoin: 0,
+    totalPenambahanBaru: 0,
+    kombinasiKonsistensi: new Map(),
   }
+}
+
+function normalisasiPenambahan(value: unknown) {
+  const angka = Number(value)
+  return Number.isFinite(angka) ? angka : 0
 }
 
 export async function GET(req: NextRequest) {
@@ -178,21 +199,59 @@ export async function GET(req: NextRequest) {
       if (tipe === 'konsistensi') {
         if (!hariAktifSet.has(setoran.tanggal)) return
 
-        if (setoran.jenis === 'lama') {
-          stats.hariSetorLama.add(setoran.tanggal)
-          if (setoran.status === 'lancar') stats.najihLama++
-          if (setoran.status === 'rosib') stats.rosibLama++
-        } else if (setoran.jenis === 'baru') {
-          stats.hariSetorBaru.add(setoran.tanggal)
-          if (setoran.status === 'lancar') stats.najihBaru++
-          if (setoran.status === 'rosib') stats.rosibBaru++
+        if (setoran.jenis !== 'lama' && setoran.jenis !== 'baru') return
+        if (jenjang === 'ulya' && setoran.jenis === 'baru') return
+
+        const jenis = setoran.jenis
+        const kunciKombinasi = `${setoran.tanggal}:${jenis}`
+        const kombinasi = stats.kombinasiKonsistensi.get(kunciKombinasi) || {
+          jenis,
+          adaLancar: false,
+          adaRosib: false,
+          penambahanBaruMaks: 0,
         }
+
+        if (jenis === 'lama') stats.hariSetorLama.add(setoran.tanggal)
+        if (jenis === 'baru') stats.hariSetorBaru.add(setoran.tanggal)
+        if (setoran.status === 'lancar') kombinasi.adaLancar = true
+        if (setoran.status === 'rosib') kombinasi.adaRosib = true
+
+        if (jenis === 'baru' && setoran.status === 'lancar') {
+          kombinasi.penambahanBaruMaks = Math.max(
+            kombinasi.penambahanBaruMaks,
+            normalisasiPenambahan(setoran.penambahan_juz)
+          )
+        }
+
+        stats.kombinasiKonsistensi.set(kunciKombinasi, kombinasi)
       } else if (setoran.jenis === 'baru') {
         stats.totalJuzBaru += setoran.penambahan_juz || 0
         if (hariAktifSet.has(setoran.tanggal)) stats.hariSetorBaru.add(setoran.tanggal)
         if (setoran.status === 'lancar') stats.najihBaru++
       }
     })
+
+    if (tipe === 'konsistensi') {
+      const memakaiSistemPoin = jenjang !== 'ulya'
+      Object.values(statsPerSantri).forEach(stats => {
+        stats.kombinasiKonsistensi.forEach(kombinasi => {
+          if (kombinasi.jenis === 'lama') {
+            if (kombinasi.adaLancar) {
+              stats.najihLama++
+              if (memakaiSistemPoin) stats.totalPoin++
+            } else if (kombinasi.adaRosib) {
+              stats.rosibLama++
+            }
+          } else if (kombinasi.adaLancar) {
+            stats.najihBaru++
+            stats.totalPoin++
+            stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
+          } else if (kombinasi.adaRosib) {
+            stats.rosibBaru++
+          }
+        })
+      })
+    }
   }
 
   // Kelompokkan per kelas dan ambil top N
@@ -215,15 +274,18 @@ export async function GET(req: NextRequest) {
     const statsB = getStats(b.id)
 
     if (tipe === 'konsistensi') {
-      if (statsB.hariSetorLama.size !== statsA.hariSetorLama.size) {
-        return statsB.hariSetorLama.size - statsA.hariSetorLama.size
+      if (jenjang === 'ulya') {
+        if (statsB.hariSetorLama.size !== statsA.hariSetorLama.size) {
+          return statsB.hariSetorLama.size - statsA.hariSetorLama.size
+        }
+        if (statsB.najihLama !== statsA.najihLama) return statsB.najihLama - statsA.najihLama
+      } else {
+        if (statsB.totalPoin !== statsA.totalPoin) return statsB.totalPoin - statsA.totalPoin
+        if (statsB.totalPenambahanBaru !== statsA.totalPenambahanBaru) {
+          return statsB.totalPenambahanBaru - statsA.totalPenambahanBaru
+        }
       }
-      if (statsB.najihLama !== statsA.najihLama) return statsB.najihLama - statsA.najihLama
-      if (statsB.hariSetorBaru.size !== statsA.hariSetorBaru.size) {
-        return statsB.hariSetorBaru.size - statsA.hariSetorBaru.size
-      }
-      if (statsB.najihBaru !== statsA.najihBaru) return statsB.najihBaru - statsA.najihBaru
-      return a.nama.localeCompare(b.nama, 'id')
+      return a.nama.localeCompare(b.nama, 'id') || a.id.localeCompare(b.id)
     }
 
     if (statsB.totalJuzBaru !== statsA.totalJuzBaru) {
@@ -248,19 +310,29 @@ export async function GET(req: NextRequest) {
     const stats = getStats(santri.id)
 
     if (tipe === 'konsistensi') {
-      const persentase = totalHariAktif > 0
-        ? Math.round((stats.hariSetorLama.size / totalHariAktif) * 100)
+      const isUlya = jenjang === 'ulya'
+      const poinMaksimal = isUlya ? totalHariAktif : totalHariAktif * 2
+      const nilaiKonsistensi = isUlya ? stats.hariSetorLama.size : stats.totalPoin
+      const persentase = poinMaksimal > 0
+        ? Math.round((nilaiKonsistensi / poinMaksimal) * 100)
         : 0
       return {
         peringkat: index + 1,
         nama: santri.nama,
-        nilai: `${persentase}%`,
-        detail: `${stats.hariSetorLama.size}/${totalHariAktif} hari aktif`,
+        nilai: isUlya ? `${persentase}%` : `${stats.totalPoin} poin`,
+        detail: isUlya
+          ? `${stats.hariSetorLama.size}/${totalHariAktif} hari aktif`
+          : `${stats.totalPoin} dari ${poinMaksimal} poin maksimal`,
         rincianKonsistensi: {
+          mode: isUlya ? 'ulya' : 'poin',
           najihLama: stats.najihLama,
           rosibLama: stats.rosibLama,
           najihBaru: stats.najihBaru,
           rosibBaru: stats.rosibBaru,
+          totalPoin: stats.totalPoin,
+          poinMaksimal,
+          persentase,
+          totalPenambahanBaru: stats.totalPenambahanBaru,
         },
       }
     }
@@ -326,19 +398,21 @@ export async function GET(req: NextRequest) {
               <div>
                 <div style="font-size:9pt;font-weight:600;color:#1e293b;line-height:1.3;">${santri.nama}</div>
                 ${tipe === 'konsistensi' && santri.rincianKonsistensi ? `
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:3px;">
+                  <div style="font-size:8pt;font-weight:700;color:#2563a8;margin-top:1px;">${santri.nilai}</div>
+                  <div style="display:grid;grid-template-columns:${santri.rincianKonsistensi.mode === 'ulya' ? '1fr' : '1fr 1fr'};gap:3px;margin-top:2px;">
                     <div style="background:#f8fafc;border-radius:4px;padding:3px;line-height:1.25;">
                       <div style="font-size:6.5pt;font-weight:700;color:#475569;white-space:nowrap;">Setoran Lama</div>
                       <div style="font-size:6.5pt;color:#15803d;white-space:nowrap;">Najih: ${santri.rincianKonsistensi.najihLama} kali</div>
                       <div style="font-size:6.5pt;color:#b91c1c;white-space:nowrap;">Rosib: ${santri.rincianKonsistensi.rosibLama} kali</div>
                     </div>
-                    <div style="background:#f8fafc;border-radius:4px;padding:3px;line-height:1.25;">
+                    ${santri.rincianKonsistensi.mode === 'poin' ? `<div style="background:#f8fafc;border-radius:4px;padding:3px;line-height:1.25;">
                       <div style="font-size:6.5pt;font-weight:700;color:#475569;white-space:nowrap;">Hafalan Baru</div>
                       <div style="font-size:6.5pt;color:#15803d;white-space:nowrap;">Najih: ${santri.rincianKonsistensi.najihBaru} kali</div>
                       <div style="font-size:6.5pt;color:#b91c1c;white-space:nowrap;">Rosib: ${santri.rincianKonsistensi.rosibBaru} kali</div>
-                    </div>
+                    </div>` : ''}
                   </div>
-                  <div style="font-size:6.5pt;color:#94a3b8;margin-top:2px;">${santri.detail || ''} &nbsp;&bull;&nbsp; ${santri.nilai}</div>
+                  <div style="font-size:6.5pt;color:#94a3b8;margin-top:2px;">${santri.detail || ''}${santri.rincianKonsistensi.mode === 'poin' ? ` &nbsp;&bull;&nbsp; ${santri.rincianKonsistensi.persentase}%` : ''}</div>
+                  ${santri.rincianKonsistensi.mode === 'poin' ? `<div style="font-size:6.5pt;color:#64748b;margin-top:1px;">Penambahan baru: ${santri.rincianKonsistensi.totalPenambahanBaru.toFixed(3)} Juz</div>` : ''}
                 ` : `
                   <div style="font-size:8pt;color:#64748b;">${santri.nilai}</div>
                   ${santri.detail ? `<div style="font-size:7.5pt;color:#94a3b8;">${santri.detail}</div>` : ''}
