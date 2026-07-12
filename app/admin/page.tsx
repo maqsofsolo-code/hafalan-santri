@@ -269,7 +269,8 @@ const konsistensiList = (santri || []).map((s: any) => {
     najihLama: 0, najihBaru: 0
   }
   const isUlya = s.jenjang === 'ulya'
-  const hariSetor = isUlya ? st.hariSetorBaru.size : st.hariSetorLama.size
+  // Ulya hanya setor murojaah (jenis='lama'), jadi konsistensi diukur dari hariSetorLama
+  const hariSetor = st.hariSetorLama.size
   return {
     ...s,
     hariSetor,
@@ -283,12 +284,12 @@ const konsistensiList = (santri || []).map((s: any) => {
   const aUlya = a.jenjang === 'ulya'
   const bUlya = b.jenjang === 'ulya'
   // 1. Hari setor utama (lama untuk non-Ulya, baru untuk Ulya)
-  const aHari = aUlya ? a.hariSetorBaru : a.hariSetor
-  const bHari = bUlya ? b.hariSetorBaru : b.hariSetor
+  const aHari = a.hariSetor
+  const bHari = b.hariSetor
   if (bHari !== aHari) return bHari - aHari
   // 2. Najih utama
-  const aNajih = aUlya ? a.najihBaru : a.najihLama
-  const bNajih = bUlya ? b.najihBaru : b.najihLama
+  const aNajih = a.najihLama
+  const bNajih = b.najihLama
   if (bNajih !== aNajih) return bNajih - aNajih
   // 3. Hari setor hafalan baru
   if (b.hariSetorBaru !== a.hariSetorBaru) return b.hariSetorBaru - a.hariSetorBaru
@@ -1975,15 +1976,33 @@ const AlumniList = () => {
                 {/* Tombol Download PDF Peringkat */}
                 {rankingLevel === 'kelas' && filterJenjang !== 'semua' && filterJenisKelas !== 'semua' && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    <a
-                      href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow"
-                      style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}
-                    >
-                      📄 Download PDF Peringkat 1–3 Per Kelas
-                    </a>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">📄 Download PDF Peringkat 1–3 Per Kelas:</p>
+                    <div className="flex flex-wrap gap-2">
+                      
+                        href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=total`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
+                        style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}
+                      >
+                        🏆 Total Hafalan
+                      </a>
+                      
+                        href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=konsistensi`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
+                        style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}
+                      >
+                        📅 Konsistensi Setor
+                      </a>
+                      
+                        href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=semangat`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
+                        style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}
+                      >
+                        🔥 Semangat Hafalan
+                      </a>
+                    </div>
                     <p className="text-xs text-gray-400 mt-1.5">
                       Pilih Jenjang + Jenis Kelas terlebih dahulu. Setelah terbuka, klik &quot;Cetak / Simpan PDF&quot;.
                     </p>
