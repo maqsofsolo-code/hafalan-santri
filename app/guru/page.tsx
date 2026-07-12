@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
@@ -23,6 +23,7 @@ export default function GuruDashboard() {
   const [surahList, setSurahList] = useState<any[]>([])
   const [guruProfile, setGuruProfile] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const submitSetoranLockRef = useRef(false)
   const [notifAktif, setNotifAktif] = useState(false)
   const [notifLoading, setNotifLoading] = useState(false)
   const [notifPesan, setNotifPesan] = useState('')
@@ -482,8 +483,12 @@ const tampilPopupSukses = (msg: string) => {
   }
 
   const handleInputSetoran = async () => {
+    if (submitSetoranLockRef.current) return
     if (!selectedSantri) { setErrorMsg('Pilih santri dulu!'); return }
-    if (statusKehadiran !== 'hadir') {
+    submitSetoranLockRef.current = true
+
+    try {
+      if (statusKehadiran !== 'hadir') {
       setLoading(true); setErrorMsg('')
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
@@ -497,19 +502,71 @@ const tampilPopupSukses = (msg: string) => {
       tampilPopupSukses(`✓ Kehadiran ${selectedSantri.nama} berhasil disimpan!`)
       resetForm(); setLoading(false)
       return
-    }
-    if (jenis === 'baru' && (!surahBaru || !ayatMulaiBaru || !ayatSelesaiBaru)) { setErrorMsg('Lengkapi data hafalan baru!'); return }
-    if (jenis === 'lama' && (!surahMulai || !surahSelesai)) { setErrorMsg('Lengkapi data murojaah!'); return }
+      }
 
     setLoading(true); setErrorMsg('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    const tanggalSetoran = getTanggalWIB()
+
+    const { data: setoranSudahAda, error: cekDuplikasiError } = await supabase
+      .from('setoran')
+      .select('id')
+      .eq('santri_id', selectedSantri.id)
+      .eq('tanggal', tanggalSetoran)
+      .eq('jenis', jenis)
+      .eq('status_kehadiran', 'hadir')
+      .limit(1)
+
+    if (cekDuplikasiError) {
+      setErrorMsg('Gagal memeriksa setoran hari ini. Silakan coba lagi.')
+      return
+    }
+
+    if (setoranSudahAda && setoranSudahAda.length > 0) {
+      setErrorMsg(jenis === 'lama'
+        ? 'Setoran lama santri ini sudah diinput hari ini. Jika jenis setoran sebelumnya keliru, silakan edit data yang sudah ada.'
+        : 'Hafalan baru santri ini sudah diinput hari ini. Jika jenis setoran sebelumnya keliru, silakan edit data yang sudah ada.')
+      return
+    }
+
+    if (jenis === 'baru' && selectedSantri.jenjang === 'ula') {
+      const { data: setoranLama, error: cekSetoranLamaError } = await supabase
+        .from('setoran')
+        .select('id, status')
+        .eq('santri_id', selectedSantri.id)
+        .eq('tanggal', tanggalSetoran)
+        .eq('jenis', 'lama')
+        .eq('status_kehadiran', 'hadir')
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (cekSetoranLamaError) {
+        setErrorMsg('Gagal memeriksa setoran lama hari ini. Silakan coba lagi.')
+        return
+      }
+
+      const setoranLamaTerbaru = setoranLama?.[0] || null
+      setSetoranLamaHariIni(setoranLamaTerbaru)
+      if (!setoranLamaTerbaru) {
+        setErrorMsg('Santri Ula wajib setor Murojaah terlebih dahulu!')
+        return
+      }
+      if (setoranLamaTerbaru.status !== 'lancar') {
+        setErrorMsg('Murojaah rosib — Hafalan Baru tidak boleh disetorkan hari ini!')
+        return
+      }
+    }
+
+    if (jenis === 'baru' && (!surahBaru || !ayatMulaiBaru || !ayatSelesaiBaru)) { setErrorMsg('Lengkapi data hafalan baru!'); return }
+    if (jenis === 'lama' && (!surahMulai || !surahSelesai)) { setErrorMsg('Lengkapi data murojaah!'); return }
+
     let penambahanJuz = 0
     let insertData: any = {
       santri_id: selectedSantri.id, guru_id: user.id,
       jenis, status, catatan, status_kehadiran: 'hadir',
       perlu_ulang: status === 'rosib',
-      tanggal: getTanggalWIB(),
+      tanggal: tanggalSetoran,
       guru_pengganti: guruPengganti
     }
     if (jenis === 'baru') {
@@ -615,6 +672,10 @@ const tampilPopupSukses = (msg: string) => {
     tampilPopupSukses('✓ Setoran berhasil disimpan!')
     resetForm(); setLoading(false)
     fetchGuruData()
+    } finally {
+      submitSetoranLockRef.current = false
+      setLoading(false)
+    }
   }
 
   const handleInputNilaiUjian = async () => {
