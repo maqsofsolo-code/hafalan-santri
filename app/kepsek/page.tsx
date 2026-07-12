@@ -3,6 +3,71 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 
+function formatTanggalUTC(date: Date) {
+  const tahun = date.getUTCFullYear()
+  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const tanggal = String(date.getUTCDate()).padStart(2, '0')
+  return `${tahun}-${bulan}-${tanggal}`
+}
+
+function getPeriodePekanTertutup(saatIni = new Date()) {
+  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(saatIni)
+  const nilaiBagian = Object.fromEntries(
+    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
+  )
+  const tahun = Number(nilaiBagian.year)
+  const bulan = Number(nilaiBagian.month)
+  const tanggal = Number(nilaiBagian.day)
+  const jam = Number(nilaiBagian.hour)
+  const tanggalWIB = new Date(Date.UTC(tahun, bulan - 1, tanggal))
+  const nomorHari = tanggalWIB.getUTCDay()
+  const jarakDariSenin = (nomorHari + 6) % 7
+  const seninPekanBerjalan = new Date(tanggalWIB)
+  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
+
+  const sabtuSudahDitutup = nomorHari === 6 && jam >= 17
+  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
+  const tanggalMulaiDate = new Date(seninPekanBerjalan)
+  if (!gunakanPekanBerjalan) {
+    tanggalMulaiDate.setUTCDate(tanggalMulaiDate.getUTCDate() - 7)
+  }
+  const tanggalSelesaiDate = new Date(tanggalMulaiDate)
+  tanggalSelesaiDate.setUTCDate(tanggalSelesaiDate.getUTCDate() + 5)
+
+  const namaBulan = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ]
+  const mulaiTanggal = tanggalMulaiDate.getUTCDate()
+  const selesaiTanggal = tanggalSelesaiDate.getUTCDate()
+  const mulaiBulan = tanggalMulaiDate.getUTCMonth()
+  const selesaiBulan = tanggalSelesaiDate.getUTCMonth()
+  const mulaiTahun = tanggalMulaiDate.getUTCFullYear()
+  const selesaiTahun = tanggalSelesaiDate.getUTCFullYear()
+  let labelPeriode: string
+
+  if (mulaiBulan === selesaiBulan && mulaiTahun === selesaiTahun) {
+    labelPeriode = `${mulaiTanggal}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
+  } else if (mulaiTahun === selesaiTahun) {
+    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
+  } else {
+    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]} ${mulaiTahun}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
+  }
+
+  return {
+    tanggalMulai: formatTanggalUTC(tanggalMulaiDate),
+    tanggalSelesai: formatTanggalUTC(tanggalSelesaiDate),
+    labelPeriode,
+  }
+}
+
 export default function KepsekDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [santriList, setSantriList] = useState<any[]>([])
@@ -11,6 +76,7 @@ export default function KepsekDashboard() {
   const [rankingHafalan, setRankingHafalan] = useState<any[]>([])
   const [rankingKonsistensi, setRankingKonsistensi] = useState<any[]>([])
   const [rankingSemangat, setRankingSemangat] = useState<any[]>([])
+  const [rankingPeriodeKonsistensi, setRankingPeriodeKonsistensi] = useState('')
   const [absensiGuru, setAbsensiGuru] = useState<any[]>([])
   const [setoranMurojaahHariIni, setSetoranMurojaahHariIni] = useState<any[]>([])
   const [kalenderAktif, setKalenderAktif] = useState<any>(null)
@@ -112,6 +178,15 @@ const liburAkademik = semuaLibur || []
       .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
       .gte('tanggal', tujuhHariLaluStr).eq('status_kehadiran', 'hadir')
 
+    const periodeKonsistensi = getPeriodePekanTertutup()
+    setRankingPeriodeKonsistensi(periodeKonsistensi.labelPeriode)
+    const { data: setoranPekanKonsistensi } = await supabase
+      .from('setoran')
+      .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
+      .gte('tanggal', periodeKonsistensi.tanggalMulai)
+      .lte('tanggal', periodeKonsistensi.tanggalSelesai)
+      .eq('status_kehadiran', 'hadir')
+
     // Hitung hari aktif dalam 7 hari terakhir (skip Jumat, Ahad, libur akademik)
 const hitungHariAktif = (mulai: string, selesai: string) => {
   const aktif: string[] = []
@@ -132,57 +207,134 @@ const hitungHariAktif = (mulai: string, selesai: string) => {
 }
 
 const hariAktif7Hari = hitungHariAktif(tujuhHariLaluStr, today)
-const totalHariAktif = hariAktif7Hari.length || 1
+
+const hitungHariAktifPekan = (mulai: string, selesai: string) => {
+  const aktif: string[] = []
+  const cur = new Date(`${mulai}T00:00:00Z`)
+  const end = new Date(`${selesai}T00:00:00Z`)
+  while (cur <= end) {
+    const hari = cur.getUTCDay()
+    const tgl = cur.toISOString().split('T')[0]
+    const isLibur = liburAkademik.some(l =>
+      tgl >= l.tanggal_mulai && tgl <= l.tanggal_selesai
+    )
+    if (hari !== 0 && hari !== 5 && !isLibur) aktif.push(tgl)
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return aktif
+}
+
+const hariAktifKonsistensi = hitungHariAktifPekan(
+  periodeKonsistensi.tanggalMulai,
+  periodeKonsistensi.tanggalSelesai
+)
+const hariAktifKonsistensiSet = new Set(hariAktifKonsistensi)
+const totalHariAktif = hariAktifKonsistensi.length
+const jenjangSantri = new Map((santri || []).map(s => [s.id, s.jenjang]))
 
 // ===== RANKING KONSISTENSI =====
 const statsKonsistensi: Record<string, {
-  hariSetorLama: Set<string>, hariSetorBaru: Set<string>,
-  najihLama: number, najihBaru: number
+  totalPoin: number,
+  totalPenambahanBaru: number,
+  najihLama: number,
+  rosibLama: number,
+  najihBaru: number,
+  rosibBaru: number,
+  kombinasi: Map<string, {
+    jenis: 'lama' | 'baru',
+    adaLancar: boolean,
+    penambahanBaruMaks: number
+  }>
 }> = {}
 
-;(setoran7Hari || []).forEach((s: any) => {
+;(setoranPekanKonsistensi || []).forEach((s: any) => {
   if (!statsKonsistensi[s.santri_id]) statsKonsistensi[s.santri_id] = {
-    hariSetorLama: new Set(), hariSetorBaru: new Set(),
-    najihLama: 0, najihBaru: 0
+    totalPoin: 0,
+    totalPenambahanBaru: 0,
+    najihLama: 0,
+    rosibLama: 0,
+    najihBaru: 0,
+    rosibBaru: 0,
+    kombinasi: new Map()
   }
-  if (!hariAktif7Hari.includes(s.tanggal)) return
-  if (s.jenis === 'lama') {
-    statsKonsistensi[s.santri_id].hariSetorLama.add(s.tanggal)
-    if (s.status === 'lancar') statsKonsistensi[s.santri_id].najihLama++
-  } else if (s.jenis === 'baru') {
-    statsKonsistensi[s.santri_id].hariSetorBaru.add(s.tanggal)
-    if (s.status === 'lancar') statsKonsistensi[s.santri_id].najihBaru++
+  if (!hariAktifKonsistensiSet.has(s.tanggal)) return
+  if (s.jenis !== 'lama' && s.jenis !== 'baru') return
+  if (jenjangSantri.get(s.santri_id) === 'ulya' && s.jenis === 'baru') return
+
+  const stats = statsKonsistensi[s.santri_id]
+  const jenis = s.jenis as 'lama' | 'baru'
+  const kunciKombinasi = `${s.tanggal}:${jenis}`
+  const kombinasi = stats.kombinasi.get(kunciKombinasi) || {
+    jenis,
+    adaLancar: false,
+    penambahanBaruMaks: 0
   }
+
+  if (s.status === 'lancar') {
+    kombinasi.adaLancar = true
+    if (jenis === 'lama') stats.najihLama++
+    if (jenis === 'baru') stats.najihBaru++
+  }
+  if (s.status === 'rosib') {
+    if (jenis === 'lama') stats.rosibLama++
+    if (jenis === 'baru') stats.rosibBaru++
+  }
+  if (jenis === 'baru' && s.status === 'lancar') {
+    const penambahan = Number(s.penambahan_juz)
+    kombinasi.penambahanBaruMaks = Math.max(
+      kombinasi.penambahanBaruMaks,
+      Number.isFinite(penambahan) ? penambahan : 0
+    )
+  }
+  stats.kombinasi.set(kunciKombinasi, kombinasi)
+})
+
+Object.values(statsKonsistensi).forEach(stats => {
+  stats.kombinasi.forEach(kombinasi => {
+    if (!kombinasi.adaLancar) return
+    stats.totalPoin++
+    if (kombinasi.jenis === 'baru') {
+      stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
+    }
+  })
 })
 
 const konsistensiList = (santri || []).map((s: any) => {
   const st = statsKonsistensi[s.id] || {
-    hariSetorLama: new Set(), hariSetorBaru: new Set(),
-    najihLama: 0, najihBaru: 0
+    totalPoin: 0,
+    totalPenambahanBaru: 0,
+    najihLama: 0,
+    rosibLama: 0,
+    najihBaru: 0,
+    rosibBaru: 0,
+    kombinasi: new Map()
   }
   const isUlya = s.jenjang === 'ulya'
-  const hariSetor = isUlya ? st.hariSetorBaru.size : st.hariSetorLama.size
+  const poinMaksimal = isUlya ? totalHariAktif : totalHariAktif * 2
+  const persentaseKonsistensi = poinMaksimal > 0
+    ? Math.round((st.totalPoin / poinMaksimal) * 100)
+    : 0
   return {
     ...s,
-    hariSetor,
-    hariSetorBaru: st.hariSetorBaru.size,
+    totalPoin: st.totalPoin,
+    poinMaksimal,
+    totalPenambahanBaru: st.totalPenambahanBaru,
     najihLama: st.najihLama,
+    rosibLama: st.rosibLama,
     najihBaru: st.najihBaru,
+    rosibBaru: st.rosibBaru,
     totalHariAktif,
-    persentaseKonsistensi: Math.round((hariSetor / totalHariAktif) * 100)
+    periodeKonsistensi: periodeKonsistensi.labelPeriode,
+    persentaseKonsistensi
   }
 }).sort((a: any, b: any) => {
   const aUlya = a.jenjang === 'ulya'
   const bUlya = b.jenjang === 'ulya'
-  const aHari = aUlya ? a.hariSetorBaru : a.hariSetor
-  const bHari = bUlya ? b.hariSetorBaru : b.hariSetor
-  if (bHari !== aHari) return bHari - aHari
-  const aNajih = aUlya ? a.najihBaru : a.najihLama
-  const bNajih = bUlya ? b.najihBaru : b.najihLama
-  if (bNajih !== aNajih) return bNajih - aNajih
-  if (b.hariSetorBaru !== a.hariSetorBaru) return b.hariSetorBaru - a.hariSetorBaru
-  if (b.najihBaru !== a.najihBaru) return b.najihBaru - a.najihBaru
-  return 0
+  if (b.totalPoin !== a.totalPoin) return b.totalPoin - a.totalPoin
+  if (!aUlya && !bUlya && b.totalPenambahanBaru !== a.totalPenambahanBaru) {
+    return b.totalPenambahanBaru - a.totalPenambahanBaru
+  }
+  return (a.nama || '').localeCompare(b.nama || '', 'id') || String(a.id).localeCompare(String(b.id))
 })
 setRankingKonsistensi(konsistensiList)
 
@@ -1040,7 +1192,7 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
               {/* Tab Jenis Ranking */}
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {[
-                  { id: 'konsistensi', label: 'Konsistensi Setor', sub: '7 hari terakhir', color: 'border-blue-500 bg-blue-50 text-blue-700' },
+                  { id: 'konsistensi', label: 'Konsistensi Setor', sub: 'Pekan tertutup', color: 'border-blue-500 bg-blue-50 text-blue-700' },
                   { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir', color: 'border-purple-500 bg-purple-50 text-purple-700' },
                   { id: 'total', label: 'Total Hafalan', sub: 'Keseluruhan', color: 'border-green-500 bg-green-50 text-green-700' },
                 ].map(tab => (
@@ -1072,7 +1224,7 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
                       <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                         <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
                           <h3 className="text-white font-bold">Peringkat Konsistensi Setoran</h3>
-                          <p className="text-blue-200 text-xs mt-0.5">% hari setor dalam 7 hari terakhir</p>
+                          <p className="text-blue-200 text-xs mt-0.5">Periode: {rankingPeriodeKonsistensi || '-'}</p>
                         </div>
                         <div className="p-4 space-y-2">
                           {listKonsistensi.map((santri, i) => (
@@ -1084,13 +1236,17 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
                                   <span className="text-xs text-gray-400">{kelasInfo(santri)}</span>
                                   <span className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</span>
                                 </div>
+                                <div className="text-xs text-gray-400 mt-0.5">
+                                  Lama N/R: {santri.najihLama}/{santri.rosibLama}
+                                  {santri.jenjang !== 'ulya' && ` • Baru N/R: ${santri.najihBaru}/${santri.rosibBaru}`}
+                                </div>
                                 <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5">
                                   <div className="h-1.5 rounded-full" style={{ width: `${santri.persentaseKonsistensi}%`, background: santri.persentaseKonsistensi >= 80 ? 'linear-gradient(135deg, #166534, #16a34a)' : santri.persentaseKonsistensi >= 50 ? 'linear-gradient(135deg, #d97706, #f59e0b)' : 'linear-gradient(135deg, #dc2626, #ef4444)' }} />
                                 </div>
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <div className={`font-bold text-sm ${santri.persentaseKonsistensi >= 80 ? 'text-green-600' : santri.persentaseKonsistensi >= 50 ? 'text-yellow-600' : 'text-red-500'}`}>{santri.persentaseKonsistensi}%</div>
-                                <div className="text-xs text-gray-400">{santri.hariSetor}/{santri.totalHariAktif} hari</div>
+                                <div className="text-xs text-gray-400">{santri.totalPoin}/{santri.poinMaksimal} poin</div>
                               </div>
                             </div>
                           ))}
