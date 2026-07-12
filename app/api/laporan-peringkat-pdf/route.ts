@@ -31,7 +31,9 @@ type StatsRanking = {
   hariSetorLama: Set<string>
   hariSetorBaru: Set<string>
   najihLama: number
+  rosibLama: number
   najihBaru: number
+  rosibBaru: number
   totalJuzBaru: number
 }
 
@@ -40,6 +42,12 @@ type BarisRanking = {
   nama: string
   nilai: string
   detail?: string
+  rincianKonsistensi?: {
+    najihLama: number
+    rosibLama: number
+    najihBaru: number
+    rosibBaru: number
+  }
 }
 
 function getWIBDate() {
@@ -80,7 +88,9 @@ function statsKosong(): StatsRanking {
     hariSetorLama: new Set(),
     hariSetorBaru: new Set(),
     najihLama: 0,
+    rosibLama: 0,
     najihBaru: 0,
+    rosibBaru: 0,
     totalJuzBaru: 0,
   }
 }
@@ -171,9 +181,11 @@ export async function GET(req: NextRequest) {
         if (setoran.jenis === 'lama') {
           stats.hariSetorLama.add(setoran.tanggal)
           if (setoran.status === 'lancar') stats.najihLama++
+          if (setoran.status === 'rosib') stats.rosibLama++
         } else if (setoran.jenis === 'baru') {
           stats.hariSetorBaru.add(setoran.tanggal)
           if (setoran.status === 'lancar') stats.najihBaru++
+          if (setoran.status === 'rosib') stats.rosibBaru++
         }
       } else if (setoran.jenis === 'baru') {
         stats.totalJuzBaru += setoran.penambahan_juz || 0
@@ -243,7 +255,13 @@ export async function GET(req: NextRequest) {
         peringkat: index + 1,
         nama: santri.nama,
         nilai: `${persentase}%`,
-        detail: `${stats.hariSetorLama.size}/${totalHariAktif} hari setor`,
+        detail: `${stats.hariSetorLama.size}/${totalHariAktif} hari aktif`,
+        rincianKonsistensi: {
+          najihLama: stats.najihLama,
+          rosibLama: stats.rosibLama,
+          najihBaru: stats.najihBaru,
+          rosibBaru: stats.rosibBaru,
+        },
       }
     }
 
@@ -307,8 +325,24 @@ export async function GET(req: NextRequest) {
               <span style="font-size:14px;flex-shrink:0;">${medal}</span>
               <div>
                 <div style="font-size:9pt;font-weight:600;color:#1e293b;line-height:1.3;">${santri.nama}</div>
-                <div style="font-size:8pt;color:#64748b;">${santri.nilai}</div>
-                ${santri.detail ? `<div style="font-size:7.5pt;color:#94a3b8;">${santri.detail}</div>` : ''}
+                ${tipe === 'konsistensi' && santri.rincianKonsistensi ? `
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:3px;">
+                    <div style="background:#f8fafc;border-radius:4px;padding:3px;line-height:1.25;">
+                      <div style="font-size:6.5pt;font-weight:700;color:#475569;white-space:nowrap;">Setoran Lama</div>
+                      <div style="font-size:6.5pt;color:#15803d;white-space:nowrap;">Najih: ${santri.rincianKonsistensi.najihLama} kali</div>
+                      <div style="font-size:6.5pt;color:#b91c1c;white-space:nowrap;">Rosib: ${santri.rincianKonsistensi.rosibLama} kali</div>
+                    </div>
+                    <div style="background:#f8fafc;border-radius:4px;padding:3px;line-height:1.25;">
+                      <div style="font-size:6.5pt;font-weight:700;color:#475569;white-space:nowrap;">Hafalan Baru</div>
+                      <div style="font-size:6.5pt;color:#15803d;white-space:nowrap;">Najih: ${santri.rincianKonsistensi.najihBaru} kali</div>
+                      <div style="font-size:6.5pt;color:#b91c1c;white-space:nowrap;">Rosib: ${santri.rincianKonsistensi.rosibBaru} kali</div>
+                    </div>
+                  </div>
+                  <div style="font-size:6.5pt;color:#94a3b8;margin-top:2px;">${santri.detail || ''} &nbsp;&bull;&nbsp; ${santri.nilai}</div>
+                ` : `
+                  <div style="font-size:8pt;color:#64748b;">${santri.nilai}</div>
+                  ${santri.detail ? `<div style="font-size:7.5pt;color:#94a3b8;">${santri.detail}</div>` : ''}
+                `}
               </div>
             </div>
           </td>
