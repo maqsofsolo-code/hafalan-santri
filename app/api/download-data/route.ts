@@ -2,13 +2,52 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function createAuthenticatedClient(accessToken: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    }
+  )
+}
 
-export async function GET() {
+function createAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+}
+
+export async function GET(request: Request) {
+  const authorization = request.headers.get('authorization')
+  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
+  if (!bearerMatch) {
+    return NextResponse.json({ error: 'Session tidak valid atau sudah berakhir' }, { status: 401 })
+  }
+
+  const accessToken = bearerMatch[1]
+  const supabaseAuthenticated = createAuthenticatedClient(accessToken)
+  const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
+  if (userError || !userData.user) {
+    return NextResponse.json({ error: 'Session tidak valid atau sudah berakhir' }, { status: 401 })
+  }
+
+  const { data: profile, error: profileError } = await supabaseAuthenticated
+    .from('profiles')
+    .select('role')
+    .eq('id', userData.user.id)
+    .maybeSingle()
+
+  if (profileError || profile?.role !== 'admin') {
+    return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 })
+  }
+
   try {
+    const supabase = createAdminClient()
+
     // Ambil semua data santri lengkap
     const { data: santri } = await supabase
       .from('santri')
@@ -34,7 +73,7 @@ export async function GET() {
       return j || '-'
     }
 
-    const kelasLabel = (s: any) => {
+    const kelasLabel = (s: { kelas_num?: number | null; jenjang?: string | null; kelas?: string | null }) => {
       if (!s.kelas_num || !s.jenjang) return s.kelas || '-'
       const jenLabel = jenjangLabel(s.jenjang).toUpperCase()
       return `${s.kelas_num} ${jenLabel === 'ULAA' ? 'BANIN' : jenLabel === 'WUSTHA' ? 'BANIN' : 'BANIN'}`
@@ -121,7 +160,7 @@ export async function GET() {
         'Content-Disposition': `attachment; filename="Data_Santri_Daarus_Salaf_${tanggalFile}.xlsx"`,
       }
     })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Gagal membuat file export' }, { status: 500 })
   }
 }

@@ -583,8 +583,64 @@ const fetchPeriode = async () => {
   const handleDownloadTemplate = () => { window.open('/api/download-template', '_blank') }
   const handleDownloadAllData = async () => {
     setDownloadLoading(true)
-    window.open('/api/download-data', '_blank')
-    setTimeout(() => setDownloadLoading(false), 2000)
+    setErrorMsg('')
+    let objectUrl: string | null = null
+    let link: HTMLAnchorElement | null = null
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session?.access_token) {
+        setErrorMsg('Sesi login sudah berakhir. Silakan login kembali.')
+        return
+      }
+
+      const response = await fetch('/api/download-data', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setErrorMsg('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+          return
+        }
+        if (response.status === 403) {
+          setErrorMsg('Akses download seluruh data hanya tersedia untuk admin.')
+          return
+        }
+
+        let message = 'Gagal menyiapkan file export.'
+        try {
+          const errorData = await response.json()
+          if (typeof errorData?.error === 'string') message = errorData.error
+        } catch {
+          // Gunakan pesan fallback jika response server bukan JSON.
+        }
+        setErrorMsg(message)
+        return
+      }
+
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const encodedFilename = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+      const regularFilename = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1]
+      let filename = regularFilename || 'Data_Santri_Daarus_Salaf.xlsx'
+      if (encodedFilename) {
+        try { filename = decodeURIComponent(encodedFilename) } catch { filename = encodedFilename }
+      }
+
+      const blob = await response.blob()
+      objectUrl = URL.createObjectURL(blob)
+      link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+    } catch (error: unknown) {
+      setErrorMsg(error instanceof Error ? error.message : 'Gagal mengunduh seluruh data.')
+    } finally {
+      if (link?.isConnected) link.remove()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setDownloadLoading(false)
+    }
   }
   const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
   setLaporanLoading(format)
