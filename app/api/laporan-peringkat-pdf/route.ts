@@ -40,7 +40,6 @@ type StatsRanking = {
   kombinasiKonsistensi: Map<string, {
     jenis: 'lama' | 'baru'
     adaLancar: boolean
-    adaRosib: boolean
     penambahanBaruMaks: number
   }>
 }
@@ -72,6 +71,71 @@ function formatTanggal(date: Date) {
   const bulan = String(date.getMonth() + 1).padStart(2, '0')
   const tanggal = String(date.getDate()).padStart(2, '0')
   return `${tahun}-${bulan}-${tanggal}`
+}
+
+function formatTanggalUTC(date: Date) {
+  const tahun = date.getUTCFullYear()
+  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const tanggal = String(date.getUTCDate()).padStart(2, '0')
+  return `${tahun}-${bulan}-${tanggal}`
+}
+
+function getPeriodePekanTertutup(saatIni = new Date()) {
+  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(saatIni)
+  const nilaiBagian = Object.fromEntries(
+    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
+  )
+  const tahun = Number(nilaiBagian.year)
+  const bulan = Number(nilaiBagian.month)
+  const tanggal = Number(nilaiBagian.day)
+  const jam = Number(nilaiBagian.hour)
+  const tanggalWIB = new Date(Date.UTC(tahun, bulan - 1, tanggal))
+  const nomorHari = tanggalWIB.getUTCDay()
+  const jarakDariSenin = (nomorHari + 6) % 7
+  const seninPekanBerjalan = new Date(tanggalWIB)
+  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
+
+  const sabtuSudahDitutup = nomorHari === 6 && jam >= 17
+  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
+  const tanggalMulaiDate = new Date(seninPekanBerjalan)
+  if (!gunakanPekanBerjalan) {
+    tanggalMulaiDate.setUTCDate(tanggalMulaiDate.getUTCDate() - 7)
+  }
+  const tanggalSelesaiDate = new Date(tanggalMulaiDate)
+  tanggalSelesaiDate.setUTCDate(tanggalSelesaiDate.getUTCDate() + 5)
+
+  const namaBulan = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ]
+  const mulaiTanggal = tanggalMulaiDate.getUTCDate()
+  const selesaiTanggal = tanggalSelesaiDate.getUTCDate()
+  const mulaiBulan = tanggalMulaiDate.getUTCMonth()
+  const selesaiBulan = tanggalSelesaiDate.getUTCMonth()
+  const mulaiTahun = tanggalMulaiDate.getUTCFullYear()
+  const selesaiTahun = tanggalSelesaiDate.getUTCFullYear()
+  let labelPeriode: string
+
+  if (mulaiBulan === selesaiBulan && mulaiTahun === selesaiTahun) {
+    labelPeriode = `${mulaiTanggal}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
+  } else if (mulaiTahun === selesaiTahun) {
+    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
+  } else {
+    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]} ${mulaiTahun}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
+  }
+
+  return {
+    tanggalMulai: formatTanggalUTC(tanggalMulaiDate),
+    tanggalSelesai: formatTanggalUTC(tanggalSelesaiDate),
+    labelPeriode,
+  }
 }
 
 function hitungHariAktif(mulai: string, selesai: string, daftarLibur: LiburAkademik[]) {
@@ -161,13 +225,24 @@ export async function GET(req: NextRequest) {
 
   const statsPerSantri: Record<string, StatsRanking> = {}
   let totalHariAktif = 0
+  let labelPeriode = ''
   const hariIniWIB = getWIBDate()
 
   if (tipe !== 'total') {
-    const tujuhHariLaluWIB = new Date(hariIniWIB)
-    tujuhHariLaluWIB.setDate(tujuhHariLaluWIB.getDate() - 7)
-    const hariIni = formatTanggal(hariIniWIB)
-    const tujuhHariLalu = formatTanggal(tujuhHariLaluWIB)
+    let tanggalMulai: string
+    let tanggalSelesai: string
+
+    if (tipe === 'konsistensi') {
+      const periode = getPeriodePekanTertutup()
+      tanggalMulai = periode.tanggalMulai
+      tanggalSelesai = periode.tanggalSelesai
+      labelPeriode = periode.labelPeriode
+    } else {
+      const tujuhHariLaluWIB = new Date(hariIniWIB)
+      tujuhHariLaluWIB.setDate(tujuhHariLaluWIB.getDate() - 7)
+      tanggalMulai = formatTanggal(tujuhHariLaluWIB)
+      tanggalSelesai = formatTanggal(hariIniWIB)
+    }
     const santriIds = santriAll.map(santri => santri.id)
 
     const [{ data: setoranData }, { data: liburData }] = await Promise.all([
@@ -175,8 +250,8 @@ export async function GET(req: NextRequest) {
         .from('setoran')
         .select('santri_id, tanggal, jenis, penambahan_juz, status')
         .in('santri_id', santriIds)
-        .gte('tanggal', tujuhHariLalu)
-        .lte('tanggal', hariIni)
+        .gte('tanggal', tanggalMulai)
+        .lte('tanggal', tanggalSelesai)
         .eq('status_kehadiran', 'hadir'),
       supabase
         .from('kalender_akademik')
@@ -186,7 +261,7 @@ export async function GET(req: NextRequest) {
 
     const setoranList = (setoranData || []) as SetoranRanking[]
     const liburAkademik = (liburData || []) as LiburAkademik[]
-    const hariAktif = hitungHariAktif(tujuhHariLalu, hariIni, liburAkademik)
+    const hariAktif = hitungHariAktif(tanggalMulai, tanggalSelesai, liburAkademik)
     const hariAktifSet = new Set(hariAktif)
     totalHariAktif = hariAktif.length
 
@@ -207,14 +282,20 @@ export async function GET(req: NextRequest) {
         const kombinasi = stats.kombinasiKonsistensi.get(kunciKombinasi) || {
           jenis,
           adaLancar: false,
-          adaRosib: false,
           penambahanBaruMaks: 0,
         }
 
         if (jenis === 'lama') stats.hariSetorLama.add(setoran.tanggal)
         if (jenis === 'baru') stats.hariSetorBaru.add(setoran.tanggal)
-        if (setoran.status === 'lancar') kombinasi.adaLancar = true
-        if (setoran.status === 'rosib') kombinasi.adaRosib = true
+        if (setoran.status === 'lancar') {
+          kombinasi.adaLancar = true
+          if (jenis === 'lama') stats.najihLama++
+          if (jenis === 'baru') stats.najihBaru++
+        }
+        if (setoran.status === 'rosib') {
+          if (jenis === 'lama') stats.rosibLama++
+          if (jenis === 'baru') stats.rosibBaru++
+        }
 
         if (jenis === 'baru' && setoran.status === 'lancar') {
           kombinasi.penambahanBaruMaks = Math.max(
@@ -232,22 +313,13 @@ export async function GET(req: NextRequest) {
     })
 
     if (tipe === 'konsistensi') {
-      const memakaiSistemPoin = jenjang !== 'ulya'
       Object.values(statsPerSantri).forEach(stats => {
         stats.kombinasiKonsistensi.forEach(kombinasi => {
-          if (kombinasi.jenis === 'lama') {
-            if (kombinasi.adaLancar) {
-              stats.najihLama++
-              if (memakaiSistemPoin) stats.totalPoin++
-            } else if (kombinasi.adaRosib) {
-              stats.rosibLama++
-            }
-          } else if (kombinasi.adaLancar) {
-            stats.najihBaru++
+          if (kombinasi.adaLancar) {
             stats.totalPoin++
-            stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
-          } else if (kombinasi.adaRosib) {
-            stats.rosibBaru++
+            if (kombinasi.jenis === 'baru') {
+              stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
+            }
           }
         })
       })
@@ -275,10 +347,7 @@ export async function GET(req: NextRequest) {
 
     if (tipe === 'konsistensi') {
       if (jenjang === 'ulya') {
-        if (statsB.hariSetorLama.size !== statsA.hariSetorLama.size) {
-          return statsB.hariSetorLama.size - statsA.hariSetorLama.size
-        }
-        if (statsB.najihLama !== statsA.najihLama) return statsB.najihLama - statsA.najihLama
+        if (statsB.totalPoin !== statsA.totalPoin) return statsB.totalPoin - statsA.totalPoin
       } else {
         if (statsB.totalPoin !== statsA.totalPoin) return statsB.totalPoin - statsA.totalPoin
         if (statsB.totalPenambahanBaru !== statsA.totalPenambahanBaru) {
@@ -312,7 +381,7 @@ export async function GET(req: NextRequest) {
     if (tipe === 'konsistensi') {
       const isUlya = jenjang === 'ulya'
       const poinMaksimal = isUlya ? totalHariAktif : totalHariAktif * 2
-      const nilaiKonsistensi = isUlya ? stats.hariSetorLama.size : stats.totalPoin
+      const nilaiKonsistensi = stats.totalPoin
       const persentase = poinMaksimal > 0
         ? Math.round((nilaiKonsistensi / poinMaksimal) * 100)
         : 0
@@ -321,7 +390,7 @@ export async function GET(req: NextRequest) {
         nama: santri.nama,
         nilai: isUlya ? `${persentase}%` : `${stats.totalPoin} poin`,
         detail: isUlya
-          ? `${stats.hariSetorLama.size}/${totalHariAktif} hari aktif`
+          ? `${stats.totalPoin}/${totalHariAktif} hari aktif`
           : `${stats.totalPoin} dari ${poinMaksimal} poin maksimal`,
         rincianKonsistensi: {
           mode: isUlya ? 'ulya' : 'poin',
@@ -467,7 +536,7 @@ export async function GET(req: NextRequest) {
     <div style="font-size:10pt;color:#475569;margin-top:2px;">
       Jenjang ${jenjangLabel[jenjang] || jenjang} ${jenisLabel[jenisKelas] || jenisKelas} &nbsp;•&nbsp; Peringkat 1–${topN} Per Kelas
     </div>
-    <div style="font-size:9pt;color:#94a3b8;margin-top:2px;">Per tanggal: ${tanggal}</div>
+    <div style="font-size:9pt;color:#94a3b8;margin-top:2px;">${tipe === 'konsistensi' ? `Periode: ${labelPeriode}` : `Per tanggal: ${tanggal}`}</div>
     <div style="height:2px;background:linear-gradient(90deg,#1a3a5c,#2563a8);border-radius:2px;margin:10px auto 0;max-width:400px;"></div>
   </div>
 
