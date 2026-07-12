@@ -1,4 +1,5 @@
 // Helper untuk push notification
+import { supabase } from './supabase'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -39,19 +40,34 @@ export async function daftarkanNotifikasi(userId: string, role: string): Promise
     })
 
     // Kirim ke server untuk disimpan
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session?.access_token) {
+      return { ok: false, message: 'Session tidak tersedia atau sudah berakhir. Silakan login kembali.' }
+    }
+
     const res = await fetch('/api/push/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: JSON.stringify({ userId, role, subscription }),
     })
 
+    if (res.status === 401) {
+      return { ok: false, message: 'Session tidak valid atau sudah berakhir. Silakan login kembali.' }
+    }
+    if (res.status === 403) {
+      return { ok: false, message: 'Akses notifikasi ditolak.' }
+    }
     if (!res.ok) {
       return { ok: false, message: 'Gagal menyimpan notifikasi ke server.' }
     }
 
     return { ok: true, message: 'Notifikasi berhasil diaktifkan!' }
-  } catch (err: any) {
-    return { ok: false, message: 'Terjadi kesalahan: ' + (err?.message || 'unknown') }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'unknown'
+    return { ok: false, message: 'Terjadi kesalahan: ' + message }
   }
 }
 
@@ -67,10 +83,16 @@ export async function cekStatusNotifikasi(userId?: string): Promise<boolean> {
     // Kalau tidak ada userId, cukup cek ada langganan di browser
     if (!userId) return true
 
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session?.access_token) return false
+
     // Cek ke database: apakah user INI sudah terdaftar dengan endpoint ini
     const res = await fetch('/api/push/check', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: JSON.stringify({ userId, endpoint: sub.endpoint }),
     })
     const data = await res.json()

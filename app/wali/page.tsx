@@ -62,13 +62,29 @@ const handleTestNotif = async () => {
     setNotifLoading(true)
     setNotifPesan('')
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session?.access_token) {
+        setNotifPesan('Session tidak tersedia atau sudah berakhir. Silakan login kembali.')
+        setNotifLoading(false)
+        return
+      }
+
       const res = await fetch('/api/push/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: waliProfile.id }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({}),
       })
       const data = await res.json()
-      setNotifPesan(data.message)
+      if (res.status === 401) {
+        setNotifPesan('Session tidak valid atau sudah berakhir. Silakan login kembali.')
+      } else if (res.status === 403) {
+        setNotifPesan('Akses notifikasi ditolak.')
+      } else {
+        setNotifPesan(data.message)
+      }
     } catch (err: any) {
       setNotifPesan('Gagal kirim test: ' + err.message)
     }
