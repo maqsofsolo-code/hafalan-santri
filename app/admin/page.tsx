@@ -1978,7 +1978,7 @@ const AlumniList = () => {
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <p className="text-xs font-semibold text-gray-600 mb-2">📄 Download PDF Peringkat 1–3 Per Kelas:</p>
                     <div className="flex flex-wrap gap-2">
-                      
+                      <a
                         href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=total`}
                         target="_blank" rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
@@ -1986,7 +1986,7 @@ const AlumniList = () => {
                       >
                         🏆 Total Hafalan
                       </a>
-                      
+                      <a
                         href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=konsistensi`}
                         target="_blank" rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
@@ -1994,7 +1994,7 @@ const AlumniList = () => {
                       >
                         📅 Konsistensi Setor
                       </a>
-                      
+                      <a
                         href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=semangat`}
                         target="_blank" rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
