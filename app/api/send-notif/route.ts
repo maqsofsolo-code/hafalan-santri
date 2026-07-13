@@ -46,6 +46,59 @@ function getHariWIB() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
 }
 
+function formatTanggalUTC(date: Date) {
+  const tahun = date.getUTCFullYear()
+  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const tanggal = String(date.getUTCDate()).padStart(2, '0')
+  return `${tahun}-${bulan}-${tanggal}`
+}
+
+function getDuaPekanTertutup(saatIni = new Date()) {
+  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(saatIni)
+  const nilaiBagian = Object.fromEntries(
+    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
+  )
+  const tanggalWIB = new Date(Date.UTC(
+    Number(nilaiBagian.year),
+    Number(nilaiBagian.month) - 1,
+    Number(nilaiBagian.day)
+  ))
+  const nomorHari = tanggalWIB.getUTCDay()
+  const jarakDariSenin = (nomorHari + 6) % 7
+  const seninPekanBerjalan = new Date(tanggalWIB)
+  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
+
+  const sabtuSudahDitutup = nomorHari === 6 && Number(nilaiBagian.hour) >= 17
+  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
+  const mulaiTerbaru = new Date(seninPekanBerjalan)
+  if (!gunakanPekanBerjalan) mulaiTerbaru.setUTCDate(mulaiTerbaru.getUTCDate() - 7)
+  const selesaiTerbaru = new Date(mulaiTerbaru)
+  selesaiTerbaru.setUTCDate(selesaiTerbaru.getUTCDate() + 5)
+
+  const mulaiSebelumnya = new Date(mulaiTerbaru)
+  mulaiSebelumnya.setUTCDate(mulaiSebelumnya.getUTCDate() - 7)
+  const selesaiSebelumnya = new Date(mulaiSebelumnya)
+  selesaiSebelumnya.setUTCDate(selesaiSebelumnya.getUTCDate() + 5)
+
+  return {
+    terbaru: {
+      tanggalMulai: formatTanggalUTC(mulaiTerbaru),
+      tanggalSelesai: formatTanggalUTC(selesaiTerbaru),
+    },
+    sebelumnya: {
+      tanggalMulai: formatTanggalUTC(mulaiSebelumnya),
+      tanggalSelesai: formatTanggalUTC(selesaiSebelumnya),
+    },
+  }
+}
+
 function formatTanggal(tgl: string) {
   return new Date(tgl + 'T00:00:00').toLocaleDateString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -349,21 +402,14 @@ async function reminderGuruPush(sesi: string) {
 
 // ===== NOTIF NAIK PERINGKAT (Senin jam 17.00) =====
 async function notifNaikPeringkat() {
-  const today = getWIBDate()
   const hariMinggu = getHariWIB()
 
   if (hariMinggu !== 1) return { message: 'Bukan hari Senin' }
 
-  const seninLalu = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  seninLalu.setDate(seninLalu.getDate() - 7)
-  const tglSeninLalu = `${seninLalu.getFullYear()}-${String(seninLalu.getMonth() + 1).padStart(2, '0')}-${String(seninLalu.getDate()).padStart(2, '0')}`
-
-  const duaMingguLalu = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  duaMingguLalu.setDate(duaMingguLalu.getDate() - 14)
-  const tglDuaMingguLalu = `${duaMingguLalu.getFullYear()}-${String(duaMingguLalu.getMonth() + 1).padStart(2, '0')}-${String(duaMingguLalu.getDate()).padStart(2, '0')}`
+  const periode = getDuaPekanTertutup()
 
   const { data: santriList } = await supabase
-    .from('santri').select('*, wali:wali_id(nama, no_wa)')
+    .from('santri').select('*, wali:wali_id(nama, no_wa)').eq('status', 'aktif')
   if (!santriList) return { message: 'Tidak ada santri' }
 
   const { data: liburAkademik } = await supabase
@@ -371,62 +417,145 @@ async function notifNaikPeringkat() {
 
   const hitungHariAktif = (mulai: string, selesai: string) => {
     const aktif: string[] = []
-    const cur = new Date(mulai)
-    const end = new Date(selesai)
+    const cur = new Date(`${mulai}T00:00:00Z`)
+    const end = new Date(`${selesai}T00:00:00Z`)
     while (cur <= end) {
-      const hari = cur.getDay()
+      const hari = cur.getUTCDay()
       const tgl = cur.toISOString().split('T')[0]
-      if (hari !== 0 && hari !== 5) {
-        const isLibur = (liburAkademik || []).some((l: any) =>
-          tgl >= l.tanggal_mulai && tgl <= l.tanggal_selesai
-        )
-        if (!isLibur) aktif.push(tgl)
-      }
-      cur.setDate(cur.getDate() + 1)
+      const isLibur = (liburAkademik || []).some((libur: { tanggal_mulai: string; tanggal_selesai: string }) =>
+        tgl >= libur.tanggal_mulai && tgl <= libur.tanggal_selesai
+      )
+      if (hari !== 0 && hari !== 5 && !isLibur) aktif.push(tgl)
+      cur.setUTCDate(cur.getUTCDate() + 1)
     }
     return aktif
   }
 
-  const hariAktifMingguIni = hitungHariAktif(tglSeninLalu, today)
-  const hariAktifMingguLalu = hitungHariAktif(tglDuaMingguLalu, tglSeninLalu)
+  const hariAktifMingguIni = hitungHariAktif(
+    periode.terbaru.tanggalMulai,
+    periode.terbaru.tanggalSelesai
+  )
+  const hariAktifMingguLalu = hitungHariAktif(
+    periode.sebelumnya.tanggalMulai,
+    periode.sebelumnya.tanggalSelesai
+  )
 
   const { data: setoranMingguIni } = await supabase
     .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
-    .gte('tanggal', tglSeninLalu).lte('tanggal', today)
+    .gte('tanggal', periode.terbaru.tanggalMulai).lte('tanggal', periode.terbaru.tanggalSelesai)
     .eq('status_kehadiran', 'hadir')
 
   const { data: setoranMingguLalu } = await supabase
     .from('setoran').select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
-    .gte('tanggal', tglDuaMingguLalu).lte('tanggal', tglSeninLalu)
+    .gte('tanggal', periode.sebelumnya.tanggalMulai).lte('tanggal', periode.sebelumnya.tanggalSelesai)
     .eq('status_kehadiran', 'hadir')
 
-  const hitungStats = (setoranData: any[], hariAktif: string[]) => {
-    const statsMap: Record<string, {
-      hariSetorLama: Set<string>, hariSetorBaru: Set<string>,
-      najihLama: number, najihBaru: number, totalJuz: number
-    }> = {}
-    ;(setoranData || []).forEach((s: any) => {
-      if (!statsMap[s.santri_id]) statsMap[s.santri_id] = {
-        hariSetorLama: new Set(), hariSetorBaru: new Set(),
-        najihLama: 0, najihBaru: 0, totalJuz: 0
+  type SetoranPeringkat = {
+    santri_id: string
+    tanggal: string
+    jenis: string
+    penambahan_juz: unknown
+    status_kehadiran: string
+    status: string | null
+  }
+  type StatsPeringkat = {
+    totalPoin: number
+    totalPenambahanBaru: number
+    totalJuz: number
+    hariSetorBaru: Set<string>
+    najihBaru: number
+    adaDataKonsistensi: boolean
+    adaDataSemangat: boolean
+    kombinasi: Map<string, {
+      jenis: 'lama' | 'baru'
+      adaLancar: boolean
+      penambahanBaruMaks: number
+    }>
+  }
+  type SantriPeringkat = {
+    id: string
+    nama: string
+    kelas: string | null
+    kelas_num: number | null
+    jenjang: string | null
+    jenis_kelas: string | null
+    wali?: { nama?: string | null; no_wa?: string | null } | null
+  }
+
+  const santriAktif = santriList as SantriPeringkat[]
+  const jenjangSantri = new Map(santriAktif.map(santri => [santri.id, santri.jenjang]))
+  const normalisasiPenambahan = (value: unknown) => {
+    const angka = Number(value)
+    return Number.isFinite(angka) ? angka : 0
+  }
+  const statsKosong = (): StatsPeringkat => ({
+    totalPoin: 0,
+    totalPenambahanBaru: 0,
+    totalJuz: 0,
+    hariSetorBaru: new Set(),
+    najihBaru: 0,
+    adaDataKonsistensi: false,
+    adaDataSemangat: false,
+    kombinasi: new Map(),
+  })
+
+  const hitungStats = (setoranData: SetoranPeringkat[], hariAktif: string[]) => {
+    const statsMap: Record<string, StatsPeringkat> = {}
+    const hariAktifSet = new Set(hariAktif)
+
+    setoranData.forEach(setoran => {
+      if (setoran.status_kehadiran !== 'hadir') return
+      if (setoran.jenis !== 'lama' && setoran.jenis !== 'baru') return
+
+      if (!statsMap[setoran.santri_id]) statsMap[setoran.santri_id] = statsKosong()
+      const stats = statsMap[setoran.santri_id]
+
+      if (setoran.jenis === 'baru') {
+        stats.adaDataSemangat = true
+        stats.totalJuz += normalisasiPenambahan(setoran.penambahan_juz)
+        if (hariAktifSet.has(setoran.tanggal)) stats.hariSetorBaru.add(setoran.tanggal)
+        if (setoran.status === 'lancar') stats.najihBaru++
       }
-      if (s.jenis === 'lama') {
-        if (hariAktif.includes(s.tanggal)) statsMap[s.santri_id].hariSetorLama.add(s.tanggal)
-        if (s.status === 'lancar') statsMap[s.santri_id].najihLama++
-      } else if (s.jenis === 'baru') {
-        if (hariAktif.includes(s.tanggal)) statsMap[s.santri_id].hariSetorBaru.add(s.tanggal)
-        if (s.status === 'lancar') statsMap[s.santri_id].najihBaru++
-        statsMap[s.santri_id].totalJuz += (s.penambahan_juz || 0)
+
+      if (!hariAktifSet.has(setoran.tanggal)) return
+      if (jenjangSantri.get(setoran.santri_id) === 'ulya' && setoran.jenis === 'baru') return
+
+      stats.adaDataKonsistensi = true
+      const jenis = setoran.jenis
+      const kunciKombinasi = `${setoran.tanggal}:${jenis}`
+      const kombinasi = stats.kombinasi.get(kunciKombinasi) || {
+        jenis,
+        adaLancar: false,
+        penambahanBaruMaks: 0,
       }
+      if (setoran.status === 'lancar') kombinasi.adaLancar = true
+      if (jenis === 'baru' && setoran.status === 'lancar') {
+        kombinasi.penambahanBaruMaks = Math.max(
+          kombinasi.penambahanBaruMaks,
+          normalisasiPenambahan(setoran.penambahan_juz)
+        )
+      }
+      stats.kombinasi.set(kunciKombinasi, kombinasi)
     })
+
+    Object.values(statsMap).forEach(stats => {
+      stats.kombinasi.forEach(kombinasi => {
+        if (!kombinasi.adaLancar) return
+        stats.totalPoin++
+        if (kombinasi.jenis === 'baru') {
+          stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
+        }
+      })
+    })
+
     return statsMap
   }
 
-  const statsIni = hitungStats(setoranMingguIni || [], hariAktifMingguIni)
-  const statsLalu = hitungStats(setoranMingguLalu || [], hariAktifMingguLalu)
+  const statsIni = hitungStats((setoranMingguIni || []) as SetoranPeringkat[], hariAktifMingguIni)
+  const statsLalu = hitungStats((setoranMingguLalu || []) as SetoranPeringkat[], hariAktifMingguLalu)
 
-  const perKelas: Record<string, any[]> = {}
-  santriList.forEach(s => {
+  const perKelas: Record<string, SantriPeringkat[]> = {}
+  santriAktif.forEach(s => {
     // TN A dan TN B digabung dalam satu kelompok
     const jenisKelas = (s.jenis_kelas === 'tn_a' || s.jenis_kelas === 'tn_b') ? 'tn' : (s.jenis_kelas || 'banin')
     const key = `${s.kelas_num}-${s.jenjang}-${jenisKelas}`
@@ -434,56 +563,67 @@ async function notifNaikPeringkat() {
     perKelas[key].push(s)
   })
 
-  const peringkatIni: Record<string, { konsistensi: number, semangat: number }> = {}
-  const peringkatLalu: Record<string, { konsistensi: number, semangat: number }> = {}
+  type PeringkatMingguan = {
+    konsistensi: number
+    semangat: number
+    konsistensiValid: boolean
+    semangatValid: boolean
+  }
+  const posisiKosong = (): PeringkatMingguan => ({
+    konsistensi: 0,
+    semangat: 0,
+    konsistensiValid: false,
+    semangatValid: false,
+  })
+  const peringkatIni: Record<string, PeringkatMingguan> = {}
+  const peringkatLalu: Record<string, PeringkatMingguan> = {}
 
-  const sortKonsistensi = (anggota: any[], stats: any) => [...anggota].sort((a: any, b: any) => {
-    const aUlya = a.jenjang === 'ulya'
-    const bUlya = b.jenjang === 'ulya'
-    const aSt = stats[a.id] || { hariSetorLama: new Set(), hariSetorBaru: new Set(), najihLama: 0, najihBaru: 0 }
-    const bSt = stats[b.id] || { hariSetorLama: new Set(), hariSetorBaru: new Set(), najihLama: 0, najihBaru: 0 }
-    const aHari = aUlya ? aSt.hariSetorBaru.size : aSt.hariSetorLama.size
-    const bHari = bUlya ? bSt.hariSetorBaru.size : bSt.hariSetorLama.size
-    if (bHari !== aHari) return bHari - aHari
-    const aNajih = aUlya ? aSt.najihBaru : aSt.najihLama
-    const bNajih = bUlya ? bSt.najihBaru : bSt.najihLama
-    if (bNajih !== aNajih) return bNajih - aNajih
-    if (bSt.hariSetorBaru.size !== aSt.hariSetorBaru.size) return bSt.hariSetorBaru.size - aSt.hariSetorBaru.size
-    if (bSt.najihBaru !== aSt.najihBaru) return bSt.najihBaru - aSt.najihBaru
-    return 0
+  const sortKonsistensi = (anggota: SantriPeringkat[], stats: Record<string, StatsPeringkat>) =>
+    [...anggota].sort((a, b) => {
+      const aSt = stats[a.id] || statsKosong()
+      const bSt = stats[b.id] || statsKosong()
+      if (bSt.totalPoin !== aSt.totalPoin) return bSt.totalPoin - aSt.totalPoin
+      if (a.jenjang !== 'ulya' && b.jenjang !== 'ulya' && bSt.totalPenambahanBaru !== aSt.totalPenambahanBaru) {
+        return bSt.totalPenambahanBaru - aSt.totalPenambahanBaru
+      }
+      return a.nama.localeCompare(b.nama, 'id') || a.id.localeCompare(b.id)
   })
 
-  const sortSemangat = (anggota: any[], stats: any) => [...anggota].sort((a: any, b: any) => {
-    const aSt = stats[a.id] || { totalJuz: 0, hariSetorBaru: new Set(), najihBaru: 0 }
-    const bSt = stats[b.id] || { totalJuz: 0, hariSetorBaru: new Set(), najihBaru: 0 }
+  const sortSemangat = (anggota: SantriPeringkat[], stats: Record<string, StatsPeringkat>) => [...anggota].sort((a, b) => {
+    const aSt = stats[a.id] || statsKosong()
+    const bSt = stats[b.id] || statsKosong()
     if (bSt.totalJuz !== aSt.totalJuz) return bSt.totalJuz - aSt.totalJuz
     if (bSt.hariSetorBaru.size !== aSt.hariSetorBaru.size) return bSt.hariSetorBaru.size - aSt.hariSetorBaru.size
     if (bSt.najihBaru !== aSt.najihBaru) return bSt.najihBaru - aSt.najihBaru
-    return 0
+    return a.nama.localeCompare(b.nama, 'id') || a.id.localeCompare(b.id)
   })
 
   for (const [, anggota] of Object.entries(perKelas)) {
-    sortKonsistensi(anggota, statsIni).forEach((s: any, idx: number) => {
-      if (!peringkatIni[s.id]) peringkatIni[s.id] = { konsistensi: 0, semangat: 0 }
+    sortKonsistensi(anggota, statsIni).forEach((s, idx) => {
+      if (!peringkatIni[s.id]) peringkatIni[s.id] = posisiKosong()
       peringkatIni[s.id].konsistensi = idx + 1
+      peringkatIni[s.id].konsistensiValid = !!statsIni[s.id]?.adaDataKonsistensi
     })
-    sortKonsistensi(anggota, statsLalu).forEach((s: any, idx: number) => {
-      if (!peringkatLalu[s.id]) peringkatLalu[s.id] = { konsistensi: 0, semangat: 0 }
+    sortKonsistensi(anggota, statsLalu).forEach((s, idx) => {
+      if (!peringkatLalu[s.id]) peringkatLalu[s.id] = posisiKosong()
       peringkatLalu[s.id].konsistensi = idx + 1
+      peringkatLalu[s.id].konsistensiValid = !!statsLalu[s.id]?.adaDataKonsistensi
     })
-    sortSemangat(anggota, statsIni).forEach((s: any, idx: number) => {
-      if (!peringkatIni[s.id]) peringkatIni[s.id] = { konsistensi: 0, semangat: 0 }
+    sortSemangat(anggota, statsIni).forEach((s, idx) => {
+      if (!peringkatIni[s.id]) peringkatIni[s.id] = posisiKosong()
       peringkatIni[s.id].semangat = idx + 1
+      peringkatIni[s.id].semangatValid = !!statsIni[s.id]?.adaDataSemangat
     })
-    sortSemangat(anggota, statsLalu).forEach((s: any, idx: number) => {
-      if (!peringkatLalu[s.id]) peringkatLalu[s.id] = { konsistensi: 0, semangat: 0 }
+    sortSemangat(anggota, statsLalu).forEach((s, idx) => {
+      if (!peringkatLalu[s.id]) peringkatLalu[s.id] = posisiKosong()
       peringkatLalu[s.id].semangat = idx + 1
+      peringkatLalu[s.id].semangatValid = !!statsLalu[s.id]?.adaDataSemangat
     })
   }
 
   let terkirim = 0, gagal = 0
 
-  for (const santri of santriList) {
+  for (const santri of santriAktif) {
     const noWali = santri.wali?.no_wa
     if (!noWali) continue
 
@@ -491,8 +631,8 @@ async function notifNaikPeringkat() {
     const lalu = peringkatLalu[santri.id]
     if (!ini || !lalu) continue
 
-    const naikKonsistensi = ini.konsistensi < lalu.konsistensi
-    const naikSemangat = ini.semangat < lalu.semangat
+    const naikKonsistensi = ini.konsistensiValid && lalu.konsistensiValid && ini.konsistensi < lalu.konsistensi
+    const naikSemangat = ini.semangatValid && lalu.semangatValid && ini.semangat < lalu.semangat
     if (!naikKonsistensi && !naikSemangat) continue
 
     const namaSantri = santri.nama
