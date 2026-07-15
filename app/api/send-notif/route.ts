@@ -3,6 +3,65 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { kirimPushKeUser } from '../../lib/sendPush'
 
+const JENIS_WHATSAPP = new Set([
+  'reminder-guru-subuh',
+  'reminder-guru-pagi',
+  'reminder-guru-siang',
+  'reminder-guru-sore',
+  'notif-wali',
+  'notif-naik-peringkat',
+  'notif-wali-kelas',
+])
+
+const JENIS_PUSH = new Set([
+  'notif-wali-push',
+  'reminder-guru-push-subuh',
+  'reminder-guru-push-pagi',
+  'reminder-guru-push-siang',
+  'reminder-guru-push-sore',
+])
+
+const BATAS_PREVIEW_DRY_RUN = 20
+
+function whatsappAktif() {
+  return process.env.WHATSAPP_ENABLED === 'true'
+}
+
+function whatsappDryRunAktif() {
+  return process.env.WHATSAPP_DRY_RUN !== 'false'
+}
+
+function getJenisWhatsappDiizinkan() {
+  const konfigurasi = process.env.WHATSAPP_ALLOWED_TYPES
+  const jenisDikonfigurasi = konfigurasi === undefined
+    ? ['notif-wali']
+    : konfigurasi.split(',').map(jenis => jenis.trim()).filter(Boolean)
+
+  return new Set<string>(jenisDikonfigurasi.filter(jenis => jenis === 'notif-wali'))
+}
+
+function logPenolakan(jenis: string, kanal: 'whatsapp' | 'push' | 'tidak-dikenal', alasan: string) {
+  console.warn('Request notifikasi ditolak', {
+    jenis,
+    kanal,
+    alasan,
+    timestamp: new Date().toISOString(),
+  })
+}
+
+function samarkanId(id: unknown) {
+  const nilai = String(id || '')
+  if (!nilai) return '-'
+  if (nilai.length <= 8) return `${nilai.slice(0, 2)}***`
+  return `${nilai.slice(0, 4)}...${nilai.slice(-4)}`
+}
+
+function samarkanNomor(nomor: unknown) {
+  const nilai = String(nomor || '')
+  if (nilai.length <= 5) return '*'.repeat(nilai.length)
+  return `${nilai.slice(0, 2)}******${nilai.slice(-3)}`
+}
+
 function secretSama(secretDiterima: string, secretDiharapkan: string) {
   const hashDiterima = createHash('sha256').update(secretDiterima).digest()
   const hashDiharapkan = createHash('sha256').update(secretDiharapkan).digest()
@@ -118,14 +177,48 @@ async function cekLibur(today: string) {
 const FOOTER = `_Pondok Pesantren Daarus Salaf Sukoharjo_\n\n_Nomor ini adalah nomor digitalisasi ma'had. Untuk informasi lebih lanjut seputar perkembangan ananda, silakan menghubungi wali kelas masing-masing._`
 
 // ===== NOTIF WALI SANTRI (jam 17.00 WIB) - LAPORAN HARIAN =====
-async function notifWali() {
+async function notifWali(dryRun = false) {
   const today = getWIBDate()
   const tanggalFormatted = formatTanggal(today)
-  if (await cekLibur(today)) return { message: 'Hari libur' }
+  const ringkasanDryRun = {
+    success: true,
+    mode: 'dry-run',
+    jenis: 'notif-wali',
+    tanggal: today,
+    jumlahSantriDiproses: 0,
+    jumlahEligible: 0,
+    jumlahDilewati: 0,
+    alasanDilewati: {
+      nomorKosong: 0,
+      tanpaDataSetoran: 0,
+      santriTidakAktif: 0,
+      alasanLain: 0,
+    },
+    preview: [] as Array<{
+      santriId: string
+      nomor: string
+      panjangPesan: number
+      ringkasan: {
+        adaStatusKehadiran: boolean
+        adaSetoranLama: boolean
+        adaHafalanBaru: boolean
+        adaCatatan: boolean
+      }
+    }>,
+    timestamp: '',
+  }
+  const hasilDryRun = () => ({
+    ...ringkasanDryRun,
+    timestamp: new Date().toISOString(),
+  })
+
+  if (await cekLibur(today)) return dryRun ? hasilDryRun() : { message: 'Hari libur' }
 
   const { data: santriList } = await supabase
     .from('santri').select('*, wali:wali_id(nama, no_wa)')
-  if (!santriList) return { message: 'Tidak ada santri' }
+  if (!santriList) return dryRun ? hasilDryRun() : { message: 'Tidak ada santri' }
+
+  if (dryRun) ringkasanDryRun.jumlahSantriDiproses = santriList.length
 
   const { data: setoranHariIni } = await supabase
     .from('setoran').select('*').eq('tanggal', today)
@@ -134,7 +227,13 @@ async function notifWali() {
 
   for (const santri of santriList) {
     const noWali = santri.wali?.no_wa
-    if (!noWali) continue
+    if (!noWali) {
+      if (dryRun) {
+        ringkasanDryRun.jumlahDilewati++
+        ringkasanDryRun.alasanDilewati.nomorKosong++
+      }
+      continue
+    }
 
     const jenjang = santri.jenjang
     const setoranSantri = (setoranHariIni || []).filter((s: any) => s.santri_id === santri.id)
@@ -166,7 +265,13 @@ async function notifWali() {
     // ===== 4. LAPORAN HARIAN LENGKAP =====
     else {
       // Jika sama sekali tidak ada entry apapun hari itu, skip (tidak kirim notif)
-      if (setoranSantri.length === 0) continue
+      if (setoranSantri.length === 0) {
+        if (dryRun) {
+          ringkasanDryRun.jumlahDilewati++
+          ringkasanDryRun.alasanDilewati.tanpaDataSetoran++
+        }
+        continue
+      }
 
       const setoranBaru = setoranSantri.find((s: any) => s.jenis === 'baru')
       const setoranLama = setoranSantri.find((s: any) => s.jenis === 'lama')
@@ -228,12 +333,34 @@ async function notifWali() {
     }
 
     if (pesan) {
+      if (dryRun) {
+        ringkasanDryRun.jumlahEligible++
+        if (ringkasanDryRun.preview.length < BATAS_PREVIEW_DRY_RUN) {
+          ringkasanDryRun.preview.push({
+            santriId: samarkanId(santri.id),
+            nomor: samarkanNomor(noWali),
+            panjangPesan: pesan.length,
+            ringkasan: {
+              adaStatusKehadiran: setoranSantri.some(setoran => Boolean(setoran.status_kehadiran)),
+              adaSetoranLama: setoranSantri.some(setoran => setoran.jenis === 'lama'),
+              adaHafalanBaru: jenjang !== 'ulya' && setoranSantri.some(setoran => setoran.jenis === 'baru'),
+              adaCatatan: setoranSantri.some(setoran => Boolean(setoran.catatan)),
+            },
+          })
+        }
+        continue
+      }
+
       const hasil = await kirimWA(noWali, pesan)
       if (hasil.status) terkirim++
       else gagal++
+    } else if (dryRun) {
+      ringkasanDryRun.jumlahDilewati++
+      ringkasanDryRun.alasanDilewati.alasanLain++
     }
   }
 
+  if (dryRun) return hasilDryRun()
   return { message: `Notif wali (laporan harian) selesai. Terkirim: ${terkirim}, Gagal: ${gagal}` }
 }
 
@@ -824,8 +951,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { jenis } = await request.json()
-  if (jenis === 'notif-wali') return NextResponse.json(await notifWali())
+  const body = await request.json()
+  const jenis = typeof body?.jenis === 'string' ? body.jenis : ''
+
+  if (JENIS_WHATSAPP.has(jenis)) {
+    if (!getJenisWhatsappDiizinkan().has(jenis)) {
+      logPenolakan(jenis, 'whatsapp', 'jenis tidak diizinkan')
+      return NextResponse.json(
+        { success: false, error: 'Jenis notifikasi WhatsApp tidak diizinkan' },
+        { status: 403 }
+      )
+    }
+
+    if (!whatsappAktif()) {
+      logPenolakan(jenis, 'whatsapp', 'kanal dinonaktifkan')
+      return NextResponse.json(
+        { success: false, error: 'Kanal WhatsApp sedang dinonaktifkan' },
+        { status: 503 }
+      )
+    }
+  } else if (!JENIS_PUSH.has(jenis)) {
+    logPenolakan(jenis || '(kosong)', 'tidak-dikenal', 'jenis tidak valid')
+    return NextResponse.json({ error: 'Jenis tidak valid' }, { status: 400 })
+  }
+
+  if (jenis === 'notif-wali') return NextResponse.json(await notifWali(whatsappDryRunAktif()))
   if (jenis === 'notif-wali-push') return NextResponse.json(await notifWaliPush())
   if (jenis === 'reminder-guru-push-subuh') return NextResponse.json(await reminderGuruPush('subuh'))
   if (jenis === 'reminder-guru-push-pagi') return NextResponse.json(await reminderGuruPush('pagi'))
