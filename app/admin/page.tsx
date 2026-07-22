@@ -1221,20 +1221,22 @@ const handleImportWali = async (e: any) => {
     if (kelompok === 'tn') return santri.jenis_kelas === 'tn_a' || santri.jenis_kelas === 'tn_b'
     return santri.jenis_kelas === kelompok
   }
+  const monitoringKelasOptions = monitoringDownloadJenjang
+    ? [...new Set(santriList
+      .filter(santri => santri.jenjang === monitoringDownloadJenjang)
+      .map(santri => Number(santri.kelas_num))
+      .filter(kelas => Number.isInteger(kelas) && kelas > 0)
+    )].sort((a, b) => a - b)
+    : []
   const monitoringKelompokOptions = [
     { value: 'banin', label: 'Banin' },
     { value: 'banat', label: 'Banat' },
     { value: 'tn', label: 'TN' },
   ].filter(option => santriList.some(santri =>
-    santri.jenjang === monitoringDownloadJenjang && cocokKelompokMonitoring(santri, option.value)
+    santri.jenjang === monitoringDownloadJenjang
+    && Number(santri.kelas_num) === Number(monitoringDownloadKelas)
+    && cocokKelompokMonitoring(santri, option.value)
   ))
-  const monitoringKelasOptions = monitoringDownloadJenjang && monitoringDownloadKelompok
-    ? [...new Set(santriList
-      .filter(santri => santri.jenjang === monitoringDownloadJenjang && cocokKelompokMonitoring(santri, monitoringDownloadKelompok))
-      .map(santri => Number(santri.kelas_num))
-      .filter(kelas => Number.isInteger(kelas) && kelas > 0)
-    )].sort((a, b) => a - b)
-    : []
   const monitoringDownloadFilterLengkap = Boolean(
     monitoringDownloadTanggal && monitoringDownloadJenjang && monitoringDownloadKelas && monitoringDownloadKelompok
   )
@@ -1597,101 +1599,6 @@ const AlumniList = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
-                <div className="mb-4">
-                  <h3 className="font-bold text-gray-800">Download Monitoring Setoran Santri</h3>
-                  <p className="text-xs text-gray-400 mt-1">Pilih satu tanggal dan satu kelompok kelas sebelum mengunduh laporan.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Tanggal</label>
-                    <input
-                      type="date"
-                      value={monitoringDownloadTanggal}
-                      max={getTanggalWIB()}
-                      onChange={e => { setMonitoringDownloadTanggal(e.target.value); setMonitoringDownloadMsg('') }}
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-                    <select
-                      value={monitoringDownloadJenjang}
-                      onChange={e => {
-                        setMonitoringDownloadJenjang(e.target.value)
-                        setMonitoringDownloadKelompok('')
-                        setMonitoringDownloadKelas('')
-                        setMonitoringDownloadMsg('')
-                      }}
-                      className={inputClass}
-                    >
-                      <option value="">Pilih Jenjang</option>
-                      <option value="ula">Ula</option>
-                      <option value="wustha">Wustha</option>
-                      <option value="ulya">Ulya</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
-                    <select
-                      value={monitoringDownloadKelompok}
-                      disabled={!monitoringDownloadJenjang}
-                      onChange={e => {
-                        setMonitoringDownloadKelompok(e.target.value)
-                        setMonitoringDownloadKelas('')
-                        setMonitoringDownloadMsg('')
-                      }}
-                      className={inputClass}
-                    >
-                      <option value="">Pilih Kelompok</option>
-                      {monitoringKelompokOptions.map(option => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-                    <select
-                      value={monitoringDownloadKelas}
-                      disabled={!monitoringDownloadKelompok}
-                      onChange={e => { setMonitoringDownloadKelas(e.target.value); setMonitoringDownloadMsg('') }}
-                      className={inputClass}
-                    >
-                      <option value="">Pilih Kelas</option>
-                      {monitoringKelasOptions.map(kelas => (
-                        <option key={kelas} value={kelas}>Kelas {kelas}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                  <button
-                    onClick={() => handleDownloadMonitoring('rosib')}
-                    disabled={!monitoringDownloadFilterLengkap || monitoringDownloadLoading !== ''}
-                    className="text-white px-4 py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ background: 'linear-gradient(135deg, #b91c1c, #ef4444)' }}
-                  >
-                    {monitoringDownloadLoading === 'rosib' ? 'Menyiapkan...' : '📥 Daftar Rosib'}
-                  </button>
-                  <button
-                    onClick={() => handleDownloadMonitoring('belum-diinput')}
-                    disabled={!monitoringDownloadFilterLengkap || monitoringDownloadLoading !== ''}
-                    className="text-white px-4 py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ background: 'linear-gradient(135deg, #9a3412, #f97316)' }}
-                  >
-                    {monitoringDownloadLoading === 'belum-diinput' ? 'Menyiapkan...' : '📥 Belum Diinput'}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400 mt-3">
-                  Belum diinput berarti belum ada record setoran maupun status kehadiran dari guru pada tanggal tersebut.
-                </p>
-                {monitoringDownloadMsg && (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-xs">
-                    {monitoringDownloadMsg}
-                  </div>
-                )}
-              </div>
-
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                 {[
                   { label: 'Sudah Setor', count: santriSudahSetor.length, color: 'from-green-500 to-green-700', sub: 'Santri' },
@@ -1719,6 +1626,104 @@ const AlumniList = () => {
                 </div>
                 <p className="text-xs text-gray-400 mt-1">{santriSudahSetor.length} dari {santriList.length} santri</p>
               </div>
+
+              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                <div className="mb-4">
+                  <h3 className="font-bold text-gray-800">Download Monitoring Santri</h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Pilih tanggal dan kelompok santri untuk mengunduh daftar Rosib atau Belum Diinput.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Tanggal</label>
+                    <input
+                      type="date"
+                      value={monitoringDownloadTanggal}
+                      max={getTanggalWIB()}
+                      onChange={e => { setMonitoringDownloadTanggal(e.target.value); setMonitoringDownloadMsg('') }}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                    <select
+                      value={monitoringDownloadJenjang}
+                      onChange={e => {
+                        setMonitoringDownloadJenjang(e.target.value)
+                        setMonitoringDownloadKelas('')
+                        setMonitoringDownloadKelompok('')
+                        setMonitoringDownloadMsg('')
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Pilih Jenjang</option>
+                      <option value="ula">Ula</option>
+                      <option value="wustha">Wustha</option>
+                      <option value="ulya">Ulya</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                    <select
+                      value={monitoringDownloadKelas}
+                      disabled={!monitoringDownloadJenjang}
+                      onChange={e => {
+                        setMonitoringDownloadKelas(e.target.value)
+                        setMonitoringDownloadKelompok('')
+                        setMonitoringDownloadMsg('')
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Pilih Kelas</option>
+                      {monitoringKelasOptions.map(kelas => (
+                        <option key={kelas} value={kelas}>Kelas {kelas}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
+                    <select
+                      value={monitoringDownloadKelompok}
+                      disabled={!monitoringDownloadKelas}
+                      onChange={e => { setMonitoringDownloadKelompok(e.target.value); setMonitoringDownloadMsg('') }}
+                      className={inputClass}
+                    >
+                      <option value="">Pilih Kelompok</option>
+                      {monitoringKelompokOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  <button
+                    onClick={() => handleDownloadMonitoring('rosib')}
+                    disabled={!monitoringDownloadFilterLengkap || monitoringDownloadLoading !== ''}
+                    className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #b91c1c, #ef4444)' }}
+                  >
+                    {monitoringDownloadLoading === 'rosib' ? 'Menyiapkan...' : 'Download Santri Rosib'}
+                  </button>
+                  <button
+                    onClick={() => handleDownloadMonitoring('belum-diinput')}
+                    disabled={!monitoringDownloadFilterLengkap || monitoringDownloadLoading !== ''}
+                    className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #9a3412, #f97316)' }}
+                  >
+                    {monitoringDownloadLoading === 'belum-diinput' ? 'Menyiapkan...' : 'Download Belum Diinput'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-3">
+                  Belum diinput berarti belum ada record setoran maupun status kehadiran dari guru pada tanggal tersebut.
+                </p>
+                {monitoringDownloadMsg && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-xs">
+                    {monitoringDownloadMsg}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3" style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
