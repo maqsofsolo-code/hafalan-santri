@@ -139,6 +139,11 @@ type CreateUserResponse = {
   user?: unknown
 }
 
+type SantriKelompokMonitoring = {
+  jenjang?: unknown
+  jenis_kelas?: unknown
+}
+
 export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
   const [guruList, setGuruList] = useState<any[]>([])
@@ -171,6 +176,12 @@ useEffect(() => {
   const [laporanKelas, setLaporanKelas] = useState('semua')
   const [laporanSantriId, setLaporanSantriId] = useState('semua')
   const [laporanLoading, setLaporanLoading] = useState('')
+  const [monitoringDownloadTanggal, setMonitoringDownloadTanggal] = useState(getTanggalWIB())
+  const [monitoringDownloadJenjang, setMonitoringDownloadJenjang] = useState('')
+  const [monitoringDownloadKelas, setMonitoringDownloadKelas] = useState('')
+  const [monitoringDownloadKelompok, setMonitoringDownloadKelompok] = useState('')
+  const [monitoringDownloadLoading, setMonitoringDownloadLoading] = useState('')
+  const [monitoringDownloadMsg, setMonitoringDownloadMsg] = useState('')
 
   // Form states
   const [formNama, setFormNama] = useState('')
@@ -790,6 +801,80 @@ const fetchPeriode = async () => {
       setDownloadLoading(false)
     }
   }
+  const handleDownloadMonitoring = async (jenisLaporan: 'rosib' | 'belum-diinput') => {
+    if (!monitoringDownloadTanggal || !monitoringDownloadJenjang || !monitoringDownloadKelas || !monitoringDownloadKelompok) {
+      setMonitoringDownloadMsg('Lengkapi tanggal, jenjang, kelas, dan kelompok terlebih dahulu.')
+      return
+    }
+
+    setMonitoringDownloadLoading(jenisLaporan)
+    setMonitoringDownloadMsg('')
+    let objectUrl: string | null = null
+    let link: HTMLAnchorElement | null = null
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session?.access_token) {
+        setMonitoringDownloadMsg('Sesi login sudah berakhir. Silakan login kembali.')
+        return
+      }
+
+      const params = new URLSearchParams({
+        jenis: jenisLaporan,
+        tanggal: monitoringDownloadTanggal,
+        jenjang: monitoringDownloadJenjang,
+        kelas: monitoringDownloadKelas,
+        kelompok: monitoringDownloadKelompok,
+      })
+      const response = await fetch(`/api/monitoring-setoran-excel?${params}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setMonitoringDownloadMsg('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+          return
+        }
+        if (response.status === 403) {
+          setMonitoringDownloadMsg('Akses laporan monitoring hanya tersedia untuk admin.')
+          return
+        }
+
+        let message = 'Gagal menyiapkan laporan monitoring.'
+        try {
+          const errorData = await response.json()
+          if (typeof errorData?.error === 'string') message = errorData.error
+        } catch {
+          // Gunakan pesan aman jika response server bukan JSON.
+        }
+        setMonitoringDownloadMsg(message)
+        return
+      }
+
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const encodedFilename = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+      const regularFilename = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1]
+      let filename = regularFilename || `monitoring-${jenisLaporan}-${monitoringDownloadTanggal}.xlsx`
+      if (encodedFilename) {
+        try { filename = decodeURIComponent(encodedFilename) } catch { filename = encodedFilename }
+      }
+
+      const blob = await response.blob()
+      objectUrl = URL.createObjectURL(blob)
+      link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      setMonitoringDownloadMsg('Laporan berhasil diunduh.')
+    } catch (error: unknown) {
+      setMonitoringDownloadMsg(error instanceof Error ? error.message : 'Gagal mengunduh laporan monitoring.')
+    } finally {
+      if (link?.isConnected) link.remove()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setMonitoringDownloadLoading('')
+    }
+  }
   const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
   setLaporanLoading(format)
   const params = new URLSearchParams({
@@ -1131,6 +1216,28 @@ const handleImportWali = async (e: any) => {
   const santriBelumSetor = santriList.filter(s => !santriSudahSetorIds.includes(s.id))
   const guruSudahInput = [...new Set(setoranHariIni.map(s => s.guru_id))]
   const guruBelumInput = guruList.filter(g => !guruSudahInput.includes(g.id))
+
+  const cocokKelompokMonitoring = (santri: SantriKelompokMonitoring, kelompok: string) => {
+    if (kelompok === 'tn') return santri.jenis_kelas === 'tn_a' || santri.jenis_kelas === 'tn_b'
+    return santri.jenis_kelas === kelompok
+  }
+  const monitoringKelompokOptions = [
+    { value: 'banin', label: 'Banin' },
+    { value: 'banat', label: 'Banat' },
+    { value: 'tn', label: 'TN' },
+  ].filter(option => santriList.some(santri =>
+    santri.jenjang === monitoringDownloadJenjang && cocokKelompokMonitoring(santri, option.value)
+  ))
+  const monitoringKelasOptions = monitoringDownloadJenjang && monitoringDownloadKelompok
+    ? [...new Set(santriList
+      .filter(santri => santri.jenjang === monitoringDownloadJenjang && cocokKelompokMonitoring(santri, monitoringDownloadKelompok))
+      .map(santri => Number(santri.kelas_num))
+      .filter(kelas => Number.isInteger(kelas) && kelas > 0)
+    )].sort((a, b) => a - b)
+    : []
+  const monitoringDownloadFilterLengkap = Boolean(
+    monitoringDownloadTanggal && monitoringDownloadJenjang && monitoringDownloadKelas && monitoringDownloadKelompok
+  )
 
   const getKelasOptions = (jenjang: string) => {
     if (jenjang === 'ula') return [1,2,3,4,5,6]
@@ -1489,6 +1596,102 @@ const AlumniList = () => {
                   <p className="text-blue-200 text-sm mt-1">📅 {tanggal}</p>
                 </div>
               </div>
+
+              <div className="bg-white rounded-2xl shadow p-5 mb-5 border border-gray-100">
+                <div className="mb-4">
+                  <h3 className="font-bold text-gray-800">Download Monitoring Setoran Santri</h3>
+                  <p className="text-xs text-gray-400 mt-1">Pilih satu tanggal dan satu kelompok kelas sebelum mengunduh laporan.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Tanggal</label>
+                    <input
+                      type="date"
+                      value={monitoringDownloadTanggal}
+                      max={getTanggalWIB()}
+                      onChange={e => { setMonitoringDownloadTanggal(e.target.value); setMonitoringDownloadMsg('') }}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
+                    <select
+                      value={monitoringDownloadJenjang}
+                      onChange={e => {
+                        setMonitoringDownloadJenjang(e.target.value)
+                        setMonitoringDownloadKelompok('')
+                        setMonitoringDownloadKelas('')
+                        setMonitoringDownloadMsg('')
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Pilih Jenjang</option>
+                      <option value="ula">Ula</option>
+                      <option value="wustha">Wustha</option>
+                      <option value="ulya">Ulya</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
+                    <select
+                      value={monitoringDownloadKelompok}
+                      disabled={!monitoringDownloadJenjang}
+                      onChange={e => {
+                        setMonitoringDownloadKelompok(e.target.value)
+                        setMonitoringDownloadKelas('')
+                        setMonitoringDownloadMsg('')
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Pilih Kelompok</option>
+                      {monitoringKelompokOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Kelas</label>
+                    <select
+                      value={monitoringDownloadKelas}
+                      disabled={!monitoringDownloadKelompok}
+                      onChange={e => { setMonitoringDownloadKelas(e.target.value); setMonitoringDownloadMsg('') }}
+                      className={inputClass}
+                    >
+                      <option value="">Pilih Kelas</option>
+                      {monitoringKelasOptions.map(kelas => (
+                        <option key={kelas} value={kelas}>Kelas {kelas}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  <button
+                    onClick={() => handleDownloadMonitoring('rosib')}
+                    disabled={!monitoringDownloadFilterLengkap || monitoringDownloadLoading !== ''}
+                    className="text-white px-4 py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #b91c1c, #ef4444)' }}
+                  >
+                    {monitoringDownloadLoading === 'rosib' ? 'Menyiapkan...' : '📥 Daftar Rosib'}
+                  </button>
+                  <button
+                    onClick={() => handleDownloadMonitoring('belum-diinput')}
+                    disabled={!monitoringDownloadFilterLengkap || monitoringDownloadLoading !== ''}
+                    className="text-white px-4 py-3 rounded-xl font-semibold text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #9a3412, #f97316)' }}
+                  >
+                    {monitoringDownloadLoading === 'belum-diinput' ? 'Menyiapkan...' : '📥 Belum Diinput'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-3">
+                  Belum diinput berarti belum ada record setoran maupun status kehadiran dari guru pada tanggal tersebut.
+                </p>
+                {monitoringDownloadMsg && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-xs">
+                    {monitoringDownloadMsg}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                 {[
                   { label: 'Sudah Setor', count: santriSudahSetor.length, color: 'from-green-500 to-green-700', sub: 'Santri' },
