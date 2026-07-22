@@ -16,6 +16,15 @@ function getHariWIB() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
 }
 
+const PESAN_POPUP_WUSTHA = 'Santri ini belum lancar pada setoran hafalan lama sebelumnya. Silakan setorkan hafalan lama terlebih dahulu. Hafalan baru akan terbuka setelah mendapatkan status Najih.'
+const PESAN_SERVER_WUSTHA = 'Santri masih memiliki tanggungan hafalan lama. Setorkan hafalan lama hingga Najih terlebih dahulu.'
+
+type SantriPilihan = {
+  id: string
+  nama: string
+  jenjang?: string
+}
+
 export default function GuruDashboard() {
   const [activeMenu, setActiveMenu] = useState('input')
   const [santriList, setSantriList] = useState<any[]>([])
@@ -43,6 +52,9 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   const [guruPengganti, setGuruPengganti] = useState(false)
   const [kalenderAktif, setKalenderAktif] = useState<any>(null)
   const [setoranLamaHariIni, setSetoranLamaHariIni] = useState<any>(null)
+  const [wusthaHafalanBaruTerkunci, setWusthaHafalanBaruTerkunci] = useState(false)
+  const [wusthaKunciLoading, setWusthaKunciLoading] = useState(false)
+  const [showPopupKunciWustha, setShowPopupKunciWustha] = useState(false)
 // State rapot
   const [periodeAktif, setPeriodeAktif] = useState<any>(null)
   const [rapotSantriList, setRapotSantriList] = useState<any[]>([])
@@ -375,6 +387,62 @@ setRapotSantriList(allRapotSantri)
     setSetoranLamaHariIni(data?.[0] || null)
   }
 
+  const cekKunciHafalanBaruWustha = async (santriId: string) => {
+    setWusthaKunciLoading(true)
+    const { data, error } = await supabase
+      .from('setoran')
+      .select('id, status, tanggal, created_at')
+      .eq('santri_id', santriId)
+      .eq('jenis', 'lama')
+      .eq('status_kehadiran', 'hadir')
+      .order('tanggal', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+
+    setWusthaKunciLoading(false)
+    if (error) {
+      setWusthaHafalanBaruTerkunci(true)
+      setErrorMsg('Gagal memeriksa status hafalan lama. Silakan coba lagi.')
+      return null
+    }
+
+    const terkunci = data?.[0]?.status === 'rosib'
+    setWusthaHafalanBaruTerkunci(terkunci)
+    if (terkunci) setShowPopupKunciWustha(true)
+    return terkunci
+  }
+
+  const handlePilihSantri = async (santri: SantriPilihan) => {
+    setSelectedSantri(santri)
+    setSearchSantri(santri.nama)
+    setSetoranLamaHariIni(null)
+    setWusthaHafalanBaruTerkunci(false)
+    setWusthaKunciLoading(false)
+    setShowPopupKunciWustha(false)
+    setErrorMsg('')
+
+    if (santri.jenjang === 'ulya') {
+      setJenis('lama')
+      return
+    }
+
+    if (santri.jenjang === 'ula') {
+      setJenis('baru')
+      await cekSetoranLamaHariIni(santri.id)
+      return
+    }
+
+    if (santri.jenjang === 'wustha') {
+      setJenis('lama')
+      const terkunci = await cekKunciHafalanBaruWustha(santri.id)
+      if (terkunci === false) setJenis('baru')
+      return
+    }
+
+    setJenis('baru')
+  }
+
   const handleSimpanEditSetoran = async () => {
     if (!editSetoran) return
     setEditLoading(true)
@@ -485,6 +553,10 @@ const tampilPopupSukses = (msg: string) => {
   const handleInputSetoran = async () => {
     if (submitSetoranLockRef.current) return
     if (!selectedSantri) { setErrorMsg('Pilih santri dulu!'); return }
+    if (selectedSantri.jenjang === 'wustha' && jenis === 'baru' && (wusthaHafalanBaruTerkunci || wusthaKunciLoading)) {
+      setErrorMsg(wusthaKunciLoading ? 'Status hafalan lama masih diperiksa. Silakan tunggu.' : PESAN_SERVER_WUSTHA)
+      return
+    }
     submitSetoranLockRef.current = true
 
     try {
@@ -623,8 +695,36 @@ const tampilPopupSukses = (msg: string) => {
         jumlah_halaman_murojaah: halamanMurojaah
       }
     }
-    const { error } = await supabase.from('setoran').insert(insertData)
-    if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session?.access_token) {
+      setErrorMsg('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+      return
+    }
+
+    const response = await fetch('/api/setoran', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(insertData),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      if (result.code === 'WUSTHA_MUROJAAH_ROSIB') {
+        setWusthaHafalanBaruTerkunci(true)
+        setJenis('lama')
+        setShowPopupKunciWustha(true)
+      }
+      if (response.status === 401) {
+        setErrorMsg('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+      } else if (response.status === 403) {
+        setErrorMsg('Akses ditolak. Hanya guru yang dapat menyimpan setoran.')
+      } else {
+        setErrorMsg(result.error || 'Gagal menyimpan setoran. Silakan coba lagi.')
+      }
+      return
+    }
     if (jenis === 'baru') {
       const surahNomor = parseInt(surahBaru)
       const ayatSelesaiNum = parseInt(ayatSelesaiBaru)
@@ -669,8 +769,20 @@ const tampilPopupSukses = (msg: string) => {
     if (jenis === 'lama' && selectedSantri?.jenjang === 'ula') {
       await cekSetoranLamaHariIni(selectedSantri.id)
     }
+    const pertahankanSantriWustha = jenis === 'lama' && selectedSantri?.jenjang === 'wustha'
+      ? selectedSantri
+      : null
+    const pertahankanModeGuruPengganti = guruPengganti
     tampilPopupSukses('✓ Setoran berhasil disimpan!')
     resetForm(); setLoading(false)
+    if (pertahankanSantriWustha) {
+      const terkunci = status === 'rosib'
+      setSelectedSantri(pertahankanSantriWustha)
+      setSearchSantri(pertahankanSantriWustha.nama)
+      setGuruPengganti(pertahankanModeGuruPengganti)
+      setWusthaHafalanBaruTerkunci(terkunci)
+      setJenis(terkunci ? 'lama' : 'baru')
+    }
     fetchGuruData()
     } finally {
       submitSetoranLockRef.current = false
@@ -714,6 +826,7 @@ const tampilPopupSukses = (msg: string) => {
     setSearchSurahBaru(''); setSearchSurahMulai(''); setSearchSurahSelesai('')
     setCatatan(''); setStatusKehadiran('hadir'); setSearchSantri(''); setGuruPengganti(false)
     setSetoranLamaHariIni(null)
+    setWusthaHafalanBaruTerkunci(false); setWusthaKunciLoading(false); setShowPopupKunciWustha(false)
   }
 
   const resetFormUjian = () => {
@@ -755,6 +868,10 @@ const tampilPopupSukses = (msg: string) => {
   const ulaBlokHafalanBaru = selectedSantri?.jenjang === 'ula' && (
     !setoranLamaHariIni || setoranLamaHariIni.status === 'rosib'
   )
+  const wusthaBlokHafalanBaru = selectedSantri?.jenjang === 'wustha' && (
+    wusthaHafalanBaruTerkunci || wusthaKunciLoading
+  )
+  const hafalanBaruDisabled = ulaBlokHafalanBaru || wusthaBlokHafalanBaru || selectedSantri?.jenjang === 'ulya'
 
   const menuItems = [
     { id: 'input', label: 'Input Setoran', icon: '✎' },
@@ -807,6 +924,27 @@ const tampilPopupSukses = (msg: string) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* POPUP KUNCI HAFALAN BARU WUSTHA */}
+      {showPopupKunciWustha && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border-2 border-orange-200">
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-3">
+                <span className="text-2xl">🔒</span>
+              </div>
+              <h3 className="font-bold text-gray-800 text-lg">Hafalan Baru Terkunci</h3>
+              <p className="text-gray-600 text-sm mt-2 whitespace-pre-line">{PESAN_POPUP_WUSTHA}</p>
+              <button
+                onClick={() => setShowPopupKunciWustha(false)}
+                className="mt-5 w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-semibold text-sm transition"
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 {/* POPUP SUKSES SETORAN */}
       {showPopupSukses && (
@@ -1029,7 +1167,7 @@ const tampilPopupSukses = (msg: string) => {
                 {/* Toggle Guru Pengganti */}
                 <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <div onClick={() => { setGuruPengganti(!guruPengganti); setSelectedSantri(null); setSearchSantri(''); setSetoranLamaHariIni(null) }}
+                    <div onClick={() => { setGuruPengganti(!guruPengganti); setSelectedSantri(null); setSearchSantri(''); setSetoranLamaHariIni(null); setWusthaHafalanBaruTerkunci(false); setWusthaKunciLoading(false); setShowPopupKunciWustha(false) }}
                       className={`w-12 h-6 rounded-full transition-all flex-shrink-0 ${guruPengganti ? 'bg-blue-600' : 'bg-gray-300'}`}>
                       <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-all ${guruPengganti ? 'ml-6' : 'ml-0.5'}`} />
                     </div>
@@ -1053,13 +1191,7 @@ const tampilPopupSukses = (msg: string) => {
                         <div className="px-4 py-3 text-sm text-gray-400 text-center">Tidak ditemukan</div>
                       )}
                       {santriTampil.map(s => (
-                        <button key={s.id} onClick={() => {
-                          setSelectedSantri(s)
-                          setSearchSantri(s.nama)
-                          setSetoranLamaHariIni(null)
-                          setJenis(s.jenjang === 'ulya' ? 'lama' : 'baru')
-                          if (s.jenjang === 'ula') cekSetoranLamaHariIni(s.id)
-                        }}
+                        <button key={s.id} onClick={() => handlePilihSantri(s)}
                           className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b last:border-0 text-sm">
                           <div className="flex items-center justify-between">
                             <div>
@@ -1104,7 +1236,7 @@ const tampilPopupSukses = (msg: string) => {
                           })()}
                           {guruPengganti && <div className="text-xs text-orange-500 mt-0.5">Guru tetap: {selectedSantri.guru?.nama || '-'}</div>}
                         </div>
-                        <button onClick={() => { setSelectedSantri(null); setSearchSantri(''); setSetoranLamaHariIni(null) }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                        <button onClick={() => { setSelectedSantri(null); setSearchSantri(''); setSetoranLamaHariIni(null); setWusthaHafalanBaruTerkunci(false); setWusthaKunciLoading(false); setShowPopupKunciWustha(false) }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
                       </div>
 
                       {/* Info jadwal per jenjang */}
@@ -1176,8 +1308,20 @@ const tampilPopupSukses = (msg: string) => {
                         </div>
                       )}
 
+                      {selectedSantri?.jenjang === 'wustha' && (wusthaKunciLoading || wusthaHafalanBaruTerkunci) && (
+                        <div className="mb-3 p-3 rounded-xl border-2 border-orange-300 bg-orange-50">
+                          <p className="text-xs font-bold text-orange-800 mb-1">Ketentuan Jenjang Wustha:</p>
+                          <p className="text-xs text-orange-700">
+                            {wusthaKunciLoading
+                              ? 'Memeriksa status hafalan lama terakhir...'
+                              : 'Hafalan baru terkunci karena hafalan lama terakhir berstatus Rosib. Setorkan hafalan lama hingga Najih terlebih dahulu.'}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 gap-3">
                         <button
+                          disabled={hafalanBaruDisabled}
                           onClick={() => {
                             if (selectedSantri?.jenjang === 'ulya') {
                               setErrorMsg('Santri Ulya tidak menyetorkan hafalan baru — hafalan baru bersifat mandiri!')
@@ -1196,10 +1340,16 @@ const tampilPopupSukses = (msg: string) => {
                             setJenis('baru')
                             setErrorMsg('')
                           }}
-                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${ulaBlokHafalanBaru || selectedSantri?.jenjang === 'ulya' ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                          className={`p-4 rounded-xl border-2 transition text-left ${jenis === 'baru' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${hafalanBaruDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
           <div className="text-sm font-bold text-gray-800">Hafalan Baru</div>
           <div className="text-xs text-gray-400 mt-0.5">
-            {selectedSantri?.jenjang === 'ulya' ? 'Mandiri (tidak disetorkan)' : selectedSantri?.jenjang === 'ula' ? 'Setelah murojaah lancar' : 'Tambah hafalan baru'}
+            {selectedSantri?.jenjang === 'ulya'
+              ? 'Mandiri (tidak disetorkan)'
+              : selectedSantri?.jenjang === 'ula'
+                ? 'Setelah murojaah lancar'
+                : selectedSantri?.jenjang === 'wustha' && wusthaBlokHafalanBaru
+                  ? 'Terkunci sampai hafalan lama Najih'
+                  : 'Tambah hafalan baru'}
           </div>
                         </button>
                         <button
