@@ -36,6 +36,7 @@ type SegmentUjian = {
   surah_awal: { nomor: number, nama_latin: string } | null
   surah_akhir: { nomor: number, nama_latin: string } | null
   nilai_terakhir: NilaiTerakhir | null
+  parsial?: boolean
 }
 
 type Props = {
@@ -282,7 +283,12 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
                   <button type="button" onClick={() => bukaSegment(segment.id)} className="w-full p-4 text-left hover:bg-orange-50/50">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-bold text-gray-800">Segmen {segment.segmen}</div>
+                        <div className="font-bold text-gray-800 flex items-center gap-2">
+                          Segmen {segment.segmen}
+                          {segment.parsial && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-semibold">Parsial</span>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-600 mt-1 break-words">
                           {namaSurah(segment, 'awal')} ayat {segment.ayat_awal} → {namaSurah(segment, 'akhir')} ayat {segment.ayat_akhir}
                         </div>

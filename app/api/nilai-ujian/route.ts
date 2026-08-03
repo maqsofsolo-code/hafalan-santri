@@ -39,9 +39,16 @@ type MasterSegment = {
   surah_akhir?: { nomor: number, nama_latin: string } | null
 }
 
+type SegmenTersediaInfo = {
+  parsial: boolean
+  akhirSurahNomor: number
+  akhirAyat: number
+}
+
 type CakupanSegment = {
   lengkap: boolean
   segmentIds: string[]
+  segmenTersedia: Record<string, SegmenTersediaInfo>
   jumlahSegmenPerJuz: Record<string, number>
 }
 
@@ -127,58 +134,64 @@ function isUuid(value: unknown): value is string {
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-function checkpointSudahMencapai(santri: SantriScope, segment: MasterSegment) {
-  const nomor = Number(santri.surah_terakhir_nomor)
-  const ayat = Number(santri.ayat_terakhir)
-  return nomor < segment.surah_akhir_nomor
-    || (nomor === segment.surah_akhir_nomor && ayat >= segment.ayat_akhir)
+// Posisi checkpoint dibandingkan satu titik batas (surah, ayat) pada jalur hafalan An-Nas -> Al-Baqarah.
+// Nomor surah lebih besar = belum sampai (lebih awal di perjalanan); nomor lebih kecil = sudah lewat.
+function posisiRelatif(nomorCheckpoint: number, ayatCheckpoint: number, nomorBatas: number, ayatBatas: number) {
+  if (nomorCheckpoint > nomorBatas) return -1
+  if (nomorCheckpoint < nomorBatas) return 1
+  if (ayatCheckpoint < ayatBatas) return -1
+  if (ayatCheckpoint > ayatBatas) return 1
+  return 0
 }
 
 function getCakupanSegment(santri: SantriScope, masterSegments: MasterSegment[]): CakupanSegment {
-  const totalHafalan = Number(santri.total_hafalan_juz)
   const nomorCheckpoint = Number(santri.surah_terakhir_nomor)
   const ayatCheckpoint = Number(santri.ayat_terakhir)
-  const dataKonkret = Number.isFinite(totalHafalan)
-    && totalHafalan > 0
-    && totalHafalan <= 31
-    && Number.isInteger(nomorCheckpoint)
+  const dataKonkret = Number.isInteger(nomorCheckpoint)
     && nomorCheckpoint >= 2
     && nomorCheckpoint <= 114
     && Number.isInteger(ayatCheckpoint)
     && ayatCheckpoint > 0
 
   if (!dataKonkret) {
-    return { lengkap: false, segmentIds: [], jumlahSegmenPerJuz: {} }
+    return { lengkap: false, segmentIds: [], segmenTersedia: {}, jumlahSegmenPerJuz: {} }
   }
 
+  // Segmen membentuk satu rantai berurutan (urutan_global) tanpa celah, jadi begitu satu segmen
+  // sudah tuntas terlewati, segmen berikutnya otomatis sudah "dimulai" -- tidak perlu gerbang awal
+  // terpisah. Berhenti pada segmen pertama yang belum tuntas (itulah batas parsial checkpoint).
   const urut = [...masterSegments].sort((a, b) => a.urutan_global - b.urutan_global)
-  const batasHalaman = Math.floor((totalHafalan * 20) + 0.000001)
-  let halamanTerpakai = 0
-  let jumlahDariTotal = 0
-
-  for (const segment of urut) {
-    if (halamanTerpakai + segment.jumlah_halaman > batasHalaman) break
-    halamanTerpakai += segment.jumlah_halaman
-    jumlahDariTotal += 1
-  }
-
-  let jumlahDariCheckpoint = 0
-  for (const segment of urut) {
-    if (!checkpointSudahMencapai(santri, segment)) break
-    jumlahDariCheckpoint += 1
-  }
-
-  const jumlahTersedia = Math.min(jumlahDariTotal, jumlahDariCheckpoint)
-  const tersedia = urut.slice(0, jumlahTersedia)
+  const segmenTersedia: Record<string, SegmenTersediaInfo> = {}
   const jumlahSegmenPerJuz: Record<string, number> = {}
-  tersedia.forEach(segment => {
+
+  for (const segment of urut) {
+    const posisiAkhir = posisiRelatif(nomorCheckpoint, ayatCheckpoint, segment.surah_akhir_nomor, segment.ayat_akhir)
+    const parsial = posisiAkhir < 0
+
+    if (!parsial) {
+      segmenTersedia[segment.id] = { parsial: false, akhirSurahNomor: segment.surah_akhir_nomor, akhirAyat: segment.ayat_akhir }
+    } else if (nomorCheckpoint > segment.surah_awal_nomor) {
+      // Beberapa halaman mushaf memuat lebih dari satu surah pendek sehingga batas akhir segmen
+      // sebelumnya dan batas awal segmen ini tidak persis bersambung di level ayat. Checkpoint
+      // masih di surah yang lebih awal dari surah_awal_nomor segmen ini (celah tersebut) -- pakai
+      // batas awal segmen sebagai titik akhir parsial supaya rentang tidak pernah tampil terbalik.
+      segmenTersedia[segment.id] = { parsial: true, akhirSurahNomor: segment.surah_awal_nomor, akhirAyat: segment.ayat_awal }
+    } else {
+      // Checkpoint sudah benar-benar berada di dalam surah awal segmen ini (baik masih di
+      // pertengahannya maupun sudah lewat) -- pakai posisi checkpoint apa adanya.
+      segmenTersedia[segment.id] = { parsial: true, akhirSurahNomor: nomorCheckpoint, akhirAyat: ayatCheckpoint }
+    }
+
     const key = String(segment.juz)
     jumlahSegmenPerJuz[key] = (jumlahSegmenPerJuz[key] || 0) + 1
-  })
+
+    if (parsial) break // segmen ini adalah batas terjauh hafalan santri; segmen berikutnya belum boleh tampil
+  }
 
   return {
     lengkap: true,
-    segmentIds: tersedia.map(segment => segment.id),
+    segmentIds: Object.keys(segmenTersedia),
+    segmenTersedia,
     jumlahSegmenPerJuz,
   }
 }
@@ -243,7 +256,7 @@ export async function GET(request: Request) {
 
     const cakupan = getCakupanSegment(santriDipilih, masterSegments)
     if (!cakupan.lengkap) {
-      return responseError('Data total hafalan santri belum lengkap. Silakan hubungi Admin.', 422)
+      return responseError('Data posisi hafalan santri (surah/ayat terakhir) belum lengkap. Silakan hubungi Admin.', 422)
     }
 
     const segmentTersedia = masterSegments.filter(segment => cakupan.segmentIds.includes(segment.id))
@@ -269,13 +282,33 @@ export async function GET(request: Request) {
       }
     })
 
+    const adaSegmenParsial = segmentTersedia.some(segment => cakupan.segmenTersedia[segment.id]?.parsial)
+    const surahMap = new Map<number, string>()
+    if (adaSegmenParsial) {
+      const { data: surahData, error: surahError } = await serviceClient.from('surah').select('nomor, nama_latin')
+      if (surahError) return responseError('Gagal memuat data surah', 500)
+      ;(surahData || []).forEach(item => surahMap.set(item.nomor, item.nama_latin))
+    }
+
     return NextResponse.json({
       success: true,
       santri: santriDipilih,
-      data: segmentTersedia.map(segment => ({
-        ...segment,
-        nilai_terakhir: nilaiTerakhir.get(segment.id) || null,
-      })),
+      data: segmentTersedia.map(segment => {
+        const info = cakupan.segmenTersedia[segment.id]
+        const parsial = info?.parsial || false
+        const surahAkhirNomor = parsial ? info.akhirSurahNomor : segment.surah_akhir_nomor
+        const ayatAkhir = parsial ? info.akhirAyat : segment.ayat_akhir
+        return {
+          ...segment,
+          parsial,
+          surah_akhir_nomor: surahAkhirNomor,
+          ayat_akhir: ayatAkhir,
+          surah_akhir: parsial
+            ? { nomor: surahAkhirNomor, nama_latin: surahMap.get(surahAkhirNomor) || segment.surah_akhir?.nama_latin || '' }
+            : segment.surah_akhir,
+          nilai_terakhir: nilaiTerakhir.get(segment.id) || null,
+        }
+      }),
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
@@ -314,8 +347,7 @@ export async function GET(request: Request) {
         guru:guru_id(id, nama),
         surah_mulai:surah_mulai_nomor(nomor, nama_latin),
         surah_selesai:surah_selesai_nomor(nomor, nama_latin),
-        kalender:kalender_id(id, nama, tipe, tanggal_mulai, tanggal_selesai),
-        segment:segment_ujian_id(id, juz, segmen, urutan_global, halaman_awal, halaman_akhir, jumlah_halaman)
+        kalender:kalender_id(id, nama, tipe, tanggal_mulai, tanggal_selesai)
       `)
       .in('santri_id', santriIds)
       .order('tanggal', { ascending: false })
@@ -332,12 +364,23 @@ export async function GET(request: Request) {
     offset += pageSize
   }
 
+  // Segmen ditempelkan manual dari masterSegments (bukan lewat embed PostgREST) supaya
+  // baris nilai lama (segment_ujian_id NULL) tidak pernah ikut tersaring oleh join relasi ini.
+  const masterSegmentMap = new Map(masterSegments.map(segment => [segment.id, segment]))
+  const nilaiUjianDenganSegmen = nilaiUjian.map(item => {
+    const row = item as { segment_ujian_id?: string | null }
+    return {
+      ...row,
+      segment: row.segment_ujian_id ? masterSegmentMap.get(row.segment_ujian_id) || null : null,
+    }
+  })
+
   const cakupanSantri = Object.fromEntries(santri.map(item => [
     item.id,
     getCakupanSegment(item, masterSegments),
   ]))
 
-  return NextResponse.json({ success: true, data: nilaiUjian, cakupanSantri }, {
+  return NextResponse.json({ success: true, data: nilaiUjianDenganSegmen, cakupanSantri }, {
     headers: { 'Cache-Control': 'no-store' },
   })
 }
@@ -398,11 +441,15 @@ export async function POST(request: Request) {
 
   const cakupan = getCakupanSegment(santriData as SantriScope, masterSegments)
   if (!cakupan.lengkap) {
-    return responseError('Data total hafalan santri belum lengkap. Silakan hubungi Admin.', 422)
+    return responseError('Data posisi hafalan santri (surah/ayat terakhir) belum lengkap. Silakan hubungi Admin.', 422)
   }
   if (!cakupan.segmentIds.includes(segment.id)) {
     return responseError('Segmen ujian melampaui hafalan santri', 403)
   }
+
+  const segmenInfo = cakupan.segmenTersedia[segment.id]
+  const surahSelesaiNomor = segmenInfo?.parsial ? segmenInfo.akhirSurahNomor : segment.surah_akhir_nomor
+  const ayatSelesai = segmenInfo?.parsial ? segmenInfo.akhirAyat : segment.ayat_akhir
 
   const nilaiSebelumBatas = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
   const nilaiAkhir = Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10)
@@ -430,9 +477,9 @@ export async function POST(request: Request) {
       tipe,
       tanggal,
       surah_mulai_nomor: segment.surah_awal_nomor,
-      surah_selesai_nomor: segment.surah_akhir_nomor,
+      surah_selesai_nomor: surahSelesaiNomor,
       ayat_mulai: segment.ayat_awal,
-      ayat_selesai: segment.ayat_akhir,
+      ayat_selesai: ayatSelesai,
       jumlah_tegur: jumlahTegur,
       jumlah_tahu_ayat: jumlahTahuAyat,
       jumlah_lupa: jumlahLupa,
