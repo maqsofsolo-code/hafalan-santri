@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 import InputNilaiUjianSegment from '../components/InputNilaiUjianSegment'
-import RekapNilaiUjianGuru, { type CakupanSantriMap, type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
+import RekapNilaiUjianGuru, { type CakupanSantriMap, type MasterSegmentLite, type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
 
 function getTanggalWIB() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
@@ -98,6 +98,7 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
 
   const [nilaiUjianList, setNilaiUjianList] = useState<NilaiUjianGuru[]>([])
   const [ujianCakupanSantri, setUjianCakupanSantri] = useState<CakupanSantriMap>({})
+  const [ujianMasterSegments, setUjianMasterSegments] = useState<MasterSegmentLite[]>([])
   const [ujianRekapLoading, setUjianRekapLoading] = useState(false)
   const [ujianRekapError, setUjianRekapError] = useState('')
 
@@ -361,6 +362,7 @@ setRapotSantriList(allRapotSantri)
 
       setNilaiUjianList(Array.isArray(result.data) ? result.data : [])
       setUjianCakupanSantri(result.cakupanSantri && typeof result.cakupanSantri === 'object' ? result.cakupanSantri : {})
+      setUjianMasterSegments(Array.isArray(result.masterSegments) ? result.masterSegments : [])
     } catch (error) {
       setUjianRekapError(error instanceof Error ? error.message : 'Gagal memuat rekap nilai ujian.')
     } finally {
@@ -1529,6 +1531,7 @@ const tampilPopupSukses = (msg: string) => {
             <RekapNilaiUjianGuru
               data={nilaiUjianList}
               cakupanSantri={ujianCakupanSantri}
+              masterSegments={ujianMasterSegments}
               santriList={santriList}
               loading={ujianRekapLoading}
               error={ujianRekapError}

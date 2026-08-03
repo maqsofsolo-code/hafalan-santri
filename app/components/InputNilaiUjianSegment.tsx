@@ -65,6 +65,18 @@ function kelasSantri(santri: SantriUjian) {
   return santri.kelas_num ? `Kelas ${santri.kelas_num}${kelompok}` : '-'
 }
 
+type StatusJuz = 'belum_dimulai' | 'belum_selesai' | 'selesai'
+
+function StatusJuzBadge({ status }: { status: StatusJuz }) {
+  const config: Record<StatusJuz, { label: string, className: string }> = {
+    selesai: { label: 'Selesai', className: 'bg-green-100 text-green-700' },
+    belum_selesai: { label: 'Belum Selesai', className: 'bg-yellow-100 text-yellow-700' },
+    belum_dimulai: { label: 'Belum Dimulai', className: 'bg-gray-100 text-gray-500' },
+  }
+  const { label, className } = config[status]
+  return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${className}`}>{label}</span>
+}
+
 async function getAccessToken() {
   const { data: { session } } = await supabase.auth.getSession()
   return session?.access_token || null
@@ -84,6 +96,7 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [confirmUjiUlang, setConfirmUjiUlang] = useState<SegmentUjian | null>(null)
   const submitLockRef = useRef(false)
 
   const santriTampil = useMemo(() => {
@@ -99,6 +112,19 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
   const indexJuz = selectedJuz === null ? -1 : daftarJuz.indexOf(selectedJuz)
   const segmentsJuz = segments.filter(segment => segment.juz === selectedJuz)
   const nilaiPreview = nilaiSementara(jumlahTegur, jumlahTahuAyat, jumlahLupa)
+
+  const ringkasanJuzAktif = useMemo(() => {
+    if (segmentsJuz.length === 0) return null
+    const dinilai = segmentsJuz.filter(segment => segment.nilai_terakhir).length
+    const target = segmentsJuz.length
+    const rata = dinilai > 0
+      ? segmentsJuz
+          .filter(segment => segment.nilai_terakhir)
+          .reduce((sum, segment) => sum + Number(segment.nilai_terakhir?.nilai_akhir || 0), 0) / dinilai
+      : null
+    const status: StatusJuz = dinilai === 0 ? 'belum_dimulai' : dinilai >= target ? 'selesai' : 'belum_selesai'
+    return { target, dinilai, rata, status }
+  }, [segmentsJuz])
 
   const resetInput = () => {
     setExpandedSegmentId(null)
@@ -206,6 +232,21 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
     setter(String(Math.max(0, (Number.parseInt(value, 10) || 0) + delta)))
   }
 
+  const handleSimpanClick = (segment: SegmentUjian) => {
+    if (segment.nilai_terakhir) {
+      setConfirmUjiUlang(segment)
+      return
+    }
+    simpanNilai(segment)
+  }
+
+  const lanjutkanUjiUlang = () => {
+    if (!confirmUjiUlang) return
+    const segment = confirmUjiUlang
+    setConfirmUjiUlang(null)
+    simpanNilai(segment)
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow p-4 sm:p-5 border border-gray-100 mb-5">
       <h3 className="font-bold text-gray-800 mb-4">Pilih Santri dan Segmen Ujian</h3>
@@ -275,6 +316,23 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
               className="w-10 h-10 rounded-xl bg-white border border-gray-200 font-bold text-orange-700 disabled:opacity-30" aria-label="Juz berikutnya">›</button>
           </div>
 
+          {ringkasanJuzAktif && (
+            <div className="mb-4 p-4 rounded-2xl border border-orange-100 bg-orange-50/50">
+              <div className="flex justify-between items-start gap-3">
+                <div className="min-w-0">
+                  <div className="font-bold text-gray-800">Juz {selectedJuz}</div>
+                  <div className="text-sm text-gray-600 mt-0.5">{ringkasanJuzAktif.dinilai} dari {ringkasanJuzAktif.target} segmen selesai</div>
+                </div>
+                <StatusJuzBadge status={ringkasanJuzAktif.status} />
+              </div>
+              {ringkasanJuzAktif.rata !== null && (
+                <div className={`mt-2 text-2xl font-bold ${ringkasanJuzAktif.status === 'selesai' ? 'text-green-700' : 'text-blue-700'}`}>
+                  {ringkasanJuzAktif.status === 'selesai' ? 'Nilai akhir: ' : 'Nilai sementara: '}{ringkasanJuzAktif.rata.toFixed(1)}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             {segmentsJuz.map(segment => {
               const expanded = expandedSegmentId === segment.id
@@ -300,6 +358,7 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
                             <div className="text-lg font-bold text-green-700">{Number(segment.nilai_terakhir.nilai_akhir).toFixed(1)}</div>
                             <div className="text-[11px] text-green-600">Nilai terakhir</div>
                             <div className="mt-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">Sudah dinilai</div>
+                            <div className="mt-1 text-[10px] font-semibold text-orange-600">Uji Ulang Segmen</div>
                           </>
                         ) : (
                           <div className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-500">Belum dinilai</div>
@@ -342,10 +401,14 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
                         <textarea value={catatan} onChange={event => setCatatan(event.target.value)} rows={2} maxLength={2000}
                           placeholder="Catatan tambahan untuk nilai segmen ini..." className={inputClass} />
                       </div>
-                      <button type="button" onClick={() => simpanNilai(segment)} disabled={saving}
+                      <button type="button" onClick={() => handleSimpanClick(segment)} disabled={saving}
                         className="w-full mt-4 py-3.5 rounded-xl text-white font-bold disabled:opacity-50 shadow"
                         style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
-                        {saving ? 'Menyimpan...' : `Simpan Nilai Segmen (${nilaiPreview.toFixed(1)})`}
+                        {saving
+                          ? 'Menyimpan...'
+                          : segment.nilai_terakhir
+                            ? `Uji Ulang Segmen (${nilaiPreview.toFixed(1)})`
+                            : `Simpan Nilai Segmen (${nilaiPreview.toFixed(1)})`}
                       </button>
                     </div>
                   )}
@@ -355,6 +418,26 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
           </div>
         </div>
       ) : null}
+
+      {confirmUjiUlang && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setConfirmUjiUlang(null)}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl p-5" onClick={event => event.stopPropagation()}>
+            <h3 className="font-bold text-lg text-gray-800 mb-2">Uji Ulang Segmen?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              Segmen ini sudah pernah dinilai dengan nilai{' '}
+              <span className="font-bold text-orange-700">{Number(confirmUjiUlang.nilai_terakhir?.nilai_akhir || 0).toFixed(1)}</span>.
+              Nilai baru akan menjadi nilai aktif, sedangkan nilai sebelumnya tetap tersimpan sebagai riwayat.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setConfirmUjiUlang(null)}
+                className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-700">Batal</button>
+              <button type="button" onClick={lanjutkanUjiUlang}
+                className="flex-1 py-3 rounded-xl font-semibold text-white shadow"
+                style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>Lanjut Uji Ulang</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

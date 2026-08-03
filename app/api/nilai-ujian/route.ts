@@ -380,7 +380,15 @@ export async function GET(request: Request) {
     getCakupanSegment(item, masterSegments),
   ]))
 
-  return NextResponse.json({ success: true, data: nilaiUjianDenganSegmen, cakupanSantri }, {
+  return NextResponse.json({
+    success: true,
+    data: nilaiUjianDenganSegmen,
+    cakupanSantri,
+    // Master segmen disertakan sekali di sini supaya rekap bisa menyusun tampilan
+    // bertingkat (santri -> juz -> segmen), termasuk segmen yang belum pernah dinilai,
+    // tanpa perlu request tambahan per santri.
+    masterSegments,
+  }, {
     headers: { 'Cache-Control': 'no-store' },
   })
 }
