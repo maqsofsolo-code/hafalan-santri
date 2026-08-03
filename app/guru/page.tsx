@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
-import RekapNilaiUjianGuru, { type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
+import InputNilaiUjianSegment from '../components/InputNilaiUjianSegment'
+import RekapNilaiUjianGuru, { type CakupanSantriMap, type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
 
 function getTanggalWIB() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
@@ -95,18 +96,8 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   const [status, setStatus] = useState('lancar')
   const [catatan, setCatatan] = useState('')
 
-  // Form nilai ujian
-  const [selectedSantriUjian, setSelectedSantriUjian] = useState<any>(null)
-  const [searchSantriUjian, setSearchSantriUjian] = useState('')
-  const [ujianSurahMulai, setUjianSurahMulai] = useState('')
-  const [ujianAyatMulai, setUjianAyatMulai] = useState('1')
-  const [ujianSurahSelesai, setUjianSurahSelesai] = useState('')
-  const [ujianAyatSelesai, setUjianAyatSelesai] = useState('')
-  const [ujianJumlahTegur, setUjianJumlahTegur] = useState('0')
-  const [ujianJumlahTahuAyat, setUjianJumlahTahuAyat] = useState('0')
-  const [ujianJumlahLupa, setUjianJumlahLupa] = useState('0')
-  const [ujianCatatan, setUjianCatatan] = useState('')
   const [nilaiUjianList, setNilaiUjianList] = useState<NilaiUjianGuru[]>([])
+  const [ujianCakupanSantri, setUjianCakupanSantri] = useState<CakupanSantriMap>({})
   const [ujianRekapLoading, setUjianRekapLoading] = useState(false)
   const [ujianRekapError, setUjianRekapError] = useState('')
 
@@ -369,6 +360,7 @@ setRapotSantriList(allRapotSantri)
       }
 
       setNilaiUjianList(Array.isArray(result.data) ? result.data : [])
+      setUjianCakupanSantri(result.cakupanSantri && typeof result.cakupanSantri === 'object' ? result.cakupanSantri : {})
     } catch (error) {
       setUjianRekapError(error instanceof Error ? error.message : 'Gagal memuat rekap nilai ujian.')
     } finally {
@@ -524,14 +516,6 @@ setRapotSantriList(allRapotSantri)
     return { targetJuz: targetJuz.toFixed(3), targetHalaman: targetHalaman.toFixed(1), targetLembar: targetLembar.toFixed(2) }
   }
 
-  const hitungNilaiUjian = () => {
-    const tegur = parseInt(ujianJumlahTegur) || 0
-    const tahuAyat = parseInt(ujianJumlahTahuAyat) || 0
-    const lupa = parseInt(ujianJumlahLupa) || 0
-    const nilai = 10 - (tegur * 0.1) - (tahuAyat * 0.1) - (lupa * 1)
-    return Math.max(5, Math.round(nilai * 10) / 10)
-  }
-
   const handleSurahSelesaiChange = (nomor: string) => {
     setSurahSelesai(nomor)
     if (nomor) {
@@ -540,13 +524,6 @@ setRapotSantriList(allRapotSantri)
     }
   }
 
-  const handleUjianSurahSelesaiChange = (nomor: string) => {
-    setUjianSurahSelesai(nomor)
-    if (nomor) {
-      const surah = surahList.find(s => s.nomor === parseInt(nomor))
-      if (surah) setUjianAyatSelesai(String(surah.jumlah_ayat))
-    }
-  }
 const tampilPopupSukses = (msg: string) => {
     setPopupSuksesMsg(msg)
     setShowPopupSukses(true)
@@ -793,56 +770,6 @@ const tampilPopupSukses = (msg: string) => {
     }
   }
 
-  const handleInputNilaiUjian = async () => {
-    if (!selectedSantriUjian) { setErrorMsg('Pilih santri dulu!'); return }
-    if (!ujianSurahMulai || !ujianSurahSelesai) { setErrorMsg('Lengkapi surah yang diujikan!'); return }
-    setLoading(true); setErrorMsg('')
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
-        setErrorMsg('Sesi login sudah berakhir. Silakan login kembali.')
-        return
-      }
-
-      const response = await fetch('/api/nilai-ujian', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          santri_id: selectedSantriUjian.id,
-          kalender_id: kalenderAktif?.id || null,
-          tipe: kalenderAktif?.tipe || 'mid_semester',
-          surah_mulai_nomor: parseInt(ujianSurahMulai),
-          surah_selesai_nomor: parseInt(ujianSurahSelesai),
-          ayat_mulai: parseInt(ujianAyatMulai),
-          ayat_selesai: parseInt(ujianAyatSelesai),
-          jumlah_tegur: parseInt(ujianJumlahTegur) || 0,
-          jumlah_tahu_ayat: parseInt(ujianJumlahTahuAyat) || 0,
-          jumlah_lupa: parseInt(ujianJumlahLupa) || 0,
-          catatan: ujianCatatan || null,
-        }),
-      })
-      const result = await response.json()
-
-      if (!response.ok) {
-        if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir.')
-        if (response.status === 403) throw new Error('Santri bukan tanggung jawab Anda atau akses ditolak.')
-        throw new Error(result.error || 'Gagal menyimpan nilai ujian.')
-      }
-
-      setSuccessMsg(`Nilai ujian ${selectedSantriUjian.nama} berhasil disimpan! Nilai: ${result.nilai_akhir}`)
-      resetFormUjian()
-      setTimeout(() => setSuccessMsg(''), 4000)
-      fetchNilaiUjian()
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : 'Gagal menyimpan nilai ujian.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const resetForm = () => {
     setSelectedSantri(null); setJenis('baru'); setStatus('lancar')
     setSurahBaru(''); setAyatMulaiBaru(''); setAyatSelesaiBaru('')
@@ -851,14 +778,6 @@ const tampilPopupSukses = (msg: string) => {
     setCatatan(''); setStatusKehadiran('hadir'); setSearchSantri(''); setGuruPengganti(false)
     setSetoranLamaHariIni(null)
     setWusthaHafalanBaruTerkunci(false); setWusthaKunciLoading(false); setShowPopupKunciWustha(false)
-  }
-
-  const resetFormUjian = () => {
-    setSelectedSantriUjian(null); setSearchSantriUjian('')
-    setUjianSurahMulai(''); setUjianAyatMulai('1')
-    setUjianSurahSelesai(''); setUjianAyatSelesai('')
-    setUjianJumlahTegur('0'); setUjianJumlahTahuAyat('0'); setUjianJumlahLupa('0')
-    setUjianCatatan('')
   }
 
   const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/' }
@@ -877,7 +796,6 @@ const tampilPopupSukses = (msg: string) => {
         return true
       })
     : santriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
-  const santriTampilUjian = santriList.filter(s => s.nama.toLowerCase().includes(searchSantriUjian.toLowerCase()))
   const targetMurojaah = selectedSantri ? hitungTargetMurojaah(selectedSantri) : null
   const getSaranMurojaah = () => surahList.find(s => s.nomor === selectedSantri?.surah_terakhir_nomor)
 
@@ -1601,124 +1519,7 @@ const tampilPopupSukses = (msg: string) => {
                 </div>
               </div>
 
-              {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
-
-              <div className="bg-white rounded-2xl shadow p-5 border border-gray-100 mb-5">
-                <h3 className="font-bold text-gray-800 mb-4">Form Input Nilai Ujian</h3>
-                <div className="mb-4">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Santri</label>
-                  <input type="text" value={searchSantriUjian} onChange={e => setSearchSantriUjian(e.target.value)}
-                    placeholder="Cari nama santri..." className={inputClass + ' mb-2'} />
-                  {searchSantriUjian && (
-                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
-                      {santriTampilUjian.map(s => (
-                        <button key={s.id} onClick={() => { setSelectedSantriUjian(s); setSearchSantriUjian(s.nama) }}
-                          className="w-full text-left px-4 py-2.5 hover:bg-orange-50 border-b last:border-0 text-sm">
-                          <span className="font-medium">{s.nama}</span>
-                          {s.kelas && <span className="text-gray-400 text-xs ml-2">{s.kelas}</span>}
-                        </button>
-                      ))}
-                      {santriTampilUjian.length === 0 && <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}
-                    </div>
-                  )}
-                  {selectedSantriUjian && (
-                    <div className="mt-2 p-3 rounded-xl border bg-orange-50 border-orange-200">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-bold text-gray-800">{selectedSantriUjian.nama}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">Total Hafalan: <span className="font-semibold text-orange-700">{selectedSantriUjian.total_hafalan_juz?.toFixed(2) || 0} Juz</span></div>
-                          {kalenderAktif?.tipe === 'semester' && selectedSantriUjian.total_hafalan_juz > 0 && (() => {
-                            const t = hitungTargetUjianSemester(selectedSantriUjian)
-                            return t ? <div className="text-xs text-red-600 mt-0.5 font-semibold">Target Ujian: {t.targetHalaman} hal (≈ {t.targetLembar} lembar)</div> : null
-                          })()}
-                        </div>
-                        <button onClick={() => { setSelectedSantriUjian(null); setSearchSantriUjian('') }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">Surah yang Diujikan</label>
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Dari Surah</label>
-                        <select value={ujianSurahMulai} onChange={e => { setUjianSurahMulai(e.target.value); setUjianAyatMulai('1') }} className={inputClass}>
-                          <option value="">-- Pilih --</option>
-                          {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Ayat Mulai</label>
-                        <input type="number" value={ujianAyatMulai} onChange={e => setUjianAyatMulai(e.target.value)} placeholder="1" className={inputClass} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Sampai Surah</label>
-                        <select value={ujianSurahSelesai} onChange={e => handleUjianSurahSelesaiChange(e.target.value)} className={inputClass}>
-                          <option value="">-- Pilih --</option>
-                          {surahList.map(s => <option key={s.nomor} value={s.nomor}>{s.nomor}. {s.nama_latin}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Ayat Selesai</label>
-                        <input type="number" value={ujianAyatSelesai} onChange={e => setUjianAyatSelesai(e.target.value)} className={inputClass} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">Input Kesalahan</label>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Ditegur (tanpa dibenarkan)', sub: 'Setiap 1 kali = -0.1 poin', val: ujianJumlahTegur, set: setUjianJumlahTegur, color: 'orange' },
-                      { label: 'Diberi tahu ayat sebelumnya', sub: 'Setiap 1 kali = -0.1 poin', val: ujianJumlahTahuAyat, set: setUjianJumlahTahuAyat, color: 'orange' },
-                      { label: 'Lupa & diberi tahu', sub: 'Setiap 1 kali = -1.0 poin', val: ujianJumlahLupa, set: setUjianJumlahLupa, color: 'red' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
-                        <div>
-                          <div className="text-sm font-semibold text-gray-700">{item.label}</div>
-                          <div className="text-xs text-gray-400">{item.sub}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => item.set(String(Math.max(0, parseInt(item.val) - 1)))}
-                            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center hover:bg-gray-200">−</button>
-                          <span className="w-10 text-center font-bold text-lg text-gray-800">{item.val}</span>
-                          <button onClick={() => item.set(String(parseInt(item.val) + 1))}
-                            className={`w-8 h-8 rounded-lg font-bold text-lg flex items-center justify-center ${item.color === 'red' ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'}`}>+</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 p-3 rounded-xl border-2 border-orange-300"
-                    style={{ background: hitungNilaiUjian() >= 8 ? '#f0fdf4' : hitungNilaiUjian() >= 6 ? '#fffbeb' : '#fef2f2' }}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold text-gray-700">Nilai Akhir:</span>
-                      <span className={`text-3xl font-bold ${hitungNilaiUjian() >= 8 ? 'text-green-600' : hitungNilaiUjian() >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>{hitungNilaiUjian()}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      10 − ({ujianJumlahTegur}×0.1) − ({ujianJumlahTahuAyat}×0.1) − ({ujianJumlahLupa}×1) = {hitungNilaiUjian()}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-5">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan (Opsional)</label>
-                  <textarea value={ujianCatatan} onChange={e => setUjianCatatan(e.target.value)}
-                    placeholder="Catatan tambahan untuk nilai ujian ini..." rows={2} className={inputClass} />
-                </div>
-
-                {errorMsg && <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm mb-4">{errorMsg}</div>}
-
-                <button onClick={handleInputNilaiUjian} disabled={loading || !selectedSantriUjian}
-                  className="w-full text-white py-4 rounded-xl font-bold transition disabled:opacity-50 text-base shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
-                  {loading ? 'Menyimpan...' : `Simpan Nilai Ujian (${hitungNilaiUjian()})`}
-                </button>
-              </div>
+              <InputNilaiUjianSegment santriList={santriList} />
 
             </div>
           )}
@@ -1727,6 +1528,8 @@ const tampilPopupSukses = (msg: string) => {
           {activeMenu === 'rekap-ujian' && (
             <RekapNilaiUjianGuru
               data={nilaiUjianList}
+              cakupanSantri={ujianCakupanSantri}
+              santriList={santriList}
               loading={ujianRekapLoading}
               error={ujianRekapError}
               onRefresh={fetchNilaiUjian}
