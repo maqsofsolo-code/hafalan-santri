@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
+import RekapNilaiUjianGuru, { type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
 
 function getTanggalWIB() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
@@ -105,9 +106,9 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   const [ujianJumlahTahuAyat, setUjianJumlahTahuAyat] = useState('0')
   const [ujianJumlahLupa, setUjianJumlahLupa] = useState('0')
   const [ujianCatatan, setUjianCatatan] = useState('')
-  const [nilaiUjianList, setNilaiUjianList] = useState<any[]>([])
-const [ujianHasMore, setUjianHasMore] = useState(true)
-const [ujianLoadingMore, setUjianLoadingMore] = useState(false)
+  const [nilaiUjianList, setNilaiUjianList] = useState<NilaiUjianGuru[]>([])
+  const [ujianRekapLoading, setUjianRekapLoading] = useState(false)
+  const [ujianRekapError, setUjianRekapError] = useState('')
 
   useEffect(() => { fetchGuruData() }, [])
 
@@ -346,31 +347,33 @@ setRapotSantriList(allRapotSantri)
     setRapotRekapLoading(false)
   }
   const fetchNilaiUjian = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data } = await supabase
-      .from('nilai_ujian')
-      .select('*, santri:santri_id(nama, kelas), surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin)')
-      .eq('guru_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(0, 49)
-    setNilaiUjianList(data || [])
-    setUjianHasMore((data || []).length === 50)
-  }
+    setUjianRekapLoading(true)
+    setUjianRekapError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setUjianRekapError('Sesi login sudah berakhir. Silakan login kembali.')
+        return
+      }
 
-  const fetchMoreNilaiUjian = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    setUjianLoadingMore(true)
-    const { data } = await supabase
-      .from('nilai_ujian')
-      .select('*, santri:santri_id(nama, kelas), surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin)')
-      .eq('guru_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(nilaiUjianList.length, nilaiUjianList.length + 49)
-    setNilaiUjianList(prev => [...prev, ...(data || [])])
-    setUjianHasMore((data || []).length === 50)
-    setUjianLoadingMore(false)
+      const response = await fetch('/api/nilai-ujian', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: 'no-store',
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir.')
+        if (response.status === 403) throw new Error('Akses rekap nilai ujian ditolak.')
+        throw new Error(result.error || 'Gagal memuat rekap nilai ujian.')
+      }
+
+      setNilaiUjianList(Array.isArray(result.data) ? result.data : [])
+    } catch (error) {
+      setUjianRekapError(error instanceof Error ? error.message : 'Gagal memuat rekap nilai ujian.')
+    } finally {
+      setUjianRekapLoading(false)
+    }
   }
 
   const cekSetoranLamaHariIni = async (santriId: string) => {
@@ -794,29 +797,50 @@ const tampilPopupSukses = (msg: string) => {
     if (!selectedSantriUjian) { setErrorMsg('Pilih santri dulu!'); return }
     if (!ujianSurahMulai || !ujianSurahSelesai) { setErrorMsg('Lengkapi surah yang diujikan!'); return }
     setLoading(true); setErrorMsg('')
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const nilaiAkhir = hitungNilaiUjian()
-    const { error } = await supabase.from('nilai_ujian').insert({
-      santri_id: selectedSantriUjian.id, guru_id: user.id,
-      kalender_id: kalenderAktif?.id || null,
-      tipe: kalenderAktif?.tipe || 'mid_semester',
-      tanggal: new Date().toISOString().split('T')[0],
-      surah_mulai_nomor: parseInt(ujianSurahMulai),
-      surah_selesai_nomor: parseInt(ujianSurahSelesai),
-      ayat_mulai: parseInt(ujianAyatMulai),
-      ayat_selesai: parseInt(ujianAyatSelesai),
-      jumlah_tegur: parseInt(ujianJumlahTegur) || 0,
-      jumlah_tahu_ayat: parseInt(ujianJumlahTahuAyat) || 0,
-      jumlah_lupa: parseInt(ujianJumlahLupa) || 0,
-      nilai_akhir: nilaiAkhir,
-      catatan: ujianCatatan || null
-    })
-    if (error) { setErrorMsg('Gagal: ' + error.message); setLoading(false); return }
-    setSuccessMsg(`Nilai ujian ${selectedSantriUjian.nama} berhasil disimpan! Nilai: ${nilaiAkhir}`)
-    resetFormUjian(); setLoading(false)
-    setTimeout(() => setSuccessMsg(''), 4000)
-    fetchNilaiUjian()
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setErrorMsg('Sesi login sudah berakhir. Silakan login kembali.')
+        return
+      }
+
+      const response = await fetch('/api/nilai-ujian', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          santri_id: selectedSantriUjian.id,
+          kalender_id: kalenderAktif?.id || null,
+          tipe: kalenderAktif?.tipe || 'mid_semester',
+          surah_mulai_nomor: parseInt(ujianSurahMulai),
+          surah_selesai_nomor: parseInt(ujianSurahSelesai),
+          ayat_mulai: parseInt(ujianAyatMulai),
+          ayat_selesai: parseInt(ujianAyatSelesai),
+          jumlah_tegur: parseInt(ujianJumlahTegur) || 0,
+          jumlah_tahu_ayat: parseInt(ujianJumlahTahuAyat) || 0,
+          jumlah_lupa: parseInt(ujianJumlahLupa) || 0,
+          catatan: ujianCatatan || null,
+        }),
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir.')
+        if (response.status === 403) throw new Error('Santri bukan tanggung jawab Anda atau akses ditolak.')
+        throw new Error(result.error || 'Gagal menyimpan nilai ujian.')
+      }
+
+      setSuccessMsg(`Nilai ujian ${selectedSantriUjian.nama} berhasil disimpan! Nilai: ${result.nilai_akhir}`)
+      resetFormUjian()
+      setTimeout(() => setSuccessMsg(''), 4000)
+      fetchNilaiUjian()
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Gagal menyimpan nilai ujian.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const resetForm = () => {
@@ -853,7 +877,7 @@ const tampilPopupSukses = (msg: string) => {
         return true
       })
     : santriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase()))
-  const santriTampilUjian = allSantriList.filter(s => s.nama.toLowerCase().includes(searchSantriUjian.toLowerCase()))
+  const santriTampilUjian = santriList.filter(s => s.nama.toLowerCase().includes(searchSantriUjian.toLowerCase()))
   const targetMurojaah = selectedSantri ? hitungTargetMurojaah(selectedSantri) : null
   const getSaranMurojaah = () => surahList.find(s => s.nomor === selectedSantri?.surah_terakhir_nomor)
 
@@ -876,6 +900,7 @@ const tampilPopupSukses = (msg: string) => {
   const menuItems = [
     { id: 'input', label: 'Input Setoran', icon: '✎' },
     { id: 'ujian', label: 'Input Nilai Ujian', icon: '📝' },
+    { id: 'rekap-ujian', label: 'Rekap Nilai Ujian', icon: '📊' },
     { id: 'rapot', label: 'Input Nilai Rapot', icon: '📋' },
     { id: 'riwayat', label: 'Riwayat Setoran', icon: '◱' },
     { id: 'santri', label: 'Santri Saya', icon: '◎' },
@@ -1059,7 +1084,7 @@ const tampilPopupSukses = (msg: string) => {
                 onClick={() => {
                   setActiveMenu(menu.id); setSuccessMsg(''); setSidebarOpen(false)
                   if (menu.id === 'riwayat') fetchRiwayat()
-                  if (menu.id === 'ujian') fetchNilaiUjian()
+                  if (menu.id === 'rekap-ujian') fetchNilaiUjian()
                   if (menu.id === 'rapot') fetchPeriodeAktif()
                 }}
                 className={`w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${activeMenu === menu.id ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'}`}>
@@ -1695,39 +1720,17 @@ const tampilPopupSukses = (msg: string) => {
                 </button>
               </div>
 
-              {nilaiUjianList.length > 0 && (
-                <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
-                    <h3 className="text-white font-bold">Riwayat Nilai Ujian</h3>
-                    <p className="text-orange-200 text-xs mt-0.5">{nilaiUjianList.length} nilai tercatat</p>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {nilaiUjianList.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                        <div className="flex items-center gap-2">
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                            style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
-                            {item.santri?.nama?.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-sm text-gray-800">{item.santri?.nama}</div>
-                            <div className="text-xs text-gray-400">{item.surah_mulai?.nama_latin} → {item.surah_selesai?.nama_latin} • {item.tanggal}</div>
-                            <div className="text-xs text-gray-400">Tegur: {item.jumlah_tegur} | Tahu Ayat: {item.jumlah_tahu_ayat} | Lupa: {item.jumlah_lupa}</div>
-                          </div>
-                        </div>
-                        <div className={`text-2xl font-bold ${item.nilai_akhir >= 8 ? 'text-green-600' : item.nilai_akhir >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>{item.nilai_akhir}</div>
-                      </div>
-                    ))}
-                    {ujianHasMore && nilaiUjianList.length > 0 && (
-                      <button onClick={fetchMoreNilaiUjian} disabled={ujianLoadingMore}
-                        className="w-full py-3 rounded-xl text-sm font-semibold border-2 border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
-                        {ujianLoadingMore ? 'Memuat...' : 'Muat Lebih Banyak'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
+          )}
+
+          {/* REKAP NILAI UJIAN */}
+          {activeMenu === 'rekap-ujian' && (
+            <RekapNilaiUjianGuru
+              data={nilaiUjianList}
+              loading={ujianRekapLoading}
+              error={ujianRekapError}
+              onRefresh={fetchNilaiUjian}
+            />
           )}
 
 {/* INPUT NILAI RAPOT */}
