@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
+import AdminRekapNilaiUjian from '../components/AdminRekapNilaiUjian'
 
 function FormEmailPassword({ 
   isEdit, 
@@ -1334,6 +1335,7 @@ const jenjangLabel = (j: string) => {
   { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
   { id: 'laporan', label: 'Laporan Bulanan', icon: '📊' },
   { id: 'rapot', label: 'Rapot Digital', icon: '📋' },
+  { id: 'rekap-nilai-ujian', label: 'Rekap Nilai Ujian', icon: '📝' },
 ]
 
   const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -3475,6 +3477,11 @@ const AlumniList = () => {
                 </div>
               )}
             </div>
+          )}
+
+          {/* REKAP NILAI UJIAN */}
+          {activeMenu === 'rekap-nilai-ujian' && (
+            <AdminRekapNilaiUjian />
           )}
 {/* LAPORAN BULANAN */}
           {activeMenu === 'laporan' && (
