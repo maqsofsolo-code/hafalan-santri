@@ -26,6 +26,15 @@ const BARIS_TABEL_JUZ_MULAI = 14
 const BARIS_TABEL_JUZ_SELESAI = 65
 const SEL_NARASI_HAFALAN = ['M55', 'M56'] as const
 
+// Blok tanda tangan pada tiap sheet individu: baris 58 = tempat/tanggal, baris 59 = label peran,
+// baris 62 = nama (merge M:Q pada semuanya). Template lama membawa teks statis "Sukoharjo, 5 Maret
+// 2026" dan "Ust. Abu Aufa Amin S." di sini yang tidak pernah ditimpa kode -- sekarang SELALU
+// ditimpa dengan data sebenarnya, apa pun isi template.
+const SEL_TANGGAL_CETAK = 'M58'
+const SEL_LABEL_PENANDATANGAN = 'M59'
+const SEL_NAMA_WALI_KELAS = 'M62'
+const LABEL_WALI_KELAS = 'Wali Kelas,'
+
 export type SantriRaport = {
   id: string
   nama: string
@@ -40,6 +49,8 @@ export type BuildRaportParams = {
   santriList: SantriRaport[]
   periodeLabel: string
   semesterLabel: string
+  waliKelasNama: string
+  tanggalIndonesia: string
 }
 
 function labelJenjangTemplate(jenjang: string | null) {
@@ -151,7 +162,7 @@ function tulisBarisRekap(ws: Worksheet, row: number, sheetName: string, nomor: n
 }
 
 export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promise<Buffer> {
-  const { santriList, periodeLabel, semesterLabel } = params
+  const { santriList, periodeLabel, semesterLabel, waliKelasNama, tanggalIndonesia } = params
   const ExcelJS = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.readFile(TEMPLATE_PATH)
@@ -194,6 +205,13 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     ws.getCell('O7').value = periodeLabel
     ws.getCell('O8').value = `${santri.kelasNum ?? '-'} / ${labelJenjangTemplate(santri.jenjang)}`
     ws.getCell('O9').value = semesterLabel
+
+    // Blok tanda tangan: tempat/tanggal + label peran + nama wali kelas SELALU ditimpa dari data
+    // sebenarnya, tidak pernah membiarkan teks bawaan template ("Sukoharjo, 5 Maret 2026" /
+    // "Ust. Abu Aufa Amin S.") terbawa ke file hasil.
+    ws.getCell(SEL_TANGGAL_CETAK).value = `Sukoharjo, ${tanggalIndonesia}`
+    ws.getCell(SEL_LABEL_PENANDATANGAN).value = LABEL_WALI_KELAS
+    ws.getCell(SEL_NAMA_WALI_KELAS).value = waliKelasNama
 
     juzMap.forEach((lokasi, juz) => {
       const nilai = santri.juzNilai.get(juz)

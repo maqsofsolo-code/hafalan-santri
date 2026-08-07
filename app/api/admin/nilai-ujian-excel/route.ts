@@ -83,6 +83,50 @@ function slugify(value: string) {
     || 'raport'
 }
 
+function getWIBDate() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
+}
+
+type JenisKelasWali = 'banin' | 'banat' | 'tn'
+
+function jenisKelasUntukWaliKelas(jenisKelas: string | null | undefined): JenisKelasWali | null {
+  if (jenisKelas === 'banin') return 'banin'
+  if (jenisKelas === 'banat') return 'banat'
+  if (jenisKelas === 'tn_a' || jenisKelas === 'tn_b' || jenisKelas === 'tn') return 'tn'
+  return null
+}
+
+// Wali kelas dicari dari profiles.is_wali_kelas + wali_kelas_num + wali_kelas_jenis -- BUKAN dari
+// santri.guru_id/guru_id_2 (Pentasmi'/Guru Musami', peran berbeda). Tidak ada dimensi periode pada
+// is_wali_kelas saat ini, jadi ini selalu assignment TERKINI -- keterbatasan model data yang ada.
+async function cariNamaWaliKelas(
+  adminClient: ReturnType<typeof createAdminClient>,
+  kelasNum: number | null | undefined,
+  jenisKelasSantri: string | null | undefined,
+): Promise<string> {
+  const jenisWali = jenisKelasUntukWaliKelas(jenisKelasSantri)
+  if (!kelasNum || !jenisWali) return 'Belum ditentukan'
+
+  const { data, error } = await adminClient
+    .from('profiles')
+    .select('nama')
+    .eq('role', 'guru')
+    .eq('is_wali_kelas', true)
+    .eq('wali_kelas_num', kelasNum)
+    .eq('wali_kelas_jenis', jenisWali)
+
+  if (error) {
+    console.error(`[nilai-ujian-excel] Gagal memuat wali kelas untuk kelas ${kelasNum} ${jenisWali}:`, error.message)
+    return 'Belum ditentukan'
+  }
+  if (!data || data.length === 0) return 'Belum ditentukan'
+  if (data.length > 1) {
+    console.warn(`[nilai-ujian-excel] Data wali kelas ganda untuk kelas ${kelasNum} ${jenisWali}: ${data.map(g => g.nama).join(', ')}`)
+    return 'Data wali kelas ganda'
+  }
+  return data[0].nama?.trim() || 'Belum ditentukan'
+}
+
 export async function GET(request: Request) {
   const auth = await authorizeAdmin(request)
   if ('response' in auth) return auth.response
@@ -187,6 +231,11 @@ export async function GET(request: Request) {
   const periodeLabel = periodeInfo?.nama?.trim() || tahunAjaranFallback
   const semesterLabel = periodeInfo?.semester === 1 ? 'GASAL' : periodeInfo?.semester === 2 ? 'GENAP' : '-'
 
+  // Wali kelas: satu nama untuk seluruh dokumen kelas ini (kelas+kelompok yang dipilih admin),
+  // dicari sekali saja -- bukan per santri, dan bukan dari santri.guru_id/guru_id_2 (Pentasmi').
+  const waliKelasNama = await cariNamaWaliKelas(adminClient, kelas, kelompokFinal)
+  const tanggalIndonesia = getWIBDate().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+
   const santriRaportList: SantriRaport[] = santriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
     const nilaiPerSegmen = nilaiTerbaruPerSantri.get(santri.id) || new Map<string, number>()
@@ -214,6 +263,8 @@ export async function GET(request: Request) {
       santriList: santriRaportList,
       periodeLabel,
       semesterLabel,
+      waliKelasNama,
+      tanggalIndonesia,
     })
   } catch {
     return responseError('Gagal membentuk file raport dari template', 500)

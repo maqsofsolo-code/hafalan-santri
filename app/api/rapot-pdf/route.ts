@@ -72,6 +72,58 @@ function generateHeader(logoBase64: string): string {
     </div>`
 }
 
+type JenisKelasWali = 'banin' | 'banat' | 'tn'
+
+function jenisKelasUntukWaliKelas(jenisKelas: string | null | undefined): JenisKelasWali | null {
+  if (jenisKelas === 'banin') return 'banin'
+  if (jenisKelas === 'banat') return 'banat'
+  if (jenisKelas === 'tn_a' || jenisKelas === 'tn_b' || jenisKelas === 'tn') return 'tn'
+  return null
+}
+
+// Wali kelas dicari dari profiles.is_wali_kelas + wali_kelas_num + wali_kelas_jenis -- BUKAN dari
+// santri.guru_id/guru_id_2 (itu Pentasmi'/Guru Musami', peran berbeda, lihat audit sebelumnya).
+// Tidak ada dimensi periode pada is_wali_kelas saat ini, jadi ini selalu assignment TERKINI --
+// keterbatasan model data yang ada, bukan bug di fungsi ini.
+async function cariNamaWaliKelas(
+  kelasNum: number | null | undefined,
+  jenisKelasSantri: string | null | undefined,
+): Promise<string> {
+  const jenisWali = jenisKelasUntukWaliKelas(jenisKelasSantri)
+  if (!kelasNum || !jenisWali) return 'Belum ditentukan'
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('nama')
+    .eq('role', 'guru')
+    .eq('is_wali_kelas', true)
+    .eq('wali_kelas_num', kelasNum)
+    .eq('wali_kelas_jenis', jenisWali)
+
+  if (error) {
+    console.error(`[rapot-pdf] Gagal memuat wali kelas untuk kelas ${kelasNum} ${jenisWali}:`, error.message)
+    return 'Belum ditentukan'
+  }
+  if (!data || data.length === 0) return 'Belum ditentukan'
+  if (data.length > 1) {
+    console.warn(`[rapot-pdf] Data wali kelas ganda untuk kelas ${kelasNum} ${jenisWali}: ${data.map(g => g.nama).join(', ')}`)
+    return 'Data wali kelas ganda'
+  }
+  return data[0].nama?.trim() || 'Belum ditentukan'
+}
+
+// Cache per-request supaya santri dengan kombinasi kelas+jenis yang sama (umum pada mode per-kelas)
+// tidak query profiles berulang-ulang.
+function buatCacheWaliKelas() {
+  const cache = new Map<string, Promise<string>>()
+  return (kelasNum: number | null | undefined, jenisKelasSantri: string | null | undefined) => {
+    const jenisWali = jenisKelasUntukWaliKelas(jenisKelasSantri)
+    const key = `${kelasNum ?? 'null'}|${jenisWali ?? 'null'}`
+    if (!cache.has(key)) cache.set(key, cariNamaWaliKelas(kelasNum, jenisKelasSantri))
+    return cache.get(key)!
+  }
+}
+
 function generateHalaman(
   santri: any,
   n: any,
@@ -79,9 +131,9 @@ function generateHalaman(
   peringkat: number,
   totalSantri: number,
   logoBase64: string,
-  isLast: boolean
+  isLast: boolean,
+  waliKelasNama: string
 ): string {
-  const guruNama = santri.guru?.nama || '-'
   const kelasDisplay = n?.kelas_snapshot || santri.kelas_num || '-'
   const jenjangDisplay = n?.jenjang_snapshot?.toUpperCase() || (santri.jenjang === 'ula' ? 'ULA' : santri.jenjang === 'wustha' ? 'WUSTHA' : 'ULYA')
 
@@ -336,7 +388,7 @@ function generateHalaman(
             <div>Wali Kelas,</div>
             <div style="margin:25px 0 3px;"></div>
             <div style="border-top:1px solid #333;display:inline-block;min-width:120px;padding-top:3px;">
-              <strong>${guruNama}</strong>
+              <strong>${waliKelasNama}</strong>
             </div>
           </td>
           <td style="width:33%;text-align:center;vertical-align:top;">
@@ -367,7 +419,7 @@ export async function GET(request: Request) {
   // ===== MODE LENGKAP: semua rapot satu santri =====
   if (mode === 'lengkap' && santriId) {
     const { data: santri } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)').eq('id', santriId).single()
+      .from('santri').select('*').eq('id', santriId).single()
     if (!santri) return new NextResponse('Santri tidak ditemukan', { status: 404 })
 
     // Ambil semua nilai rapot santri ini, urutkan dari kelas terkecil
@@ -387,10 +439,14 @@ export async function GET(request: Request) {
       `, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
 
-    // Generate halaman per nilai
-    const halaman = semuaNilai.map((n: any, i: number) =>
-      generateHalaman(santri, n, n.periode, 1, 1, logoBase64, i === semuaNilai.length - 1)
-    )
+    // Generate halaman per nilai -- wali kelas dicari per kelas_snapshot (kelas historis rapot itu
+    // sendiri), bukan sekadar kelas santri sekarang, dan di-cache supaya kelas yang sama tidak
+    // query profiles berkali-kali.
+    const getWaliKelas = buatCacheWaliKelas()
+    const halaman = await Promise.all(semuaNilai.map((n: any, i: number) =>
+      getWaliKelas(n.kelas_snapshot ?? santri.kelas_num, santri.jenis_kelas)
+        .then(waliKelasNama => generateHalaman(santri, n, n.periode, 1, 1, logoBase64, i === semuaNilai.length - 1, waliKelasNama))
+    ))
 
     const html = `<!DOCTYPE html>
 <html>
@@ -425,7 +481,7 @@ export async function GET(request: Request) {
   // ===== MODE PER SANTRI =====
   if (santriId) {
     const { data: santri } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)').eq('id', santriId).single()
+      .from('santri').select('*').eq('id', santriId).single()
     if (!santri) return new NextResponse('Santri tidak ditemukan', { status: 404 })
 
     const kelasUntukQuery = kelas || santri.kelas_num?.toString()
@@ -433,6 +489,11 @@ export async function GET(request: Request) {
       .eq('santri_id', santriId).eq('periode_id', periodeId)
     if (kelasUntukQuery) query = query.eq('kelas_snapshot', parseInt(kelasUntukQuery))
     const { data: nilaiData } = await query.maybeSingle()
+
+    const waliKelasNama = await cariNamaWaliKelas(
+      kelasUntukQuery ? parseInt(kelasUntukQuery) : santri.kelas_num,
+      santri.jenis_kelas
+    )
 
     const html = `<!DOCTYPE html>
 <html>
@@ -445,7 +506,7 @@ export async function GET(request: Request) {
   </style>
 </head>
 <body>
-  ${generateHalaman(santri, nilaiData || {}, periode, 1, 1, logoBase64, true)}
+  ${generateHalaman(santri, nilaiData || {}, periode, 1, 1, logoBase64, true, waliKelasNama)}
   <script>
     window.onload = function() { setTimeout(function() { window.print(); }, 800); }
   </script>
@@ -471,13 +532,13 @@ export async function GET(request: Request) {
   if (nilaiSnapshot && nilaiSnapshot.length > 0) {
     const ids = nilaiSnapshot.map((n: any) => n.santri_id)
     const { data } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)')
+      .from('santri').select('*')
       .in('id', ids).order('nama')
     santriList = data || []
   } else {
     // Fallback: kelas santri saat ini
     const { data } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)')
+      .from('santri').select('*')
       .eq('jenjang', jenjang).eq('kelas_num', parseInt(kelas)).order('nama')
     santriList = data || []
   }
@@ -525,9 +586,11 @@ export async function GET(request: Request) {
   const peringkatMap: Record<string, number> = {}
   rataList.forEach((item: any, i: number) => { peringkatMap[item.id] = i + 1 })
 
-  const halaman = santriList.map((s: any, i: number) =>
-    generateHalaman(s, nilaiMap[s.id] || {}, periode, peringkatMap[s.id] || 1, santriList.length, logoBase64, i === santriList.length - 1)
-  )
+  const getWaliKelas = buatCacheWaliKelas()
+  const halaman = await Promise.all(santriList.map((s: any, i: number) =>
+    getWaliKelas(parseInt(kelas), s.jenis_kelas)
+      .then(waliKelasNama => generateHalaman(s, nilaiMap[s.id] || {}, periode, peringkatMap[s.id] || 1, santriList.length, logoBase64, i === santriList.length - 1, waliKelasNama))
+  ))
 
   const html = `<!DOCTYPE html>
 <html>
