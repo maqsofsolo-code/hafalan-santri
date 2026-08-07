@@ -517,6 +517,7 @@ export default function AdminRekapNilaiUjian() {
             <select value={filterPeriode} onChange={e => { setFilterPeriode(e.target.value); setPage(1) }} className={inputClass}>
               <option value="">-- Pilih --</option>
               {periodeOptions.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+              <option value="tanpa-periode">Tanpa Periode Kalender</option>
             </select>
           </div>
           <div>
