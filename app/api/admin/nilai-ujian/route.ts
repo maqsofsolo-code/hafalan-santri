@@ -106,7 +106,12 @@ export async function GET(request: Request) {
     if (santriError) return responseError('Gagal memuat data santri', 500)
     if (!santriData) return responseError('Santri tidak ditemukan', 404)
 
-    const { data: nilaiRows, error: nilaiError } = await adminClient
+    // Periode/tipe di-scope sama seperti mode daftar (Tingkat 1) supaya nilai aktif dan status
+    // juz pada drill-down tidak pernah mencampur periode lain, konsisten dengan filter yang
+    // dipakai admin untuk sampai ke santri ini.
+    const periodeDetail = url.searchParams.get('periode')
+    const tipeDetail = url.searchParams.get('tipe')
+    let nilaiDetailQuery = adminClient
       .from('nilai_ujian')
       .select(`
         id, santri_id, guru_id, kalender_id, segment_ujian_id, tanggal, tipe,
@@ -118,6 +123,14 @@ export async function GET(request: Request) {
         kalender:kalender_id(id, nama, tipe, tanggal_mulai, tanggal_selesai)
       `)
       .eq('santri_id', santriId)
+    if (periodeDetail) {
+      nilaiDetailQuery = periodeDetail === 'tanpa-periode'
+        ? nilaiDetailQuery.is('kalender_id', null)
+        : nilaiDetailQuery.eq('kalender_id', periodeDetail)
+    }
+    if (tipeDetail) nilaiDetailQuery = nilaiDetailQuery.eq('tipe', tipeDetail)
+
+    const { data: nilaiRows, error: nilaiError } = await nilaiDetailQuery
       .order('tanggal', { ascending: false })
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })

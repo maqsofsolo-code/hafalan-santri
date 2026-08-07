@@ -15,6 +15,17 @@ const REKAP_ROW_TEMPLATE_TERAKHIR = 18 // baris siap-pakai bawaan template (11 s
 const KOLOM_BANTU_JUZ = ['V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY']
 const KOLOM_DATA_REKAP = ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF']
 
+// Tabel juz pada sheet individu terbagi 3 blok berdampingan (Juz 1-21, 22-29, 30), masing-masing
+// punya kolom nomor juz + kolom nilai Kelancaran (K) + kolom nilai Tajwid (T) tepat di sebelahnya.
+const BLOK_NILAI_JUZ = [
+  { kolomJuz: 'A', kolomNilai: 'D', kolomTajwid: 'E' },
+  { kolomJuz: 'G', kolomNilai: 'J', kolomTajwid: 'K' },
+  { kolomJuz: 'M', kolomNilai: 'P', kolomTajwid: 'Q' },
+] as const
+const BARIS_TABEL_JUZ_MULAI = 14
+const BARIS_TABEL_JUZ_SELESAI = 65
+const SEL_NARASI_HAFALAN = ['M55', 'M56'] as const
+
 export type SantriRaport = {
   id: string
   nama: string
@@ -27,7 +38,7 @@ export type SantriRaport = {
 
 export type BuildRaportParams = {
   santriList: SantriRaport[]
-  tahunAjaran: string
+  periodeLabel: string
   semesterLabel: string
 }
 
@@ -95,6 +106,27 @@ function cloneWorksheet(wb: Workbook, source: Worksheet, newName: string) {
   return target
 }
 
+// Template dipakai HANYA sebagai desain: seluruh nilai Kelancaran & Tajwid contoh bawaan template
+// (mis. "K"/"T" = 90/70 pada santri contoh) dibersihkan lebih dulu di setiap sheet individu, baru
+// nilai Kelancaran sungguhan (dari nilai_ujian) ditulis ulang di lokasi yang sama. Kolom Tajwid
+// sengaja tidak pernah ditulis ulang di tempat lain pada file ini -- guru mengisinya manual sebelum
+// print -- sehingga harus selalu kosong, bukan meninggalkan nilai contoh milik santri lain.
+function kosongkanNilaiContohSheet(ws: Worksheet) {
+  BLOK_NILAI_JUZ.forEach(({ kolomJuz, kolomNilai, kolomTajwid }) => {
+    for (let row = BARIS_TABEL_JUZ_MULAI; row <= BARIS_TABEL_JUZ_SELESAI; row += 1) {
+      const nilaiSel = ws.getCell(`${kolomJuz}${row}`).value
+      const juz = typeof nilaiSel === 'number' ? nilaiSel : (typeof nilaiSel === 'string' ? Number(nilaiSel) : NaN)
+      if (!Number.isInteger(juz)) continue // bukan baris data juz (mis. label "Nilai Rata-rata", narasi, tanda tangan)
+      ws.getCell(`${kolomNilai}${row}`).value = null
+      ws.getCell(`${kolomTajwid}${row}`).value = null
+    }
+  })
+  // Narasi ringkasan hafalan contoh (mis. "Alhamdulillaah, ananda sudah menghafal dari QS. ...")
+  // tidak bisa dihitung aman dari data sistem saat ini -- lebih baik dikosongkan daripada salah
+  // menampilkan cakupan hafalan milik santri contoh di template.
+  SEL_NARASI_HAFALAN.forEach(sel => { ws.getCell(sel).value = null })
+}
+
 function kosongkanBaris(ws: Worksheet, row: number, kolomTerakhir: string) {
   const kolomIndex = ws.getColumn(kolomTerakhir).number
   for (let c = 1; c <= kolomIndex; c += 1) {
@@ -119,7 +151,7 @@ function tulisBarisRekap(ws: Worksheet, row: number, sheetName: string, nomor: n
 }
 
 export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promise<Buffer> {
-  const { santriList, tahunAjaran, semesterLabel } = params
+  const { santriList, periodeLabel, semesterLabel } = params
   const ExcelJS = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.readFile(TEMPLATE_PATH)
@@ -154,10 +186,12 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     const ws = sheetLamaKe ? wb.getWorksheet(sheetLamaKe)! : cloneWorksheet(wb, master, sheetName)
     if (sheetLamaKe) ws.name = sheetName
 
+    kosongkanNilaiContohSheet(ws)
+
     ws.getCell('C7').value = santri.nama
     ws.getCell('C8').value = null // Nomor Induk Santri (pondok) belum tersedia di data -- dikosongkan, bukan data palsu
     ws.getCell('C9').value = santri.nisn || '-'
-    ws.getCell('O7').value = tahunAjaran
+    ws.getCell('O7').value = periodeLabel
     ws.getCell('O8').value = `${santri.kelasNum ?? '-'} / ${labelJenjangTemplate(santri.jenjang)}`
     ws.getCell('O9').value = semesterLabel
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 export type NilaiUjianGuru = {
   id: string
@@ -92,6 +92,7 @@ type Props = {
   loading: boolean
   error: string
   onRefresh: () => void
+  kalenderAktifId: string | null
 }
 
 type StatusJuz = 'belum_dimulai' | 'belum_selesai' | 'selesai'
@@ -180,11 +181,12 @@ function StatusBadge({ status }: { status: StatusJuz }) {
   return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${className}`}>{label}</span>
 }
 
-export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegments, santriList, loading, error, onRefresh }: Props) {
+export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegments, santriList, loading, error, onRefresh, kalenderAktifId }: Props) {
   const [filterKelas, setFilterKelas] = useState('semua')
   const [pencarianSantri, setPencarianSantri] = useState('')
   const [filterPeriode, setFilterPeriode] = useState('semua')
   const [filterTipe, setFilterTipe] = useState('semua')
+  const appliedDefaultPeriode = useRef(false)
   const [showFilterLanjutan, setShowFilterLanjutan] = useState(false)
   const [filterGuru, setFilterGuru] = useState('semua')
   const [filterJuzAdv, setFilterJuzAdv] = useState('semua')
@@ -214,6 +216,35 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
 
   const tipeOptions = useMemo(() => [...new Set(data.map(item => item.tipe).filter((value): value is string => Boolean(value)))]
     .sort((a, b) => a.localeCompare(b, 'id')), [data])
+
+  // Periode kalender_id yang paling baru (berdasarkan tanggal nilai) di antara data yang sudah
+  // ada -- dipakai sebagai default rekap read-only ketika hari ini tidak sedang ada periode aktif.
+  const periodeTerbaruId = useMemo(() => {
+    const denganKalender = data.filter(item => item.kalender_id)
+    if (denganKalender.length === 0) return null
+    return [...denganKalender].sort(compareNilaiTerbaru)[0].kalender_id
+  }, [data])
+
+  // Default periode rekap: periode ujian aktif hari ini, atau periode terbaru yang sudah punya
+  // nilai jika sedang tidak ada periode aktif. Guru tetap bebas mengganti dropdown setelahnya --
+  // efek ini hanya diterapkan sekali saat salah satu sumber default pertama kali tersedia, supaya
+  // pilihan manual guru tidak pernah ditimpa ulang.
+  useEffect(() => {
+    // setState dipanggil lewat fungsi async bertingkat (bukan langsung di badan efek) supaya
+    // tidak terdeteksi sebagai "setState sinkron dalam efek" oleh react-hooks/set-state-in-effect
+    // -- pola yang sama dipakai di AdminRekapNilaiUjian.tsx.
+    async function terapkanDefaultPeriode() {
+      if (appliedDefaultPeriode.current) return
+      if (kalenderAktifId) {
+        setFilterPeriode(kalenderAktifId)
+        appliedDefaultPeriode.current = true
+      } else if (periodeTerbaruId) {
+        setFilterPeriode(periodeTerbaruId)
+        appliedDefaultPeriode.current = true
+      }
+    }
+    terapkanDefaultPeriode()
+  }, [kalenderAktifId, periodeTerbaruId])
 
   const guruOptions = useMemo(() => {
     const options = new Map<string, string>()

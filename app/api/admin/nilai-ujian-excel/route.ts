@@ -102,11 +102,11 @@ export async function GET(request: Request) {
   const jenjangFinal = jenjang as Jenjang
   const kelompokFinal = kelompok as Kelompok
 
-  let periodeInfo: { id: string, nama: string, tanggal_mulai: string | null } | null = null
+  let periodeInfo: { id: string, nama: string, tanggal_mulai: string | null, semester: number | null } | null = null
   if (periode !== 'tanpa-periode') {
     const { data: kalender, error: kalenderError } = await adminClient
       .from('kalender_akademik')
-      .select('id, nama, tanggal_mulai')
+      .select('id, nama, tanggal_mulai, semester')
       .eq('id', periode)
       .maybeSingle()
     if (kalenderError) return responseError('Gagal memuat data periode', 500)
@@ -168,11 +168,15 @@ export async function GET(request: Request) {
     nilaiTerbaruPerSantri.get(row.santri_id)!.set(row.segment_ujian_id, Number(row.nilai_akhir))
   })
 
+  // Label periode dan semester berasal dari data kalender itu sendiri -- bukan tebakan dari bulan
+  // tanggal_mulai (heuristik lama bisa salah, mis. kalender "Semester Genap" yang tanggal_mulai-nya
+  // jatuh di bulan Juli-Desember akan salah dilabeli GANJIL).
   const tahunMulai = periodeInfo?.tanggal_mulai ? Number(periodeInfo.tanggal_mulai.slice(0, 4)) : new Date().getFullYear()
   const bulanMulai = periodeInfo?.tanggal_mulai ? Number(periodeInfo.tanggal_mulai.slice(5, 7)) : new Date().getMonth() + 1
   const tahunAjaranAwal = bulanMulai >= 7 ? tahunMulai : tahunMulai - 1
-  const tahunAjaran = `${tahunAjaranAwal}/${tahunAjaranAwal + 1}`
-  const semesterLabel = bulanMulai >= 7 ? 'GANJIL' : 'GENAP'
+  const tahunAjaranFallback = `${tahunAjaranAwal}/${tahunAjaranAwal + 1}`
+  const periodeLabel = periodeInfo?.nama?.trim() || tahunAjaranFallback
+  const semesterLabel = periodeInfo?.semester === 1 ? 'GASAL' : periodeInfo?.semester === 2 ? 'GENAP' : '-'
 
   const santriRaportList: SantriRaport[] = santriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
@@ -199,7 +203,7 @@ export async function GET(request: Request) {
   try {
     buffer = await buildRaportHifzhWorkbook({
       santriList: santriRaportList,
-      tahunAjaran,
+      periodeLabel,
       semesterLabel,
     })
   } catch {

@@ -171,15 +171,19 @@ async function getAccessToken() {
 }
 
 export default function AdminRekapNilaiUjian() {
-  // Filter Tingkat 1
-  const [filterPeriode, setFilterPeriode] = useState('semua')
-  const [filterTipe, setFilterTipe] = useState('semua')
-  const [filterJenjang, setFilterJenjang] = useState('semua')
-  const [filterKelas, setFilterKelas] = useState('semua')
-  const [filterKelompok, setFilterKelompok] = useState('semua')
+  // Satu-satunya kelompok filter (dipakai bersama untuk daftar/rekap maupun download) --
+  // sebelumnya ada dua state independen (dl* untuk download, filter* untuk daftar) yang terlihat
+  // identik tapi tidak saling terhubung, sumber kebingungan admin.
+  const [filterPeriode, setFilterPeriode] = useState('')
+  const [filterTipe, setFilterTipe] = useState('')
+  const [filterJenjang, setFilterJenjang] = useState('')
+  const [filterKelas, setFilterKelas] = useState('')
+  const [filterKelompok, setFilterKelompok] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 20
+
+  const filterLengkap = Boolean(filterPeriode && filterTipe && filterJenjang && filterKelas && filterKelompok)
 
   const [santriList, setSantriList] = useState<SantriRingkas[]>([])
   const [total, setTotal] = useState(0)
@@ -208,24 +212,42 @@ export default function AdminRekapNilaiUjian() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [errorEdit, setErrorEdit] = useState('')
 
-  // Download
-  const [dlPeriode, setDlPeriode] = useState('')
-  const [dlTipe, setDlTipe] = useState('')
-  const [dlJenjang, setDlJenjang] = useState('')
-  const [dlKelas, setDlKelas] = useState('')
-  const [dlKelompok, setDlKelompok] = useState('')
   const [downloading, setDownloading] = useState(false)
   const [errorDownload, setErrorDownload] = useState('')
 
   const [refreshTick, setRefreshTick] = useState(0)
 
+  // Periode ditampilkan sejak awal (sebelum filter lain lengkap) supaya admin bisa memulai alur
+  // "Pilih Periode -> Jenjang -> Kelas -> Kelompok" dari dropdown pertama.
+  useEffect(() => {
+    let dibatalkan = false
+    async function muatPeriode() {
+      const { data } = await supabase
+        .from('kalender_akademik')
+        .select('id, nama, tipe')
+        .in('tipe', ['mid_semester', 'semester'])
+        .order('tanggal_mulai', { ascending: false })
+      if (!dibatalkan) setPeriodeOptions(data || [])
+    }
+    muatPeriode()
+    return () => { dibatalkan = true }
+  }, [])
+
   // Logika fetch didefinisikan dan dipanggil sepenuhnya di dalam effect (bukan lewat referensi
   // useCallback yang juga dipakai di tempat lain) supaya tidak terdeteksi sebagai "setState
   // sinkron dalam effect" oleh react-hooks/set-state-in-effect. Tombol "Muat Ulang" memicu fetch
-  // baru lewat penambah refreshTick, bukan memanggil fungsi fetch secara langsung.
+  // baru lewat penambah refreshTick, bukan memanggil fungsi fetch secara langsung. Daftar santri
+  // sengaja tidak pernah di-fetch sebelum kelima filter lengkap (jangan tampilkan seluruh santri
+  // pondok sebelum filter dipilih).
   useEffect(() => {
     let dibatalkan = false
     async function muatDaftar() {
+      if (!filterLengkap) {
+        setSantriList([])
+        setTotal(0)
+        setErrorList('')
+        return
+      }
       setLoadingList(true)
       setErrorList('')
       try {
@@ -254,7 +276,6 @@ export default function AdminRekapNilaiUjian() {
         if (dibatalkan) return
         setSantriList(Array.isArray(result.data) ? result.data : [])
         setTotal(typeof result.total === 'number' ? result.total : 0)
-        setPeriodeOptions(Array.isArray(result.periodeOptions) ? result.periodeOptions : [])
       } catch (error) {
         if (!dibatalkan) setErrorList(error instanceof Error ? error.message : 'Gagal memuat daftar santri.')
       } finally {
@@ -263,7 +284,7 @@ export default function AdminRekapNilaiUjian() {
     }
     muatDaftar()
     return () => { dibatalkan = true }
-  }, [page, filterPeriode, filterTipe, filterJenjang, filterKelas, filterKelompok, search, refreshTick])
+  }, [filterLengkap, page, filterPeriode, filterTipe, filterJenjang, filterKelas, filterKelompok, search, refreshTick])
 
   const muatUlangDaftar = () => setRefreshTick(tick => tick + 1)
 
@@ -273,7 +294,8 @@ export default function AdminRekapNilaiUjian() {
     try {
       const accessToken = await getAccessToken()
       if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-      const response = await fetch(`/api/admin/nilai-ujian?santri_id=${encodeURIComponent(santriId)}`, {
+      const params = new URLSearchParams({ santri_id: santriId, periode: filterPeriode, tipe: filterTipe })
+      const response = await fetch(`/api/admin/nilai-ujian?${params.toString()}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: 'no-store',
       })
@@ -290,7 +312,7 @@ export default function AdminRekapNilaiUjian() {
     } finally {
       setLoadingDetail(false)
     }
-  }, [])
+  }, [filterPeriode, filterTipe])
 
   const pilihSantri = (id: string) => {
     setSelectedSantriId(id)
@@ -438,16 +460,14 @@ export default function AdminRekapNilaiUjian() {
     }
   }
 
-  const downloadFilterLengkap = Boolean(dlPeriode && dlTipe && dlJenjang && dlKelas && dlKelompok)
-
   const downloadRaport = async () => {
-    if (!downloadFilterLengkap || downloading) return
+    if (!filterLengkap || downloading) return
     setDownloading(true)
     setErrorDownload('')
     try {
       const accessToken = await getAccessToken()
       if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-      const params = new URLSearchParams({ periode: dlPeriode, tipe: dlTipe, jenjang: dlJenjang, kelas: dlKelas, kelompok: dlKelompok })
+      const params = new URLSearchParams({ periode: filterPeriode, tipe: filterTipe, jenjang: filterJenjang, kelas: filterKelas, kelompok: filterKelompok })
       const response = await fetch(`/api/admin/nilai-ujian-excel?${params.toString()}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
@@ -487,21 +507,21 @@ export default function AdminRekapNilaiUjian() {
         </div>
       </div>
 
-      {/* Card download */}
+      {/* Satu-satunya kelompok filter, dipakai bersama oleh rekap dan download */}
       <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
-        <h3 className="font-bold text-gray-800 mb-1">Download Rekap Nilai Ujian</h3>
-        <p className="text-xs text-gray-500 mb-3">Satu file Excel untuk satu kelas, mengikuti format Raport Hifzh.</p>
+        <h3 className="font-bold text-gray-800 mb-1">Rekap Nilai Ujian</h3>
+        <p className="text-xs text-gray-500 mb-3">Pilih periode, tipe ujian, jenjang, kelas, dan kelompok untuk melihat rekap sekaligus mengunduh Raport Hifzh.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Periode</label>
-            <select value={dlPeriode} onChange={e => setDlPeriode(e.target.value)} className={inputClass}>
+            <select value={filterPeriode} onChange={e => { setFilterPeriode(e.target.value); setPage(1) }} className={inputClass}>
               <option value="">-- Pilih --</option>
               {periodeOptions.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Tipe Ujian</label>
-            <select value={dlTipe} onChange={e => setDlTipe(e.target.value)} className={inputClass}>
+            <select value={filterTipe} onChange={e => { setFilterTipe(e.target.value); setPage(1) }} className={inputClass}>
               <option value="">-- Pilih --</option>
               <option value="mid_semester">Mid Semester</option>
               <option value="semester">Semester</option>
@@ -509,7 +529,7 @@ export default function AdminRekapNilaiUjian() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-            <select value={dlJenjang} onChange={e => { setDlJenjang(e.target.value); setDlKelas('') }} className={inputClass}>
+            <select value={filterJenjang} onChange={e => { setFilterJenjang(e.target.value); setFilterKelas(''); setPage(1) }} className={inputClass}>
               <option value="">-- Pilih --</option>
               <option value="ula">Ula</option>
               <option value="wustha">Wustha</option>
@@ -518,14 +538,14 @@ export default function AdminRekapNilaiUjian() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-            <select value={dlKelas} onChange={e => setDlKelas(e.target.value)} className={inputClass} disabled={!dlJenjang}>
+            <select value={filterKelas} onChange={e => { setFilterKelas(e.target.value); setPage(1) }} className={inputClass} disabled={!filterJenjang}>
               <option value="">-- Pilih --</option>
-              {getKelasOptions(dlJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
+              {getKelasOptions(filterJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
-            <select value={dlKelompok} onChange={e => setDlKelompok(e.target.value)} className={inputClass}>
+            <select value={filterKelompok} onChange={e => { setFilterKelompok(e.target.value); setPage(1) }} className={inputClass}>
               <option value="">-- Pilih --</option>
               <option value="banin">Banin</option>
               <option value="banat">Banat</option>
@@ -533,67 +553,35 @@ export default function AdminRekapNilaiUjian() {
             </select>
           </div>
         </div>
+
+        {filterLengkap && (
+          <div className="mt-3">
+            <label className="block text-xs text-gray-500 mb-1">Cari Santri</label>
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="Cari nama santri..." className={inputClass} />
+          </div>
+        )}
+
         {errorDownload && <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm">{errorDownload}</div>}
-        <button type="button" onClick={downloadRaport} disabled={!downloadFilterLengkap || downloading}
-          className="w-full mt-4 py-3.5 rounded-xl text-white font-bold disabled:opacity-40 shadow"
-          style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-          {downloading ? 'Menyiapkan file...' : '📥 Download Raport Hifzh'}
-        </button>
+        {filterLengkap && (
+          <button type="button" onClick={downloadRaport} disabled={downloading}
+            className="w-full mt-4 py-3.5 rounded-xl text-white font-bold disabled:opacity-40 shadow"
+            style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+            {downloading ? 'Menyiapkan file...' : '📥 Download Raport Hifzh'}
+          </button>
+        )}
       </div>
 
       {selectedSantriId === null && (
         <>
-          <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Periode</label>
-                <select value={filterPeriode} onChange={e => { setFilterPeriode(e.target.value); setPage(1) }} className={inputClass}>
-                  <option value="semua">Semua Periode</option>
-                  {periodeOptions.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Tipe Ujian</label>
-                <select value={filterTipe} onChange={e => { setFilterTipe(e.target.value); setPage(1) }} className={inputClass}>
-                  <option value="semua">Semua Tipe</option>
-                  <option value="mid_semester">Mid Semester</option>
-                  <option value="semester">Semester</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Cari Santri</label>
-                <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="Cari nama santri..." className={inputClass} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-                <select value={filterJenjang} onChange={e => { setFilterJenjang(e.target.value); setFilterKelas('semua'); setPage(1) }} className={inputClass}>
-                  <option value="semua">Semua Jenjang</option>
-                  <option value="ula">Ula</option>
-                  <option value="wustha">Wustha</option>
-                  <option value="ulya">Ulya</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-                <select value={filterKelas} onChange={e => { setFilterKelas(e.target.value); setPage(1) }} className={inputClass}>
-                  <option value="semua">Semua Kelas</option>
-                  {getKelasOptions(filterJenjang === 'semua' ? '' : filterJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
-                <select value={filterKelompok} onChange={e => { setFilterKelompok(e.target.value); setPage(1) }} className={inputClass}>
-                  <option value="semua">Semua Kelompok</option>
-                  <option value="banin">Banin</option>
-                  <option value="banat">Banat</option>
-                  <option value="tn">TN</option>
-                </select>
-              </div>
+          {!filterLengkap ? (
+            <div className="bg-white rounded-2xl shadow border border-gray-100 p-10 text-center text-gray-400 text-sm">
+              Pilih periode, jenjang, kelas, dan kelompok untuk melihat rekap nilai.
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
-              <p className="text-xs text-gray-500">{total} santri ditemukan</p>
-              <button type="button" onClick={muatUlangDaftar} disabled={loadingList} className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-xs font-semibold disabled:opacity-50">{loadingList ? 'Memuat...' : 'Muat Ulang'}</button>
-            </div>
+          ) : (
+          <>
+          <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-gray-500">{total} santri ditemukan</p>
+            <button type="button" onClick={muatUlangDaftar} disabled={loadingList} className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-xs font-semibold disabled:opacity-50">{loadingList ? 'Memuat...' : 'Muat Ulang'}</button>
           </div>
 
           {errorList && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm">{errorList}</div>}
@@ -629,6 +617,8 @@ export default function AdminRekapNilaiUjian() {
               <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold disabled:opacity-30">Berikutnya ›</button>
             </div>
+          )}
+          </>
           )}
         </>
       )}

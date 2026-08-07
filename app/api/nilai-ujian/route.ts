@@ -196,6 +196,25 @@ function getCakupanSegment(santri: SantriScope, masterSegments: MasterSegment[])
   }
 }
 
+type KalenderUjianAktif = { id: string, nama: string, tipe: 'mid_semester' | 'semester', semester: number | null }
+
+// Satu sumber kebenaran untuk "periode ujian aktif hari ini", dipakai baik saat guru membaca
+// segmen (supaya status sudah/belum dinilai tidak tercampur lintas periode) maupun saat menyimpan
+// nilai baru (supaya tidak ada lagi kalender_id NULL atau periode ganda yang dipilih diam-diam).
+async function getKalenderUjianAktif(serviceClient: ServiceClient, tanggal: string) {
+  const { data, error } = await serviceClient
+    .from('kalender_akademik')
+    .select('id, nama, tipe, semester')
+    .in('tipe', ['mid_semester', 'semester'])
+    .lte('tanggal_mulai', tanggal)
+    .gte('tanggal_selesai', tanggal)
+
+  if (error) return { error: true as const }
+  const rows = (data || []) as KalenderUjianAktif[]
+  if (rows.length > 1) return { ganda: true as const }
+  return { kalender: rows[0] || null }
+}
+
 async function getMasterSegments(serviceClient: ServiceClient) {
   return serviceClient
     .from('master_segment_ujian')
@@ -259,12 +278,27 @@ export async function GET(request: Request) {
       return responseError('Data posisi hafalan santri (surah/ayat terakhir) belum lengkap. Silakan hubungi Admin.', 422)
     }
 
+    const tanggalHariIni = getTanggalWIB()
+    const kalenderResult = await getKalenderUjianAktif(serviceClient, tanggalHariIni)
+    if ('error' in kalenderResult) return responseError('Gagal memverifikasi periode ujian', 500)
+    if ('ganda' in kalenderResult) {
+      return responseError('Terdapat lebih dari satu periode ujian aktif. Silakan hubungi Admin.', 409)
+    }
+    const kalenderAktif = kalenderResult.kalender
+    if (!kalenderAktif) {
+      return responseError('Tidak ada periode ujian hafalan yang aktif hari ini. Silakan hubungi Admin.', 422)
+    }
+
     const segmentTersedia = masterSegments.filter(segment => cakupan.segmentIds.includes(segment.id))
+    // Nilai terbaru per segmen wajib di-scope ke kalender_id periode aktif -- tanpa ini, nilai dari
+    // periode lain (mis. Semester Gasal) bisa terlihat seolah menjadi nilai aktif periode ini
+    // (mis. Mid Semester Gasal) hanya karena lebih baru.
     const { data: nilaiTerakhirData, error: nilaiTerakhirError } = cakupan.segmentIds.length > 0
       ? await serviceClient
           .from('nilai_ujian')
           .select('id, segment_ujian_id, nilai_akhir, tanggal, created_at')
           .eq('santri_id', santriId)
+          .eq('kalender_id', kalenderAktif.id)
           .in('segment_ujian_id', cakupan.segmentIds)
           .order('tanggal', { ascending: false })
           .order('created_at', { ascending: false })
@@ -293,6 +327,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       santri: santriDipilih,
+      kalender: kalenderAktif,
       data: segmentTersedia.map(segment => {
         const info = cakupan.segmenTersedia[segment.id]
         const parsial = info?.parsial || false
@@ -462,25 +497,23 @@ export async function POST(request: Request) {
   const nilaiSebelumBatas = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
   const nilaiAkhir = Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10)
   const tanggal = getTanggalWIB()
-  const { data: kalenderData, error: kalenderError } = await serviceClient
-    .from('kalender_akademik')
-    .select('id, tipe')
-    .in('tipe', ['mid_semester', 'semester'])
-    .lte('tanggal_mulai', tanggal)
-    .gte('tanggal_selesai', tanggal)
-    .order('tanggal_mulai', { ascending: false })
-    .limit(1)
-
-  if (kalenderError) return responseError('Gagal memverifikasi periode ujian', 500)
-  const kalender = kalenderData?.[0] || null
-  const tipe = kalender?.tipe === 'semester' ? 'semester' : 'mid_semester'
+  const kalenderResult = await getKalenderUjianAktif(serviceClient, tanggal)
+  if ('error' in kalenderResult) return responseError('Gagal memverifikasi periode ujian', 500)
+  if ('ganda' in kalenderResult) {
+    return responseError('Terdapat lebih dari satu periode ujian aktif. Silakan hubungi Admin.', 409)
+  }
+  const kalenderAktif = kalenderResult.kalender
+  if (!kalenderAktif) {
+    return responseError('Tidak ada periode ujian hafalan yang aktif hari ini. Silakan hubungi Admin.', 422)
+  }
+  const tipe = kalenderAktif.tipe === 'semester' ? 'semester' : 'mid_semester'
 
   const { data: nilaiBaru, error: insertError } = await serviceClient
     .from('nilai_ujian')
     .insert({
       santri_id: santriId,
       guru_id: userId,
-      kalender_id: kalender?.id || null,
+      kalender_id: kalenderAktif.id,
       segment_ujian_id: segment.id,
       tipe,
       tanggal,

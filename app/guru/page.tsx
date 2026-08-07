@@ -53,6 +53,8 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   const [searchSantri, setSearchSantri] = useState('')
   const [guruPengganti, setGuruPengganti] = useState(false)
   const [kalenderAktif, setKalenderAktif] = useState<any>(null)
+  const [kalenderUjianAktif, setKalenderUjianAktif] = useState<{ id: string, nama: string, tipe: string, semester: number | null } | null>(null)
+  const [kalenderUjianGanda, setKalenderUjianGanda] = useState(false)
   const [setoranLamaHariIni, setSetoranLamaHariIni] = useState<any>(null)
   const [wusthaHafalanBaruTerkunci, setWusthaHafalanBaruTerkunci] = useState(false)
   const [wusthaKunciLoading, setWusthaKunciLoading] = useState(false)
@@ -150,6 +152,26 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
 
     const { data: kalender } = await supabase.from('kalender_akademik').select('*').lte('tanggal_mulai', today).gte('tanggal_selesai', today).maybeSingle()
     setKalenderAktif(kalender || null)
+
+    // Periode ujian aktif dihitung terpisah dari kalenderAktif di atas (yang juga mencakup tipe
+    // 'libur') supaya Input Nilai Ujian hanya menyala untuk tipe mid_semester/semester, dan supaya
+    // dua kalender ujian yang tumpang tindih terdeteksi eksplisit alih-alih dipilih diam-diam.
+    const { data: kalenderUjianRows, error: kalenderUjianError } = await supabase
+      .from('kalender_akademik')
+      .select('id, nama, tipe, semester')
+      .in('tipe', ['mid_semester', 'semester'])
+      .lte('tanggal_mulai', today)
+      .gte('tanggal_selesai', today)
+    if (kalenderUjianError || !kalenderUjianRows) {
+      setKalenderUjianAktif(null)
+      setKalenderUjianGanda(false)
+    } else if (kalenderUjianRows.length > 1) {
+      setKalenderUjianAktif(null)
+      setKalenderUjianGanda(true)
+    } else {
+      setKalenderUjianAktif(kalenderUjianRows[0] || null)
+      setKalenderUjianGanda(false)
+    }
   }
 
   const fetchRiwayat = async () => {
@@ -1507,21 +1529,33 @@ const tampilPopupSukses = (msg: string) => {
                 <div className="relative z-10">
                   <h2 className="font-bold text-xl">Input Nilai Ujian</h2>
                   <p className="text-orange-200 text-sm mt-1">{tanggal}</p>
-                  {kalenderAktif ? (
+                  {kalenderUjianGanda ? (
                     <div className="mt-2 bg-white bg-opacity-20 rounded-xl px-3 py-2 inline-block">
-                      <p className="text-white text-xs font-semibold">{kalenderAktif.nama}</p>
-                      <p className="text-orange-200 text-xs">{kalenderAktif.tipe === 'semester' ? 'Target: 1/10 dari total hafalan' : 'Ujian hafalan mid semester'}</p>
+                      <p className="text-white text-xs font-semibold">Terdapat lebih dari satu periode ujian aktif. Silakan hubungi Admin.</p>
+                    </div>
+                  ) : kalenderUjianAktif ? (
+                    <div className="mt-2 bg-white bg-opacity-20 rounded-xl px-3 py-2 inline-block">
+                      <p className="text-orange-100 text-[11px] uppercase tracking-wide font-semibold">Periode Ujian Aktif</p>
+                      <p className="text-white text-xs font-semibold">{kalenderUjianAktif.nama}</p>
                     </div>
                   ) : (
                     <div className="mt-2 bg-white bg-opacity-20 rounded-xl px-3 py-2 inline-block">
-                      <p className="text-orange-100 text-xs">Tidak ada jadwal ujian aktif hari ini</p>
-                      <p className="text-orange-200 text-xs">Input nilai tetap bisa dilakukan</p>
+                      <p className="text-orange-100 text-xs">Tidak ada periode ujian hafalan yang aktif hari ini.</p>
+                      <p className="text-orange-200 text-xs">Silakan hubungi Admin.</p>
                     </div>
                   )}
                 </div>
               </div>
 
-              <InputNilaiUjianSegment santriList={santriList} />
+              {kalenderUjianAktif ? (
+                <InputNilaiUjianSegment santriList={santriList} />
+              ) : (
+                <div className="bg-white rounded-2xl shadow p-6 border border-gray-100 text-center text-gray-500 text-sm">
+                  {kalenderUjianGanda
+                    ? 'Terdapat lebih dari satu periode ujian aktif. Silakan hubungi Admin.'
+                    : 'Tidak ada periode ujian hafalan yang aktif hari ini. Silakan hubungi Admin.'}
+                </div>
+              )}
 
             </div>
           )}
@@ -1536,6 +1570,7 @@ const tampilPopupSukses = (msg: string) => {
               loading={ujianRekapLoading}
               error={ujianRekapError}
               onRefresh={fetchNilaiUjian}
+              kalenderAktifId={kalenderUjianGanda ? null : kalenderUjianAktif?.id || null}
             />
           )}
 
