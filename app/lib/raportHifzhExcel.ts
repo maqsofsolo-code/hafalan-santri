@@ -16,15 +16,36 @@ const KOLOM_BANTU_JUZ = ['V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 
 const KOLOM_DATA_REKAP = ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF']
 
 // Tabel juz pada sheet individu terbagi 3 blok berdampingan (Juz 1-21, 22-29, 30), masing-masing
-// punya kolom nomor juz + kolom nilai Kelancaran (K) + kolom nilai Tajwid (T) tepat di sebelahnya.
+// punya kolom nomor juz + 2 kolom nama surat (merge) + kolom nilai Kelancaran (K) + kolom nilai
+// Tajwid (T) tepat di sebelahnya.
 const BLOK_NILAI_JUZ = [
-  { kolomJuz: 'A', kolomNilai: 'D', kolomTajwid: 'E' },
-  { kolomJuz: 'G', kolomNilai: 'J', kolomTajwid: 'K' },
-  { kolomJuz: 'M', kolomNilai: 'P', kolomTajwid: 'Q' },
+  { kolomJuz: 'A', kolomNamaSurat: ['B', 'C'], kolomNilai: 'D', kolomTajwid: 'E' },
+  { kolomJuz: 'G', kolomNamaSurat: ['H', 'I'], kolomNilai: 'J', kolomTajwid: 'K' },
+  { kolomJuz: 'M', kolomNamaSurat: ['N', 'O'], kolomNilai: 'P', kolomTajwid: 'Q' },
 ] as const
 const BARIS_TABEL_JUZ_MULAI = 14
 const BARIS_TABEL_JUZ_SELESAI = 65
 const SEL_NARASI_HAFALAN = ['M55', 'M56'] as const
+
+// "Nilai Rata-rata" (merge P51:P52 utk Kelancaran, Q51:Q52 utk Tajwid) pada template berisi FORMULA
+// (=AZ14/=AZ15) dengan hasil CACHE dari data santri sungguhan yang pernah dicetak sebelumnya --
+// ExcelJS tidak pernah menghitung ulang formula, jadi cache lama itu tetap tampil di pembaca yang
+// tidak memaksa recalculate meski sel sumbernya sudah dikosongkan. Ditimpa dengan angka statis hasil
+// hitung sendiri supaya benar di viewer mana pun, tidak bergantung pada fullCalcOnLoad.
+const SEL_RATA_KELANCARAN = 'P51'
+const SEL_RATA_TAJWID = 'Q51'
+
+// Highlight merah pada beberapa sheet template (2-11, dipakai ulang apa adanya utk kelas <=11
+// santri) ternyata peninggalan cetak santri SUNGGUHAN sebelumnya (fill FFFF0000 statis pada kolom
+// nama surat, dan font merah pada kolom nilai di sheet 7) -- bukan conditional formatting maupun
+// formula, dan tidak ada aturan/ambang batas yang bisa dipastikan dari sana. Karena itu highlight
+// ini dihapus total dan TIDAK dibangun ulang otomatis -- lebih aman kosong daripada salah warna.
+const KOLOM_RESET_WARNA_PER_BLOK = BLOK_NILAI_JUZ.map(blok => [...blok.kolomNamaSurat, blok.kolomNilai, blok.kolomTajwid])
+
+// Baris signature block (58-62) jauh di bawah header (baris 1-6), jadi ambang ini aman membedakan
+// gambar tanda tangan contoh (anchor row ~57.6) dari logo pesantren di header tanpa bergantung pada
+// imageId spesifik yang bisa berbeda antar file template.
+const BATAS_BARIS_GAMBAR_TANDA_TANGAN = 50
 
 // Blok tanda tangan pada tiap sheet individu: baris 58 = tempat/tanggal, baris 59 = label peran,
 // baris 62 = nama (merge M:Q pada semuanya). Template lama membawa teks statis "Sukoharjo, 5 Maret
@@ -117,25 +138,53 @@ function cloneWorksheet(wb: Workbook, source: Worksheet, newName: string) {
   return target
 }
 
+// Reset fill (ke tanpa-warna) dan warna font (ke warna tema default) satu sel -- HANYA warna yang
+// disentuh, border/ukuran/font family/bold tetap dari template apa adanya.
+function resetWarnaSel(ws: Worksheet, alamat: string) {
+  const cell = ws.getCell(alamat)
+  cell.fill = { type: 'pattern', pattern: 'none' }
+  if (cell.font) cell.font = { ...cell.font, color: { theme: 1 } }
+}
+
 // Template dipakai HANYA sebagai desain: seluruh nilai Kelancaran & Tajwid contoh bawaan template
 // (mis. "K"/"T" = 90/70 pada santri contoh) dibersihkan lebih dulu di setiap sheet individu, baru
 // nilai Kelancaran sungguhan (dari nilai_ujian) ditulis ulang di lokasi yang sama. Kolom Tajwid
 // sengaja tidak pernah ditulis ulang di tempat lain pada file ini -- guru mengisinya manual sebelum
 // print -- sehingga harus selalu kosong, bukan meninggalkan nilai contoh milik santri lain.
+// Highlight merah/font berwarna bawaan sheet 2-11 (peninggalan cetak santri sungguhan sebelumnya)
+// juga dibersihkan total di sini -- lihat catatan pada KOLOM_RESET_WARNA_PER_BLOK.
 function kosongkanNilaiContohSheet(ws: Worksheet) {
-  BLOK_NILAI_JUZ.forEach(({ kolomJuz, kolomNilai, kolomTajwid }) => {
+  BLOK_NILAI_JUZ.forEach(({ kolomJuz, kolomNilai, kolomTajwid }, blokIndex) => {
     for (let row = BARIS_TABEL_JUZ_MULAI; row <= BARIS_TABEL_JUZ_SELESAI; row += 1) {
       const nilaiSel = ws.getCell(`${kolomJuz}${row}`).value
       const juz = typeof nilaiSel === 'number' ? nilaiSel : (typeof nilaiSel === 'string' ? Number(nilaiSel) : NaN)
       if (!Number.isInteger(juz)) continue // bukan baris data juz (mis. label "Nilai Rata-rata", narasi, tanda tangan)
       ws.getCell(`${kolomNilai}${row}`).value = null
       ws.getCell(`${kolomTajwid}${row}`).value = null
+      KOLOM_RESET_WARNA_PER_BLOK[blokIndex].forEach(kolom => resetWarnaSel(ws, `${kolom}${row}`))
     }
   })
   // Narasi ringkasan hafalan contoh (mis. "Alhamdulillaah, ananda sudah menghafal dari QS. ...")
   // tidak bisa dihitung aman dari data sistem saat ini -- lebih baik dikosongkan daripada salah
   // menampilkan cakupan hafalan milik santri contoh di template.
   SEL_NARASI_HAFALAN.forEach(sel => { ws.getCell(sel).value = null })
+}
+
+type WorksheetDenganMedia = Worksheet & {
+  _media: Array<{ type: string, range?: { tl?: { row?: number } } }>
+}
+
+// Gambar tanda tangan contoh tertanam langsung di area tanda tangan pada SEMUA sheet template
+// (bukan formula/placeholder) -- kalau tidak dihapus, gambar milik satu orang ikut tercetak untuk
+// wali kelas mana pun. Logo header (baris atas) sengaja tidak disentuh -- hanya gambar yang jangkar
+// atasnya berada jauh di bawah header (area tanda tangan) yang dibuang.
+function hapusGambarTandaTanganContoh(ws: Worksheet) {
+  const wsMedia = ws as WorksheetDenganMedia
+  wsMedia._media = wsMedia._media.filter(media => {
+    if (media.type !== 'image') return true
+    const row = media.range?.tl?.row
+    return row === undefined || row <= BATAS_BARIS_GAMBAR_TANDA_TANGAN
+  })
 }
 
 function kosongkanBaris(ws: Worksheet, row: number, kolomTerakhir: string) {
@@ -198,6 +247,7 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     if (sheetLamaKe) ws.name = sheetName
 
     kosongkanNilaiContohSheet(ws)
+    hapusGambarTandaTanganContoh(ws)
 
     ws.getCell('C7').value = santri.nama
     ws.getCell('C8').value = null // Nomor Induk Santri (pondok) belum tersedia di data -- dikosongkan, bukan data palsu
@@ -217,6 +267,16 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
       const nilai = santri.juzNilai.get(juz)
       ws.getCell(`${lokasi.kolomNilai}${lokasi.row}`).value = (typeof nilai === 'number') ? nilai : null
     })
+
+    // "Nilai Rata-rata" dihitung langsung dari nilai juz yang benar-benar final (bukan lewat formula
+    // template AZ14/AZ15 yang cache-nya bisa basi -- lihat catatan SEL_RATA_KELANCARAN). Tajwid rata-
+    // rata selalu kosong karena kolom Tajwid itu sendiri memang tidak pernah diisi sistem.
+    const nilaiJuzFinal = [...santri.juzNilai.values()].filter((n): n is number => typeof n === 'number')
+    const rataKelancaran = nilaiJuzFinal.length > 0
+      ? Math.round((nilaiJuzFinal.reduce((sum, n) => sum + n, 0) / nilaiJuzFinal.length) * 10) / 10
+      : null
+    ws.getCell(SEL_RATA_KELANCARAN).value = rataKelancaran
+    ws.getCell(SEL_RATA_TAJWID).value = null
   })
 
   // Hapus sheet template individu yang tidak terpakai (santri lebih sedikit dari kapasitas template).
