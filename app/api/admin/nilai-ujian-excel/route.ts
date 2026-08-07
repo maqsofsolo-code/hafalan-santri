@@ -42,19 +42,22 @@ function createAdminClient() {
 async function authorizeAdmin(request: Request) {
   const authorization = request.headers.get('authorization')
   const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-  if (!bearerMatch) return { response: responseError('Sesi login tidak valid atau sudah berakhir', 401) }
+  if (!bearerMatch) return { response: responseError('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.', 401) }
 
   const accessToken = bearerMatch[1]
   const supabaseAuthenticated = createAuthenticatedClient(accessToken)
   const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
-  if (userError || !userData.user) return { response: responseError('Sesi login tidak valid atau sudah berakhir', 401) }
+  if (userError || !userData.user) return { response: responseError('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.', 401) }
 
   const { data: profile, error: profileError } = await supabaseAuthenticated
     .from('profiles')
     .select('role')
     .eq('id', userData.user.id)
     .maybeSingle()
-  if (profileError || profile?.role !== 'admin') return { response: responseError('Akses ditolak', 403) }
+  // Bedakan "gagal memverifikasi" (masalah server/koneksi) dari "terverifikasi bukan admin", sama
+  // seperti app/api/admin/nilai-ujian/route.ts.
+  if (profileError) return { response: responseError('Gagal memverifikasi akses. Coba lagi.', 500) }
+  if (profile?.role !== 'admin') return { response: responseError('Akun ini tidak memiliki akses Admin.', 403) }
 
   return { adminClient: createAdminClient() }
 }
@@ -87,14 +90,16 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const periode = url.searchParams.get('periode') || ''
-  const tipe = url.searchParams.get('tipe') || ''
   const jenjang = url.searchParams.get('jenjang') || ''
   const kelasText = url.searchParams.get('kelas') || ''
   const kelompok = url.searchParams.get('kelompok') || ''
   const kelas = Number(kelasText)
 
   if (!periode) return responseError('Periode wajib dipilih', 400)
-  if (tipe !== 'mid_semester' && tipe !== 'semester') return responseError('Tipe ujian wajib dipilih', 400)
+  // Raport Hifzh resmi selalu mewakili satu periode kalender yang jelas tipenya (mid_semester atau
+  // semester) -- "Tanpa Periode Kalender" hanya untuk audit data historis di layar rekap, bukan
+  // untuk dicetak sebagai raport resmi.
+  if (periode === 'tanpa-periode') return responseError('Raport Hifzh resmi tidak dapat diunduh untuk data Tanpa Periode Kalender', 400)
   if (!JENJANG_VALID.has(jenjang as Jenjang)) return responseError('Jenjang wajib dipilih', 400)
   if (!Number.isInteger(kelas) || kelas < 1) return responseError('Kelas wajib dipilih', 400)
   if (!KELOMPOK_VALID.has(kelompok as Kelompok)) return responseError('Kelompok wajib dipilih', 400)
@@ -102,17 +107,21 @@ export async function GET(request: Request) {
   const jenjangFinal = jenjang as Jenjang
   const kelompokFinal = kelompok as Kelompok
 
-  let periodeInfo: { id: string, nama: string, tanggal_mulai: string | null, semester: number | null } | null = null
-  if (periode !== 'tanpa-periode') {
-    const { data: kalender, error: kalenderError } = await adminClient
-      .from('kalender_akademik')
-      .select('id, nama, tanggal_mulai, semester')
-      .eq('id', periode)
-      .maybeSingle()
-    if (kalenderError) return responseError('Gagal memuat data periode', 500)
-    if (!kalender) return responseError('Periode tidak ditemukan', 404)
-    periodeInfo = kalender
+  // Tipe ujian tidak lagi diterima dari frontend -- diturunkan di server dari kalender_akademik
+  // yang dipilih, supaya tidak mungkin lagi terjadi kombinasi kontradiktif seperti "Semester Genap"
+  // dipasangkan dengan tipe "Mid Semester".
+  const { data: kalender, error: kalenderError } = await adminClient
+    .from('kalender_akademik')
+    .select('id, nama, tipe, tanggal_mulai, semester')
+    .eq('id', periode)
+    .maybeSingle()
+  if (kalenderError) return responseError('Gagal memuat data periode', 500)
+  if (!kalender) return responseError('Periode tidak ditemukan', 404)
+  if (kalender.tipe !== 'mid_semester' && kalender.tipe !== 'semester') {
+    return responseError('Periode ini bukan periode ujian (mid semester/semester)', 400)
   }
+  const periodeInfo = kalender
+  const tipe = kalender.tipe
 
   let santriQuery = adminClient
     .from('santri')
@@ -142,13 +151,13 @@ export async function GET(request: Request) {
   if (masterSegments.length !== 151) return responseError('Master segmen ujian belum lengkap', 500)
 
   const santriIds = santriList.map(item => item.id)
-  let nilaiQuery = adminClient
+  const nilaiQuery = adminClient
     .from('nilai_ujian')
     .select('id, santri_id, segment_ujian_id, tanggal, created_at, nilai_akhir')
     .in('santri_id', santriIds)
     .not('segment_ujian_id', 'is', null)
     .eq('tipe', tipe)
-  nilaiQuery = periode === 'tanpa-periode' ? nilaiQuery.is('kalender_id', null) : nilaiQuery.eq('kalender_id', periode)
+    .eq('kalender_id', periode)
 
   const { data: nilaiRows, error: nilaiError } = await nilaiQuery
   if (nilaiError) return responseError('Gagal memuat nilai ujian', 500)

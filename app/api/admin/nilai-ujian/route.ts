@@ -40,19 +40,23 @@ function createAdminClient() {
 async function authorizeAdmin(request: Request) {
   const authorization = request.headers.get('authorization')
   const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-  if (!bearerMatch) return { response: responseError('Sesi login tidak valid atau sudah berakhir', 401) }
+  if (!bearerMatch) return { response: responseError('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.', 401) }
 
   const accessToken = bearerMatch[1]
   const supabaseAuthenticated = createAuthenticatedClient(accessToken)
   const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
-  if (userError || !userData.user) return { response: responseError('Sesi login tidak valid atau sudah berakhir', 401) }
+  if (userError || !userData.user) return { response: responseError('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.', 401) }
 
   const { data: profile, error: profileError } = await supabaseAuthenticated
     .from('profiles')
     .select('role')
     .eq('id', userData.user.id)
     .maybeSingle()
-  if (profileError || profile?.role !== 'admin') return { response: responseError('Akses ditolak', 403) }
+  // Bedakan "gagal memverifikasi" (masalah server/koneksi) dari "terverifikasi bukan admin" --
+  // sebelumnya keduanya sama-sama dilaporkan sebagai 403 "Akses ditolak", yang menyesatkan admin
+  // sungguhan saat penyebabnya sebenarnya galat sementara pada query profiles, bukan izin akses.
+  if (profileError) return { response: responseError('Gagal memverifikasi akses. Coba lagi.', 500) }
+  if (profile?.role !== 'admin') return { response: responseError('Akun ini tidak memiliki akses Admin.', 403) }
 
   return { userId: userData.user.id, adminClient: createAdminClient() }
 }
@@ -106,11 +110,13 @@ export async function GET(request: Request) {
     if (santriError) return responseError('Gagal memuat data santri', 500)
     if (!santriData) return responseError('Santri tidak ditemukan', 404)
 
-    // Periode/tipe di-scope sama seperti mode daftar (Tingkat 1) supaya nilai aktif dan status
-    // juz pada drill-down tidak pernah mencampur periode lain, konsisten dengan filter yang
-    // dipakai admin untuk sampai ke santri ini.
+    // Periode di-scope sama seperti mode daftar (Tingkat 1) supaya nilai aktif dan status juz
+    // pada drill-down tidak pernah mencampur periode lain, konsisten dengan filter yang dipakai
+    // admin untuk sampai ke santri ini. Tipe tidak lagi diterima sebagai filter terpisah -- setiap
+    // kalender_id sudah punya tepat satu tipe (lihat kolom kalender_akademik.tipe), jadi menyaring
+    // berdasarkan kalender_id saja sudah cukup dan tidak mungkin menghasilkan kombinasi kontradiktif
+    // seperti "Semester Genap" + "Mid Semester".
     const periodeDetail = url.searchParams.get('periode')
-    const tipeDetail = url.searchParams.get('tipe')
     let nilaiDetailQuery = adminClient
       .from('nilai_ujian')
       .select(`
@@ -128,7 +134,6 @@ export async function GET(request: Request) {
         ? nilaiDetailQuery.is('kalender_id', null)
         : nilaiDetailQuery.eq('kalender_id', periodeDetail)
     }
-    if (tipeDetail) nilaiDetailQuery = nilaiDetailQuery.eq('tipe', tipeDetail)
 
     const { data: nilaiRows, error: nilaiError } = await nilaiDetailQuery
       .order('tanggal', { ascending: false })
@@ -158,7 +163,6 @@ export async function GET(request: Request) {
   const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1)
   const pageSize = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('pageSize') || '20', 10) || 20))
   const periode = url.searchParams.get('periode') || 'semua'
-  const tipe = url.searchParams.get('tipe') || 'semua'
   const jenjang = url.searchParams.get('jenjang') || 'semua'
   const kelasParam = url.searchParams.get('kelas') || 'semua'
   const kelompok = url.searchParams.get('kelompok') || 'semua'
@@ -202,9 +206,10 @@ export async function GET(request: Request) {
       .select('id, santri_id, segment_ujian_id, tanggal, created_at, nilai_akhir, kalender_id, tipe')
       .in('santri_id', santriIds)
       .not('segment_ujian_id', 'is', null)
+    // Tidak lagi menerima filter tipe terpisah -- satu kalender_id sudah selalu berkorespondensi
+    // dengan tepat satu tipe ujian, jadi menyaring dari kalender_id saja sudah cukup.
     if (periode === 'tanpa-periode') nilaiQuery = nilaiQuery.is('kalender_id', null)
     else if (periode !== 'semua') nilaiQuery = nilaiQuery.eq('kalender_id', periode)
-    if (tipe !== 'semua') nilaiQuery = nilaiQuery.eq('tipe', tipe)
 
     const { data: nilaiRows, error: nilaiError } = await nilaiQuery
     if (nilaiError) return responseError('Gagal memuat nilai ujian', 500)
@@ -222,6 +227,25 @@ export async function GET(request: Request) {
       if (!nilaiTerbaruPerSantriSegmen.has(row.santri_id)) nilaiTerbaruPerSantriSegmen.set(row.santri_id, new Map())
       nilaiTerbaruPerSantriSegmen.get(row.santri_id)!.set(row.segment_ujian_id, Number(row.nilai_akhir))
     })
+  }
+
+  // Periode lama (mis. Mid Semester 1 2026/2027, sebelum sistem juz/segmen ada) hanya berisi nilai
+  // "format lama" (segment_ujian_id NULL) yang tidak ikut dihitung ke progres juz di atas. Tanpa
+  // penanda ini, santri yang sebenarnya sudah diuji akan salah tertampil sebagai "Belum ada nilai
+  // ujian" hanya karena datanya berformat lama -- padahal tetap bisa dilihat lewat drill-down.
+  const santriDenganFormatLama = new Set<string>()
+  if (santriIds.length > 0) {
+    let formatLamaQuery = adminClient
+      .from('nilai_ujian')
+      .select('santri_id')
+      .in('santri_id', santriIds)
+      .is('segment_ujian_id', null)
+    if (periode === 'tanpa-periode') formatLamaQuery = formatLamaQuery.is('kalender_id', null)
+    else if (periode !== 'semua') formatLamaQuery = formatLamaQuery.eq('kalender_id', periode)
+
+    const { data: formatLamaRows, error: formatLamaError } = await formatLamaQuery
+    if (formatLamaError) return responseError('Gagal memuat nilai ujian format lama', 500)
+    ;(formatLamaRows || []).forEach(row => santriDenganFormatLama.add(row.santri_id))
   }
 
   const data = santriList.map(santri => {
@@ -245,6 +269,7 @@ export async function GET(request: Request) {
       juzDimulai,
       juzSelesai,
       rataUmum,
+      adaFormatLama: santriDenganFormatLama.has(santri.id),
     }
   })
 
@@ -252,7 +277,7 @@ export async function GET(request: Request) {
     .from('kalender_akademik')
     .select('id, nama, tipe')
     .in('tipe', ['mid_semester', 'semester'])
-    .order('tanggal_mulai', { ascending: false })
+    .order('tanggal_mulai', { ascending: true })
 
   return NextResponse.json({
     success: true,

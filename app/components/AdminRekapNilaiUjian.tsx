@@ -15,6 +15,7 @@ type SantriRingkas = {
   juzDimulai: number
   juzSelesai: number
   rataUmum: number | null
+  adaFormatLama: boolean
 }
 
 type PeriodeOption = { id: string, nama: string, tipe: string | null }
@@ -173,9 +174,11 @@ async function getAccessToken() {
 export default function AdminRekapNilaiUjian() {
   // Satu-satunya kelompok filter (dipakai bersama untuk daftar/rekap maupun download) --
   // sebelumnya ada dua state independen (dl* untuk download, filter* untuk daftar) yang terlihat
-  // identik tapi tidak saling terhubung, sumber kebingungan admin.
+  // identik tapi tidak saling terhubung, sumber kebingungan admin. Tidak ada lagi filter Tipe Ujian
+  // terpisah -- kalender_akademik sudah punya kolom tipe, jadi begitu Periode dipilih, tipe otomatis
+  // ikut (diturunkan di server dari kalender_id), sehingga kombinasi kontradiktif seperti
+  // "Semester Genap" + "Mid Semester" tidak mungkin lagi terjadi.
   const [filterPeriode, setFilterPeriode] = useState('')
-  const [filterTipe, setFilterTipe] = useState('')
   const [filterJenjang, setFilterJenjang] = useState('')
   const [filterKelas, setFilterKelas] = useState('')
   const [filterKelompok, setFilterKelompok] = useState('')
@@ -183,7 +186,33 @@ export default function AdminRekapNilaiUjian() {
   const [page, setPage] = useState(1)
   const pageSize = 20
 
-  const filterLengkap = Boolean(filterPeriode && filterTipe && filterJenjang && filterKelas && filterKelompok)
+  const filterLengkap = Boolean(filterPeriode && filterJenjang && filterKelas && filterKelompok)
+  const periodeTanpaKalender = filterPeriode === 'tanpa-periode'
+
+  // Alur dependen: pilih Periode -> Jenjang -> Kelas -> Kelompok. Mengganti sebuah filter mereset
+  // filter-filter di bawahnya supaya kombinasi lama yang sudah tidak relevan tidak ikut terbawa.
+  const pilihPeriode = (value: string) => {
+    setFilterPeriode(value)
+    setFilterJenjang('')
+    setFilterKelas('')
+    setFilterKelompok('')
+    setPage(1)
+  }
+  const pilihJenjang = (value: string) => {
+    setFilterJenjang(value)
+    setFilterKelas('')
+    setFilterKelompok('')
+    setPage(1)
+  }
+  const pilihKelas = (value: string) => {
+    setFilterKelas(value)
+    setFilterKelompok('')
+    setPage(1)
+  }
+  const pilihKelompok = (value: string) => {
+    setFilterKelompok(value)
+    setPage(1)
+  }
 
   const [santriList, setSantriList] = useState<SantriRingkas[]>([])
   const [total, setTotal] = useState(0)
@@ -218,7 +247,9 @@ export default function AdminRekapNilaiUjian() {
   const [refreshTick, setRefreshTick] = useState(0)
 
   // Periode ditampilkan sejak awal (sebelum filter lain lengkap) supaya admin bisa memulai alur
-  // "Pilih Periode -> Jenjang -> Kelas -> Kelompok" dari dropdown pertama.
+  // "Pilih Periode -> Jenjang -> Kelas -> Kelompok" dari dropdown pertama. Diurutkan naik berdasar
+  // tanggal_mulai supaya urutannya sesuai tahun ajaran: Mid Semester 1, Semester Gasal,
+  // Mid Semester 2, Semester Genap.
   useEffect(() => {
     let dibatalkan = false
     async function muatPeriode() {
@@ -226,7 +257,7 @@ export default function AdminRekapNilaiUjian() {
         .from('kalender_akademik')
         .select('id, nama, tipe')
         .in('tipe', ['mid_semester', 'semester'])
-        .order('tanggal_mulai', { ascending: false })
+        .order('tanggal_mulai', { ascending: true })
       if (!dibatalkan) setPeriodeOptions(data || [])
     }
     muatPeriode()
@@ -257,7 +288,6 @@ export default function AdminRekapNilaiUjian() {
           page: String(page),
           pageSize: String(pageSize),
           periode: filterPeriode,
-          tipe: filterTipe,
           jenjang: filterJenjang,
           kelas: filterKelas,
           kelompok: filterKelompok,
@@ -269,22 +299,27 @@ export default function AdminRekapNilaiUjian() {
         })
         const result = await response.json().catch(() => ({}))
         if (!response.ok) {
-          if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir.')
-          if (response.status === 403) throw new Error('Akses ditolak. Hanya admin yang dapat membuka rekap ini.')
+          if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+          if (response.status === 403) throw new Error('Akun ini tidak memiliki akses Admin.')
           throw new Error(result.error || 'Gagal memuat daftar santri.')
         }
         if (dibatalkan) return
         setSantriList(Array.isArray(result.data) ? result.data : [])
         setTotal(typeof result.total === 'number' ? result.total : 0)
       } catch (error) {
-        if (!dibatalkan) setErrorList(error instanceof Error ? error.message : 'Gagal memuat daftar santri.')
+        if (dibatalkan) return
+        // Kosongkan daftar lama saat error supaya tidak ada sisa data periode sebelumnya yang
+        // tercampur dengan pesan error, dan supaya "N santri ditemukan" tidak ikut tampil.
+        setSantriList([])
+        setTotal(0)
+        setErrorList(error instanceof Error ? error.message : 'Gagal memuat daftar santri.')
       } finally {
         if (!dibatalkan) setLoadingList(false)
       }
     }
     muatDaftar()
     return () => { dibatalkan = true }
-  }, [filterLengkap, page, filterPeriode, filterTipe, filterJenjang, filterKelas, filterKelompok, search, refreshTick])
+  }, [filterLengkap, page, filterPeriode, filterJenjang, filterKelas, filterKelompok, search, refreshTick])
 
   const muatUlangDaftar = () => setRefreshTick(tick => tick + 1)
 
@@ -294,13 +329,15 @@ export default function AdminRekapNilaiUjian() {
     try {
       const accessToken = await getAccessToken()
       if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-      const params = new URLSearchParams({ santri_id: santriId, periode: filterPeriode, tipe: filterTipe })
+      const params = new URLSearchParams({ santri_id: santriId, periode: filterPeriode })
       const response = await fetch(`/api/admin/nilai-ujian?${params.toString()}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: 'no-store',
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok) {
+        if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+        if (response.status === 403) throw new Error('Akun ini tidak memiliki akses Admin.')
         throw new Error(result.error || 'Gagal memuat detail santri.')
       }
       setDetailSantri(result.santri || null)
@@ -312,7 +349,7 @@ export default function AdminRekapNilaiUjian() {
     } finally {
       setLoadingDetail(false)
     }
-  }, [filterPeriode, filterTipe])
+  }, [filterPeriode])
 
   const pilihSantri = (id: string) => {
     setSelectedSantriId(id)
@@ -461,17 +498,19 @@ export default function AdminRekapNilaiUjian() {
   }
 
   const downloadRaport = async () => {
-    if (!filterLengkap || downloading) return
+    if (!filterLengkap || periodeTanpaKalender || downloading) return
     setDownloading(true)
     setErrorDownload('')
     try {
       const accessToken = await getAccessToken()
       if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-      const params = new URLSearchParams({ periode: filterPeriode, tipe: filterTipe, jenjang: filterJenjang, kelas: filterKelas, kelompok: filterKelompok })
+      const params = new URLSearchParams({ periode: filterPeriode, jenjang: filterJenjang, kelas: filterKelas, kelompok: filterKelompok })
       const response = await fetch(`/api/admin/nilai-ujian-excel?${params.toString()}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) {
+        if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+        if (response.status === 403) throw new Error('Akun ini tidak memiliki akses Admin.')
         const result = await response.json().catch(() => ({}))
         throw new Error(result.error || 'Gagal mengunduh raport.')
       }
@@ -507,30 +546,24 @@ export default function AdminRekapNilaiUjian() {
         </div>
       </div>
 
-      {/* Satu-satunya kelompok filter, dipakai bersama oleh rekap dan download */}
+      {/* Satu-satunya kelompok filter, dipakai bersama oleh rekap dan download. Alur: Periode ->
+          Jenjang -> Kelas -> Kelompok (dependen, tiap langkah nonaktif sampai langkah sebelumnya
+          dipilih). Tidak ada filter Tipe Ujian -- otomatis mengikuti tipe periode yang dipilih. */}
       <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
         <h3 className="font-bold text-gray-800 mb-1">Rekap Nilai Ujian</h3>
-        <p className="text-xs text-gray-500 mb-3">Pilih periode, tipe ujian, jenjang, kelas, dan kelompok untuk melihat rekap sekaligus mengunduh Raport Hifzh.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <p className="text-xs text-gray-500 mb-3">Pilih periode, jenjang, kelas, dan kelompok untuk melihat rekap sekaligus mengunduh Raport Hifzh.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Periode</label>
-            <select value={filterPeriode} onChange={e => { setFilterPeriode(e.target.value); setPage(1) }} className={inputClass}>
+            <select value={filterPeriode} onChange={e => pilihPeriode(e.target.value)} className={inputClass}>
               <option value="">-- Pilih --</option>
               {periodeOptions.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
               <option value="tanpa-periode">Tanpa Periode Kalender</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Tipe Ujian</label>
-            <select value={filterTipe} onChange={e => { setFilterTipe(e.target.value); setPage(1) }} className={inputClass}>
-              <option value="">-- Pilih --</option>
-              <option value="mid_semester">Mid Semester</option>
-              <option value="semester">Semester</option>
-            </select>
-          </div>
-          <div>
             <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
-            <select value={filterJenjang} onChange={e => { setFilterJenjang(e.target.value); setFilterKelas(''); setPage(1) }} className={inputClass}>
+            <select value={filterJenjang} onChange={e => pilihJenjang(e.target.value)} className={inputClass} disabled={!filterPeriode}>
               <option value="">-- Pilih --</option>
               <option value="ula">Ula</option>
               <option value="wustha">Wustha</option>
@@ -539,14 +572,14 @@ export default function AdminRekapNilaiUjian() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Kelas</label>
-            <select value={filterKelas} onChange={e => { setFilterKelas(e.target.value); setPage(1) }} className={inputClass} disabled={!filterJenjang}>
+            <select value={filterKelas} onChange={e => pilihKelas(e.target.value)} className={inputClass} disabled={!filterJenjang}>
               <option value="">-- Pilih --</option>
               {getKelasOptions(filterJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
-            <select value={filterKelompok} onChange={e => { setFilterKelompok(e.target.value); setPage(1) }} className={inputClass}>
+            <select value={filterKelompok} onChange={e => pilihKelompok(e.target.value)} className={inputClass} disabled={!filterKelas}>
               <option value="">-- Pilih --</option>
               <option value="banin">Banin</option>
               <option value="banat">Banat</option>
@@ -557,13 +590,19 @@ export default function AdminRekapNilaiUjian() {
 
         {filterLengkap && (
           <div className="mt-3">
-            <label className="block text-xs text-gray-500 mb-1">Cari Santri</label>
+            <label className="block text-xs text-gray-500 mb-1">Cari Santri (opsional)</label>
             <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="Cari nama santri..." className={inputClass} />
           </div>
         )}
 
+        {filterLengkap && periodeTanpaKalender && (
+          <div className="mt-3 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-2.5 rounded-xl text-xs">
+            &quot;Tanpa Periode Kalender&quot; hanya untuk audit data historis. Download Raport Hifzh resmi tidak tersedia untuk pilihan ini -- pilih salah satu periode kalender untuk mengunduh.
+          </div>
+        )}
+
         {errorDownload && <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm">{errorDownload}</div>}
-        {filterLengkap && (
+        {filterLengkap && !periodeTanpaKalender && (
           <button type="button" onClick={downloadRaport} disabled={downloading}
             className="w-full mt-4 py-3.5 rounded-xl text-white font-bold disabled:opacity-40 shadow"
             style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
@@ -578,14 +617,19 @@ export default function AdminRekapNilaiUjian() {
             <div className="bg-white rounded-2xl shadow border border-gray-100 p-10 text-center text-gray-400 text-sm">
               Pilih periode, jenjang, kelas, dan kelompok untuk melihat rekap nilai.
             </div>
+          ) : errorList ? (
+          <>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm flex flex-wrap items-center justify-between gap-2">
+            <span>{errorList}</span>
+            <button type="button" onClick={muatUlangDaftar} disabled={loadingList} className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-xs font-semibold disabled:opacity-50 flex-shrink-0">{loadingList ? 'Mencoba lagi...' : 'Coba Lagi'}</button>
+          </div>
+          </>
           ) : (
           <>
           <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-gray-500">{total} santri ditemukan</p>
             <button type="button" onClick={muatUlangDaftar} disabled={loadingList} className="px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-xs font-semibold disabled:opacity-50">{loadingList ? 'Memuat...' : 'Muat Ulang'}</button>
           </div>
-
-          {errorList && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm">{errorList}</div>}
 
           {loadingList && santriList.length === 0 ? (
             <div className="bg-white rounded-2xl shadow border border-gray-100 p-10 text-center text-gray-400">Memuat daftar santri...</div>
@@ -596,12 +640,22 @@ export default function AdminRekapNilaiUjian() {
                   className="text-left bg-white rounded-2xl shadow border border-gray-100 p-4 hover:border-blue-300 hover:shadow-md transition">
                   <div className="font-bold text-gray-800">{santri.nama}</div>
                   <div className="text-xs text-gray-500">{labelJenjang(santri.jenjang)} · {labelKelas(santri)}</div>
-                  <div className="mt-2 flex gap-4 text-sm">
-                    <div><span className="font-bold text-blue-700">{santri.juzDimulai}</span> <span className="text-gray-400 text-xs">juz dimulai</span></div>
-                    <div><span className="font-bold text-green-700">{santri.juzSelesai}</span> <span className="text-gray-400 text-xs">juz selesai</span></div>
-                  </div>
-                  {santri.rataUmum !== null && (
-                    <div className="mt-1 text-xs text-gray-500">Rata-rata: <span className="font-semibold text-gray-700">{formatNilai(santri.rataUmum)} / {nilaiRapor(santri.rataUmum)}</span></div>
+                  {santri.juzDimulai === 0 && santri.juzSelesai === 0 ? (
+                    santri.adaFormatLama ? (
+                      <div className="mt-2 text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 inline-block">Ada nilai (format lama) · lihat detail</div>
+                    ) : (
+                      <div className="mt-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500 inline-block">Belum ada nilai ujian</div>
+                    )
+                  ) : (
+                    <>
+                      <div className="mt-2 flex gap-4 text-sm">
+                        <div><span className="font-bold text-blue-700">{santri.juzDimulai}</span> <span className="text-gray-400 text-xs">juz dimulai</span></div>
+                        <div><span className="font-bold text-green-700">{santri.juzSelesai}</span> <span className="text-gray-400 text-xs">juz selesai</span></div>
+                      </div>
+                      {santri.rataUmum !== null && (
+                        <div className="mt-1 text-xs text-gray-500">Rata-rata: <span className="font-semibold text-gray-700">{formatNilai(santri.rataUmum)} / {nilaiRapor(santri.rataUmum)}</span></div>
+                      )}
+                    </>
                   )}
                   <div className="mt-2 text-xs font-semibold text-blue-700">Lihat Rekap →</div>
                 </button>
