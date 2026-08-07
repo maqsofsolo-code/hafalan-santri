@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { authorize } from '../../lib/serverAuth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -48,6 +49,9 @@ function parseTanggal(val: any): string | null {
 }
 
 export async function POST(request: Request) {
+  const auth = await authorize(request, ['admin'])
+  if (auth.response) return auth.response
+
   const formData = await request.formData()
   const file = formData.get('file') as File
   if (!file) return NextResponse.json({ error: 'File tidak ditemukan' }, { status: 400 })

@@ -802,6 +802,34 @@ const fetchPeriode = async () => {
       setDownloadLoading(false)
     }
   }
+  // Laporan HTML print (rapot-pdf, laporan-peringkat-pdf, laporan-bulanan-pdf) sekarang butuh
+  // autentikasi -- window.open()/<a href> polos tidak mengirim Authorization header, jadi
+  // di-fetch dulu dengan Bearer token lalu hasilnya dibuka lewat Blob URL di tab baru.
+  const bukaLaporanHTML = async (url: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      alert('Sesi login sudah berakhir. Silakan login kembali.')
+      return
+    }
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+    if (!response.ok) {
+      if (response.status === 401) { alert('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.'); return }
+      if (response.status === 403) { alert('Anda tidak memiliki akses untuk laporan ini.'); return }
+      let message = 'Gagal menyiapkan laporan.'
+      try {
+        const errorData = await response.json()
+        if (typeof errorData?.error === 'string') message = errorData.error
+      } catch {
+        // Gunakan pesan aman jika response server bukan JSON.
+      }
+      alert(message)
+      return
+    }
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank')
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+  }
   const handleDownloadMonitoring = async (jenisLaporan: 'rosib' | 'belum-diinput') => {
     if (!monitoringDownloadTanggal || !monitoringDownloadJenjang || !monitoringDownloadKelas || !monitoringDownloadKelompok) {
       setMonitoringDownloadMsg('Lengkapi tanggal, jenjang, kelas, dan kelompok terlebih dahulu.')
@@ -887,8 +915,39 @@ const fetchPeriode = async () => {
   const url = format === 'excel'
     ? `/api/laporan-bulanan-excel?${params}`
     : `/api/laporan-bulanan-pdf?${params}`
-  window.open(url, '_blank')
-  setTimeout(() => setLaporanLoading(''), 3000)
+
+  if (format === 'pdf') {
+    await bukaLaporanHTML(url)
+    setLaporanLoading('')
+    return
+  }
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) {
+    alert('Sesi login sudah berakhir. Silakan login kembali.')
+    setLaporanLoading('')
+    return
+  }
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+  if (!response.ok) {
+    if (response.status === 401) alert('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+    else if (response.status === 403) alert('Anda tidak memiliki akses untuk laporan ini.')
+    else alert('Gagal menyiapkan laporan.')
+    setLaporanLoading('')
+    return
+  }
+  const contentDisposition = response.headers.get('Content-Disposition')
+  const filename = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || `laporan-bulanan-${laporanBulan}.xlsx`
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(objectUrl)
+  setTimeout(() => setLaporanLoading(''), 1000)
 }
 
 // ===== PERIODE RAPOT =====
@@ -1175,18 +1234,32 @@ const fetchPeriode = async () => {
   const handleImportExcel = async (e: any) => {
     const file = e.target.files[0]; if (!file) return
     setImportLoading(true); setImportMsg('')
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      setImportMsg('Sesi login sudah berakhir. Silakan login kembali.'); setImportLoading(false); return
+    }
     const formData = new FormData(); formData.append('file', file)
-    const res = await fetch('/api/import-excel', { method: 'POST', body: formData })
+    const res = await fetch('/api/import-excel', {
+      method: 'POST', body: formData,
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
     const result = await res.json()
-    setImportMsg(result.message); setImportLoading(false); fetchData()
+    setImportMsg(result.message || result.error); setImportLoading(false); fetchData()
   }
 const handleImportWali = async (e: any) => {
     const file = e.target.files[0]; if (!file) return
     setImportWaliLoading(true); setImportWaliMsg('')
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      setImportWaliMsg('Sesi login sudah berakhir. Silakan login kembali.'); setImportWaliLoading(false); return
+    }
     const formData = new FormData(); formData.append('file', file)
-    const res = await fetch('/api/import-wali', { method: 'POST', body: formData })
+    const res = await fetch('/api/import-wali', {
+      method: 'POST', body: formData,
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
     const result = await res.json()
-    let msg = result.message
+    let msg = result.message || result.error
     if (result.detail && result.detail.length > 0) {
       msg += '\n\nDetail:\n' + result.detail.join('\n')
     }
@@ -2425,30 +2498,27 @@ const AlumniList = () => {
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <p className="text-xs font-semibold text-gray-600 mb-2">📄 Download PDF Peringkat 1–3 Per Kelas:</p>
                     <div className="flex flex-wrap gap-2">
-                      <a
-                        href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=total`}
-                        target="_blank" rel="noopener noreferrer"
+                      <button
+                        onClick={() => bukaLaporanHTML(`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=total`)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
                         style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}
                       >
                         🏆 Total Hafalan
-                      </a>
-                      <a
-                        href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=konsistensi`}
-                        target="_blank" rel="noopener noreferrer"
+                      </button>
+                      <button
+                        onClick={() => bukaLaporanHTML(`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=konsistensi`)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
                         style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}
                       >
                         📅 Konsistensi Setor
-                      </a>
-                      <a
-                        href={`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=semangat`}
-                        target="_blank" rel="noopener noreferrer"
+                      </button>
+                      <button
+                        onClick={() => bukaLaporanHTML(`/api/laporan-peringkat-pdf?jenjang=${filterJenjang}&jenis_kelas=${filterJenisKelas}&top=3&tipe=semangat`)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow"
                         style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}
                       >
                         🔥 Semangat Hafalan
-                      </a>
+                      </button>
                     </div>
                     <p className="text-xs text-gray-400 mt-1.5">
                       Pilih Jenjang + Jenis Kelas terlebih dahulu. Setelah terbuka, klik &quot;Cetak / Simpan PDF&quot;.
@@ -3356,7 +3426,7 @@ const AlumniList = () => {
                     <button
                       onClick={() => {
                         if (!rapotPeriodeId || !rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
-                        window.open(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`, '_blank')
+                        bukaLaporanHTML(`/api/rapot-pdf?periode_id=${rapotPeriodeId}&jenjang=${rapotJenjang}&kelas=${rapotKelas}`)
                       }}
                       disabled={!rapotPeriodeId || !rapotKelas}
                       className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
@@ -3449,7 +3519,7 @@ const AlumniList = () => {
                             jenjang: rapotDownloadJenjang,
                             kelas: rapotDownloadKelas || rapotDownloadSantri.kelas_num?.toString() || '',
                           })
-                          window.open(`/api/rapot-pdf?${params}`, '_blank')
+                          bukaLaporanHTML(`/api/rapot-pdf?${params}`)
                         }}
                         disabled={!rapotPeriodeId || !rapotDownloadSantri}
                         className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
@@ -3460,7 +3530,7 @@ const AlumniList = () => {
                       <button
                         onClick={() => {
                           if (!rapotDownloadSantri) { alert('Pilih santri dulu!'); return }
-                          window.open(`/api/rapot-pdf?santri_id=${rapotDownloadSantri.id}&mode=lengkap`, '_blank')
+                          bukaLaporanHTML(`/api/rapot-pdf?santri_id=${rapotDownloadSantri.id}&mode=lengkap`)
                         }}
                         disabled={!rapotDownloadSantri}
                         className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"

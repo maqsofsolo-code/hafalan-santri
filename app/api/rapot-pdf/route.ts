@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { authorize } from '../../lib/serverAuth'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -407,6 +408,9 @@ function generateHalaman(
 }
 
 export async function GET(request: Request) {
+  const auth = await authorize(request, ['admin'])
+  if (auth.response) return auth.response
+
   const { searchParams } = new URL(request.url)
   const periodeId = searchParams.get('periode_id')
   const jenjang = searchParams.get('jenjang') || 'ula'

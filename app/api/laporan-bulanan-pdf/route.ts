@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authorize } from '../../lib/serverAuth'
 
 export async function GET(req: NextRequest) {
+  const auth = await authorize(req, ['admin', 'kepsek'])
+  if (auth.response) return auth.response
+
   const { searchParams } = new URL(req.url)
   const bulan = searchParams.get('bulan')
   const jenjang = searchParams.get('jenjang') || 'semua'

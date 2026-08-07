@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
+import { authorize } from '../../lib/serverAuth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,6 +9,9 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(request: Request) {
+  const auth = await authorize(request, ['admin'])
+  if (auth.response) return auth.response
+
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File

@@ -397,6 +397,9 @@ setRankingSemangat(semangatList)
     setMonitoringTanggal(tgl)
     fetchMonitoringTanggal(tgl)
   }
+// Laporan bulanan sekarang butuh autentikasi -- window.open() polos tidak mengirim Authorization
+// header, jadi di-fetch dulu dengan Bearer token: PDF dibuka lewat Blob URL di tab baru, Excel
+// diunduh langsung.
 const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
   setLaporanLoading(format)
   const params = new URLSearchParams({
@@ -408,8 +411,43 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
   const url = format === 'excel'
     ? `/api/laporan-bulanan-excel?${params}`
     : `/api/laporan-bulanan-pdf?${params}`
-  window.open(url, '_blank')
-  setTimeout(() => setLaporanLoading(''), 3000)
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) {
+    alert('Sesi login sudah berakhir. Silakan login kembali.')
+    setLaporanLoading('')
+    return
+  }
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+  if (!response.ok) {
+    if (response.status === 401) alert('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
+    else if (response.status === 403) alert('Anda tidak memiliki akses untuk laporan ini.')
+    else alert('Gagal menyiapkan laporan.')
+    setLaporanLoading('')
+    return
+  }
+
+  if (format === 'pdf') {
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank')
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+    setLaporanLoading('')
+    return
+  }
+
+  const contentDisposition = response.headers.get('Content-Disposition')
+  const filename = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || `laporan-bulanan-${laporanBulan}.xlsx`
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(objectUrl)
+  setTimeout(() => setLaporanLoading(''), 1000)
 }
   const handleUbahTanggalMurojaah = (tgl: string) => {
     setMurojaahTanggal(tgl)
