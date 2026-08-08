@@ -95,7 +95,6 @@ export default function WaliDashboard() {
   const [selectedSantri, setSelectedSantri] = useState<any>(null)
   const [riwayatSetoran, setRiwayatSetoran] = useState<any[]>([])
   const [allSantriKelas, setAllSantriKelas] = useState<any[]>([])
-  const [nilaiUjianList, setNilaiUjianList] = useState<any[]>([])
   const [laporanHariIni, setLaporanHariIni] = useState<any[]>([])
   const [tanggalLaporan, setTanggalLaporan] = useState(getTanggalWIB())
   const [rankingKonsistensiKelas, setRankingKonsistensiKelas] = useState<any[]>([])
@@ -172,7 +171,6 @@ const handleTestNotif = async () => {
       const s = santri[0]
       setSelectedSantri(s)
       fetchRiwayat(s.id)
-      fetchNilaiUjian(s.id)
       fetchLaporanHariIni(s.id)
       if (s.kelas_num && s.jenjang) {
         await fetchDataKelas(s)
@@ -436,20 +434,11 @@ setRankingSemangatKelas(semangatList)
     fetchLaporanHariIni(selectedSantri.id, tglStr)
   }
 
-  const fetchNilaiUjian = async (santriId: any) => {
-    const { data } = await supabase
-      .from('nilai_ujian')
-      .select('*, surah_mulai:surah_mulai_nomor(nama_latin), surah_selesai:surah_selesai_nomor(nama_latin), guru:guru_id(nama)')
-      .eq('santri_id', santriId).order('tanggal', { ascending: false })
-    setNilaiUjianList(data || [])
-  }
-
   const handlePilihSantri = async (santri: any) => {
     setSelectedSantri(santri)
     const today = getTanggalWIB()
     setTanggalLaporan(today)
     fetchRiwayat(santri.id)
-    fetchNilaiUjian(santri.id)
     fetchLaporanHariIni(santri.id, today)
     await fetchDataKelas(santri)
   }
@@ -469,10 +458,6 @@ setRankingSemangatKelas(semangatList)
   const setoranBaru = riwayatSetoran.filter(s => s.jenis === 'baru').length
   const setoranLama = riwayatSetoran.filter(s => s.jenis === 'lama').length
   const peringkatHafalan = selectedSantri ? hitungPeringkat(selectedSantri.id) : null
-
-  const rataUjian = nilaiUjianList.length > 0
-    ? Math.round((nilaiUjianList.reduce((s, n) => s + (n.nilai_akhir || 0), 0) / nilaiUjianList.length) * 10) / 10
-    : null
 
   // Hitung peringkat konsistensi santri ini di kelas
   const peringkatKonsistensi = selectedSantri
@@ -543,7 +528,6 @@ setRankingSemangatKelas(semangatList)
 
   const menuItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: '◈' },
-    { id: 'ujian', label: 'Nilai Ujian', icon: '📝' },
     { id: 'peringkat', label: 'Peringkat', icon: '✦' },
     { id: 'riwayat', label: 'Riwayat Setoran', icon: '◱' },
     { id: 'grafik', label: 'Perkembangan', icon: '◆' },
@@ -649,9 +633,6 @@ setRankingSemangatKelas(semangatList)
               <button key={menu.id} onClick={() => { setActiveMenu(menu.id); setSidebarOpen(false) }}
                 className={`w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${activeMenu === menu.id ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'}`}>
                 <span className="text-lg">{menu.icon}</span>{menu.label}
-                {menu.id === 'ujian' && nilaiUjianList.length > 0 && (
-                  <span className="ml-auto text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{nilaiUjianList.length}</span>
-                )}
               </button>
             ))}
           </nav>
@@ -717,11 +698,6 @@ setRankingSemangatKelas(semangatList)
     ✨ {peringkatSemangat} Semangat
   </span>
 ) : null}
-{rataUjian !== null && (
-  <span className="bg-orange-400 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-    📝 Nilai ujian: {rataUjian}
-  </span>
-)}
                       </div>
                     </div>
                   </div>
@@ -858,23 +834,6 @@ setRankingSemangatKelas(semangatList)
                     </div>
                   )}
 
-                  {/* Nilai Ujian Terakhir */}
-                  {nilaiUjianList.length > 0 && (
-                    <div className="bg-white rounded-2xl shadow p-4 mb-5 border border-gray-100">
-                      <h3 className="font-bold text-gray-800 mb-3">Nilai Ujian Terakhir</h3>
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 ${nilaiUjianList[0]?.nilai_akhir >= 8 ? 'bg-green-500' : nilaiUjianList[0]?.nilai_akhir >= 6 ? 'bg-yellow-500' : 'bg-red-500'}`}>
-                          {nilaiUjianList[0]?.nilai_akhir}
-                        </div>
-                        <div>
-                          <div className="font-bold text-gray-800">{nilaiUjianList[0]?.tipe === 'semester' ? 'Ujian Semester' : 'Ujian Mid Semester'}</div>
-                          <div className="text-gray-500 text-sm">{nilaiUjianList[0]?.surah_mulai?.nama_latin} → {nilaiUjianList[0]?.surah_selesai?.nama_latin}</div>
-                          <div className="text-xs text-gray-400">{nilaiUjianList[0]?.tanggal}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   {/* 3 kartu peringkat ringkas */}
                   <div className="grid grid-cols-3 gap-3 mb-5">
                     {[
@@ -945,84 +904,6 @@ setRankingSemangatKelas(semangatList)
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* NILAI UJIAN */}
-              {activeMenu === 'ujian' && (
-                <div>
-                  <div className="rounded-2xl p-5 mb-5 text-white relative overflow-hidden shadow-lg"
-                    style={{ background: 'linear-gradient(135deg, #7c2d12 0%, #ea580c 100%)' }}>
-                    <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 bg-white" />
-                    <div className="relative z-10">
-                      <h2 className="font-bold text-xl">Nilai Ujian</h2>
-                      <p className="text-orange-200 text-sm mt-1">{selectedSantri.nama}</p>
-                      {rataUjian !== null && <p className="text-orange-100 text-xs mt-0.5">Rata-rata nilai: <span className="font-bold">{rataUjian}</span></p>}
-                    </div>
-                  </div>
-
-                  {nilaiUjianList.length === 0 && (
-                    <div className="bg-white rounded-2xl p-10 text-center shadow border border-gray-100">
-                      <p className="text-4xl mb-3">📝</p>
-                      <p className="text-gray-500 font-semibold">Belum ada nilai ujian</p>
-                      <p className="text-gray-400 text-sm mt-1">Nilai akan muncul setelah guru menginput hasil ujian</p>
-                    </div>
-                  )}
-
-                  {nilaiUjianList.length > 0 && (
-                    <>
-                      <div className="grid grid-cols-3 gap-3 mb-5">
-                        {[
-                          { label: 'Jumlah Ujian', count: nilaiUjianList.length, color: 'from-orange-500 to-orange-700' },
-                          { label: 'Nilai Tertinggi', count: Math.max(...nilaiUjianList.map(n => n.nilai_akhir || 0)), color: 'from-green-500 to-green-700' },
-                          { label: 'Rata-rata', count: rataUjian, color: 'from-blue-500 to-blue-700' },
-                        ].map((item, i) => (
-                          <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-4 shadow text-white relative overflow-hidden`}>
-                            <div className="absolute -bottom-2 -right-2 text-4xl opacity-10">◆</div>
-                            <div className="text-2xl font-bold">{item.count}</div>
-                            <div className="text-white text-opacity-80 text-xs mt-1">{item.label}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="space-y-3">
-                        {nilaiUjianList.map((item, i) => (
-                          <div key={item.id} className="bg-white rounded-xl shadow p-4 border border-gray-100">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.tipe === 'semester' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
-                                    {item.tipe === 'semester' ? 'Ujian Semester' : 'Ujian Mid Semester'}
-                                  </span>
-                                  <span className="text-xs text-gray-400">{item.tanggal}</span>
-                                  {i === 0 && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Terbaru</span>}
-                                </div>
-                                <div className="font-semibold text-sm text-gray-800 mt-1">
-                                  {item.surah_mulai?.nama_latin} → {item.surah_selesai?.nama_latin}
-                                </div>
-                                <div className="text-xs text-gray-400 mt-0.5">Musami': {item.guru?.nama || '-'}</div>
-                                <div className="mt-2 p-2 bg-gray-50 rounded-lg">
-                                  <div className="flex gap-4 text-xs text-gray-500 flex-wrap">
-                                    <span>Tegur: <span className="font-semibold text-gray-700">{item.jumlah_tegur}</span> × (−0.1)</span>
-                                    <span>Tahu ayat: <span className="font-semibold text-gray-700">{item.jumlah_tahu_ayat}</span> × (−0.1)</span>
-                                    <span>Lupa: <span className="font-semibold text-gray-700">{item.jumlah_lupa}</span> × (−1)</span>
-                                  </div>
-                                </div>
-                                {item.catatan && <div className="mt-2 p-2 bg-orange-50 rounded-lg text-xs text-orange-700">Catatan: {item.catatan}</div>}
-                              </div>
-                              <div className="ml-3 flex-shrink-0 text-center">
-                                <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl shadow ${item.nilai_akhir >= 8 ? 'bg-green-500' : item.nilai_akhir >= 6 ? 'bg-yellow-500' : 'bg-red-500'}`}>
-                                  {item.nilai_akhir}
-                                </div>
-                                <div className="text-xs text-gray-400 mt-1">
-                                  {item.nilai_akhir >= 8 ? '🌟 Mumtaz' : item.nilai_akhir >= 6 ? '👍 Jayyid' : '💪 Maqbul'}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
                 </div>
               )}
 
