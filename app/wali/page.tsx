@@ -15,70 +15,9 @@ function getHariWIB() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
 }
 
-function formatTanggalUTC(date: Date) {
-  const tahun = date.getUTCFullYear()
-  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const tanggal = String(date.getUTCDate()).padStart(2, '0')
-  return `${tahun}-${bulan}-${tanggal}`
-}
-
-function getPeriodePekanTertutup(saatIni = new Date()) {
-  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(saatIni)
-  const nilaiBagian = Object.fromEntries(
-    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
-  )
-  const tahun = Number(nilaiBagian.year)
-  const bulan = Number(nilaiBagian.month)
-  const tanggal = Number(nilaiBagian.day)
-  const jam = Number(nilaiBagian.hour)
-  const tanggalWIB = new Date(Date.UTC(tahun, bulan - 1, tanggal))
-  const nomorHari = tanggalWIB.getUTCDay()
-  const jarakDariSenin = (nomorHari + 6) % 7
-  const seninPekanBerjalan = new Date(tanggalWIB)
-  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
-
-  const sabtuSudahDitutup = nomorHari === 6 && jam >= 17
-  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
-  const tanggalMulaiDate = new Date(seninPekanBerjalan)
-  if (!gunakanPekanBerjalan) {
-    tanggalMulaiDate.setUTCDate(tanggalMulaiDate.getUTCDate() - 7)
-  }
-  const tanggalSelesaiDate = new Date(tanggalMulaiDate)
-  tanggalSelesaiDate.setUTCDate(tanggalSelesaiDate.getUTCDate() + 5)
-
-  const namaBulan = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-  ]
-  const mulaiTanggal = tanggalMulaiDate.getUTCDate()
-  const selesaiTanggal = tanggalSelesaiDate.getUTCDate()
-  const mulaiBulan = tanggalMulaiDate.getUTCMonth()
-  const selesaiBulan = tanggalSelesaiDate.getUTCMonth()
-  const mulaiTahun = tanggalMulaiDate.getUTCFullYear()
-  const selesaiTahun = tanggalSelesaiDate.getUTCFullYear()
-  let labelPeriode: string
-
-  if (mulaiBulan === selesaiBulan && mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else if (mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]} ${mulaiTahun}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  }
-
-  return {
-    tanggalMulai: formatTanggalUTC(tanggalMulaiDate),
-    tanggalSelesai: formatTanggalUTC(tanggalSelesaiDate),
-    labelPeriode,
-  }
-}
+// Perhitungan periode konsistensi (getPeriodePekanTertutup) sekarang dilakukan
+// server-side di app/api/wali/ranking-data (identik) dan dikirim balik dalam
+// response -- lihat fetchDataKelas di bawah.
 
 function getStatusKehadiranInfo(status: string) {
   if (status === 'sakit') return { label: 'Tidak Hadir — Sakit', color: 'bg-yellow-100 text-yellow-700' }
@@ -182,20 +121,24 @@ const handleTestNotif = async () => {
   const fetchDataKelas = async (santri: any) => {
     if (!santri.kelas_num || !santri.jenjang) return
 
-    // Ambil semua santri sekelas — pisah banin/banat/TN
-    let query = supabase
-      .from('santri').select('id, nama, total_hafalan_juz, kelas_num, jenjang, jenis_kelas')
-      .eq('kelas_num', santri.kelas_num).eq('jenjang', santri.jenjang).eq('status', 'aktif')
+    // Teman sekelas + setoran teman sekelas TIDAK lagi diambil langsung dari
+    // base table (santri/setoran RLS Tahap 4 membatasi Wali hanya ke anak
+    // sendiri). Endpoint server ini memverifikasi kepemilikan santri.id lalu
+    // memakai service-role dengan proyeksi kolom terbatas (lihat Security Fix
+    // Tahap 4 bagian G) -- perhitungan 3 kategori ranking di bawah tidak
+    // berubah, hanya sumber datanya.
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session?.access_token) return
 
-    // TN A dan TN B digabung dalam satu kelompok
-    if (santri.jenis_kelas === 'tn_a' || santri.jenis_kelas === 'tn_b') {
-      query = query.in('jenis_kelas', ['tn_a', 'tn_b'])
-    } else {
-      query = query.eq('jenis_kelas', santri.jenis_kelas)
-    }
+    const response = await fetch(`/api/wali/ranking-data?santriId=${encodeURIComponent(santri.id)}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+    if (!response.ok) return
+    const hasil = await response.json().catch(() => null)
+    if (!hasil) return
 
-    const { data: seKelas } = await query.order('nama')
-    setAllSantriKelas(seKelas || [])
+    const seKelas = hasil.santriKelas || []
+    setAllSantriKelas(seKelas)
 
     // Ranking semangat tetap memakai rentang 7 hari yang berjalan
     const today = getTanggalWIB()
@@ -203,24 +146,12 @@ const handleTestNotif = async () => {
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
 
-    if (!seKelas || seKelas.length === 0) return
+    if (seKelas.length === 0 || !hasil.periodeKonsistensi) return
 
-    const { data: setoran7Hari } = await supabase
-  .from('setoran')
-  .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
-  .in('santri_id', seKelas.map(s => s.id))
-  .gte('tanggal', tujuhHariLaluStr)
-  .eq('status_kehadiran', 'hadir')
-
-const periodeKonsistensi = getPeriodePekanTertutup()
-setRankingPeriodeKonsistensi(periodeKonsistensi.labelPeriode)
-const { data: setoranPekanKonsistensi } = await supabase
-  .from('setoran')
-  .select('santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status')
-  .in('santri_id', seKelas.map(s => s.id))
-  .gte('tanggal', periodeKonsistensi.tanggalMulai)
-  .lte('tanggal', periodeKonsistensi.tanggalSelesai)
-  .eq('status_kehadiran', 'hadir')
+    const setoran7Hari = hasil.setoran7Hari || []
+    const periodeKonsistensi = hasil.periodeKonsistensi
+    setRankingPeriodeKonsistensi(periodeKonsistensi.labelPeriode)
+    const setoranPekanKonsistensi = hasil.setoranPekanKonsistensi || []
 
 // Ambil semua libur akademik
 const { data: semuaLibur } = await supabase

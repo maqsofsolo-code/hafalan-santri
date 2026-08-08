@@ -313,25 +313,25 @@ setRapotSantriList(allRapotSantri)
     if (!periodeAktif || !kelas) return
     setRapotRekapLoading(true)
     setRapotRekapData([])
-    const { data: nilaiSnapshot } = await supabase
-      .from('nilai_rapot')
-      .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
-      .eq('periode_id', periodeAktif.id)
-      .eq('kelas_snapshot', parseInt(kelas))
-    let nilaiList = nilaiSnapshot || []
-    if (nilaiList.length === 0) {
-      const { data: santriKelas } = await supabase
-        .from('santri').select('id')
-        .eq('jenjang', 'ula')
-        .eq('kelas_num', parseInt(kelas))
-      const ids = (santriKelas || []).map((s: any) => s.id)
-      if (ids.length > 0) {
-        const { data: nilaiFallback } = await supabase
-          .from('nilai_rapot')
-          .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
-          .eq('periode_id', periodeAktif.id)
-          .in('santri_id', ids)
-        nilaiList = nilaiFallback || []
+    // Rekap kelas (termasuk santri alumni/keluar -- arsip digital historis
+    // yang sengaja dipertahankan) dibaca lewat endpoint server (service-role,
+    // setelah role guru diverifikasi) alih-alih langsung dari browser. Ini
+    // dibutuhkan karena RLS santri untuk Guru (Tahap 4) dibatasi ke
+    // status='aktif', dan itu juga berlaku untuk relasi santri:santri_id(...)
+    // yang di-embed di sini lewat PostgREST -- bukan hanya query langsung ke
+    // public.santri. Logic (kelas_snapshot dulu, fallback ke id
+    // jenjang+kelas) dan perhitungan rata-rata/peringkat di bawah TIDAK
+    // berubah sama sekali. Lihat app/api/guru/rapot-digital-rekap-kelas/route.ts.
+    let nilaiList: any[] = []
+    const { data: { session: sesiRekap } } = await supabase.auth.getSession()
+    if (sesiRekap?.access_token) {
+      const resRekap = await fetch(
+        `/api/guru/rapot-digital-rekap-kelas?periode_id=${encodeURIComponent(periodeAktif.id)}&kelas_num=${parseInt(kelas)}`,
+        { headers: { Authorization: `Bearer ${sesiRekap.access_token}` } }
+      )
+      if (resRekap.ok) {
+        const hasilRekap = await resRekap.json().catch(() => null)
+        nilaiList = hasilRekap?.nilaiList || []
       }
     }
     const hitungRata = (n: any) => {
@@ -729,46 +729,13 @@ const tampilPopupSukses = (msg: string) => {
       }
       return
     }
-    if (jenis === 'baru') {
-      const surahNomor = parseInt(surahBaru)
-      const ayatSelesaiNum = parseInt(ayatSelesaiBaru)
-      const surahTerakhir = selectedSantri.surah_terakhir_nomor
-      const ayatTerakhir = selectedSantri.ayat_terakhir || 0
-      const totalHafalanSekarang = selectedSantri.total_hafalan_juz || 0
+    // Update posisi hafalan (total_hafalan_juz/surah_terakhir_nomor/ayat_terakhir)
+    // untuk jenis 'baru' sekarang dieksekusi server-side oleh /api/setoran
+    // (service-role, setelah role+jenis_kelas guru diverifikasi) -- bukan lagi
+    // direct UPDATE public.santri dari browser. Algoritma penentuan progress
+    // tidak berubah, hanya lokasi eksekusinya. fetchGuruData() di bawah
+    // me-refresh selectedSantri/santriList dengan posisi terbaru dari server.
 
-      if (status === 'lancar' && totalHafalanSekarang === 0 && !surahTerakhir) {
-        // Data hafalan masih kosong — set data awal dari surah ini sampai An-Nas
-        const surahIni = surahList.find(s => s.nomor === surahNomor)
-        const surahAnNas = surahList.find(s => s.nomor === 114)
-        let totalAwal = 0
-        if (surahIni && surahAnNas) {
-          const totalHalaman = surahAnNas.halaman_selesai - surahIni.halaman_mulai + 1
-          totalAwal = Math.max(0, totalHalaman / 20)
-        }
-        await supabase.from('santri').update({
-          total_hafalan_juz: totalAwal,
-          surah_terakhir_nomor: surahNomor,
-          ayat_terakhir: ayatSelesaiNum
-        }).eq('id', selectedSantri.id)
-
-      } else {
-        // Data hafalan sudah ada — logika normal
-        const adaKemajuan = status === 'lancar' && (
-          !surahTerakhir ||
-          surahNomor < surahTerakhir ||
-          (surahNomor === surahTerakhir && ayatSelesaiNum > ayatTerakhir)
-        )
-
-        if (adaKemajuan) {
-          const totalBaru = totalHafalanSekarang + penambahanJuz
-          await supabase.from('santri').update({
-            total_hafalan_juz: totalBaru,
-            surah_terakhir_nomor: surahNomor,
-            ayat_terakhir: ayatSelesaiNum
-          }).eq('id', selectedSantri.id)
-        }
-      }
-    }
     // Refresh cek setoran lama jika baru saja input lama
     if (jenis === 'lama' && selectedSantri?.jenjang === 'ula') {
       await cekSetoranLamaHariIni(selectedSantri.id)
