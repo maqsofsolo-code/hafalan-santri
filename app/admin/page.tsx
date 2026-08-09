@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import AdminRekapNilaiUjian from '../components/AdminRekapNilaiUjian'
 import { getTanggalWIB, getHariWIB, getPeriodePekanTertutup } from '../lib/dateWib'
+import { hitungRankingTotalHafalan, hitungRankingKonsistensi, hitungRankingSemangat } from '../lib/ranking'
 
 function FormEmailPassword({
   isEdit, 
@@ -227,7 +228,7 @@ useEffect(() => {
     setSetoranHariIni(setoran || [])
 
     // Ranking hafalan
-    const sortedHafalan = [...(santri || [])].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
+    const sortedHafalan = hitungRankingTotalHafalan(santri || [])
     setRankingHafalan(sortedHafalan)
 
     // Ranking semangat tetap memakai rentang 7 hari yang berjalan
@@ -295,145 +296,14 @@ const hariAktifKonsistensi = hitungHariAktifPekan(
 )
 const hariAktifKonsistensiSet = new Set(hariAktifKonsistensi)
 const totalHariAktif = hariAktifKonsistensi.length
-const jenjangSantri = new Map((santri || []).map(s => [s.id, s.jenjang]))
-
 // ===== RANKING KONSISTENSI =====
-const statsKonsistensi: Record<string, {
-  totalPoin: number,
-  totalPenambahanBaru: number,
-  najihLama: number,
-  rosibLama: number,
-  najihBaru: number,
-  rosibBaru: number,
-  kombinasi: Map<string, {
-    jenis: 'lama' | 'baru',
-    adaLancar: boolean,
-    penambahanBaruMaks: number
-  }>
-}> = {}
-
-;(setoranPekanKonsistensi || []).forEach((s: any) => {
-  if (!statsKonsistensi[s.santri_id]) statsKonsistensi[s.santri_id] = {
-    totalPoin: 0,
-    totalPenambahanBaru: 0,
-    najihLama: 0,
-    rosibLama: 0,
-    najihBaru: 0,
-    rosibBaru: 0,
-    kombinasi: new Map()
-  }
-  if (!hariAktifKonsistensiSet.has(s.tanggal)) return
-  if (s.jenis !== 'lama' && s.jenis !== 'baru') return
-
-  if (jenjangSantri.get(s.santri_id) === 'ulya' && s.jenis === 'baru') return
-
-  const stats = statsKonsistensi[s.santri_id]
-  const jenis = s.jenis as 'lama' | 'baru'
-  const kunciKombinasi = `${s.tanggal}:${jenis}`
-  const kombinasi = stats.kombinasi.get(kunciKombinasi) || {
-    jenis,
-    adaLancar: false,
-    penambahanBaruMaks: 0
-  }
-
-  if (s.status === 'lancar') {
-    kombinasi.adaLancar = true
-    if (jenis === 'lama') stats.najihLama++
-    if (jenis === 'baru') stats.najihBaru++
-  }
-  if (s.status === 'rosib') {
-    if (jenis === 'lama') stats.rosibLama++
-    if (jenis === 'baru') stats.rosibBaru++
-  }
-  if (jenis === 'baru' && s.status === 'lancar') {
-    const penambahan = Number(s.penambahan_juz)
-    kombinasi.penambahanBaruMaks = Math.max(
-      kombinasi.penambahanBaruMaks,
-      Number.isFinite(penambahan) ? penambahan : 0
-    )
-  }
-  stats.kombinasi.set(kunciKombinasi, kombinasi)
-})
-
-Object.values(statsKonsistensi).forEach(stats => {
-  stats.kombinasi.forEach(kombinasi => {
-    if (!kombinasi.adaLancar) return
-    stats.totalPoin++
-    if (kombinasi.jenis === 'baru') {
-      stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
-    }
-  })
-})
-
-const konsistensiList = (santri || []).map((s: any) => {
-  const st = statsKonsistensi[s.id] || {
-    totalPoin: 0,
-    totalPenambahanBaru: 0,
-    najihLama: 0,
-    rosibLama: 0,
-    najihBaru: 0,
-    rosibBaru: 0,
-    kombinasi: new Map()
-  }
-  const isUlya = s.jenjang === 'ulya'
-  const poinMaksimal = isUlya ? totalHariAktif : totalHariAktif * 2
-  const persentaseKonsistensi = poinMaksimal > 0
-    ? Math.round((st.totalPoin / poinMaksimal) * 100)
-    : 0
-  return {
-    ...s,
-    totalPoin: st.totalPoin,
-    poinMaksimal,
-    totalPenambahanBaru: st.totalPenambahanBaru,
-    najihLama: st.najihLama,
-    rosibLama: st.rosibLama,
-    najihBaru: st.najihBaru,
-    rosibBaru: st.rosibBaru,
-    totalHariAktif,
-    periodeKonsistensi: periodeKonsistensi.labelPeriode,
-    persentaseKonsistensi
-  }
-}).sort((a: any, b: any) => {
-  const aUlya = a.jenjang === 'ulya'
-  const bUlya = b.jenjang === 'ulya'
-  if (b.totalPoin !== a.totalPoin) return b.totalPoin - a.totalPoin
-  if (!aUlya && !bUlya && b.totalPenambahanBaru !== a.totalPenambahanBaru) {
-    return b.totalPenambahanBaru - a.totalPenambahanBaru
-  }
-  return (a.nama || '').localeCompare(b.nama || '', 'id') || String(a.id).localeCompare(String(b.id))
-})
+const konsistensiList = hitungRankingKonsistensi(
+  santri || [], setoranPekanKonsistensi || [], hariAktifKonsistensiSet, totalHariAktif
+).map((s: any) => ({ ...s, periodeKonsistensi: periodeKonsistensi.labelPeriode }))
 setRankingKonsistensi(konsistensiList)
 
 // ===== RANKING SEMANGAT =====
-const semangatStats: Record<string, {
-  totalJuz: number, hariSetor: Set<string>, najih: number
-}> = {}
-;(setoran7Hari || []).filter((s: any) => s.jenis === 'baru').forEach((s: any) => {
-  if (!semangatStats[s.santri_id]) semangatStats[s.santri_id] = {
-    totalJuz: 0, hariSetor: new Set(), najih: 0
-  }
-  semangatStats[s.santri_id].totalJuz += (s.penambahan_juz || 0)
-  if (hariAktif7Hari.includes(s.tanggal)) semangatStats[s.santri_id].hariSetor.add(s.tanggal)
-  if (s.status === 'lancar') semangatStats[s.santri_id].najih++
-})
-const semangatList = (santri || []).map((s: any) => {
-  const st = semangatStats[s.id] || { totalJuz: 0, hariSetor: new Set(), najih: 0 }
-  return {
-    ...s,
-    tambahJuz7Hari: st.totalJuz,
-    tambahHalaman7Hari: st.totalJuz * 20,
-    hariSetorBaru7Hari: st.hariSetor.size,
-    najihBaru7Hari: st.najih
-  }
-}).sort((a: any, b: any) => {
-  // 1. Total penambahan juz
-  if (b.tambahJuz7Hari !== a.tambahJuz7Hari) return b.tambahJuz7Hari - a.tambahJuz7Hari
-  // 2. Konsistensi hari setor baru
-  if (b.hariSetorBaru7Hari !== a.hariSetorBaru7Hari) return b.hariSetorBaru7Hari - a.hariSetorBaru7Hari
-  // 3. Kelancaran hafalan baru
-  if (b.najihBaru7Hari !== a.najihBaru7Hari) return b.najihBaru7Hari - a.najihBaru7Hari
-  return 0
-})
+const semangatList = hitungRankingSemangat(santri || [], setoran7Hari || [], new Set(hariAktif7Hari))
 setRankingSemangat(semangatList)
   }
 const fetchPeriode = async () => {

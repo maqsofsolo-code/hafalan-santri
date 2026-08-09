@@ -6,6 +6,7 @@ import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 import InputNilaiUjianSegment from '../components/InputNilaiUjianSegment'
 import RekapNilaiUjianGuru, { type CakupanSantriMap, type MasterSegmentLite, type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
 import { getTanggalWIB, getHariWIB } from '../lib/dateWib'
+import { hitungRankingTotalHafalan } from '../lib/ranking'
 
 const PESAN_POPUP_WUSTHA = 'Santri ini belum lancar pada setoran hafalan lama sebelumnya. Silakan setorkan hafalan lama terlebih dahulu. Hafalan baru akan terbuka setelah mendapatkan status Najih.'
 const PESAN_SERVER_WUSTHA = 'Santri masih memiliki tanggungan hafalan lama. Setorkan hafalan lama hingga Najih terlebih dahulu.'
@@ -1988,7 +1989,7 @@ const tampilPopupSukses = (msg: string) => {
                 // Hitung peringkat per kelompok kelas
                 const santriDenganPeringkat: Record<string, number> = {}
                 Object.values(kelasMap).forEach(kelompok => {
-                  const sorted = [...kelompok].sort((a, b) => (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0))
+                  const sorted = hitungRankingTotalHafalan(kelompok)
                   sorted.forEach((s, i) => { santriDenganPeringkat[s.id] = i + 1 })
                 })
 

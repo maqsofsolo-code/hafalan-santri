@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { kirimPushKeUser } from '../../lib/sendPush'
 import { getTanggalWIB as getWIBDate, getHariWIB, formatTanggalUTC } from '../../lib/dateWib'
+import {
+  hitungStatsKonsistensi, bandingkanKonsistensi, type StatsKonsistensi,
+  hitungStatsSemangat, bandingkanSemangat, type StatsSemangat,
+} from '../../lib/ranking'
 
 const JENIS_WHATSAPP = new Set([
   'reminder-guru-subuh',
@@ -574,20 +578,6 @@ async function notifNaikPeringkat() {
     status_kehadiran: string
     status: string | null
   }
-  type StatsPeringkat = {
-    totalPoin: number
-    totalPenambahanBaru: number
-    totalJuz: number
-    hariSetorBaru: Set<string>
-    najihBaru: number
-    adaDataKonsistensi: boolean
-    adaDataSemangat: boolean
-    kombinasi: Map<string, {
-      jenis: 'lama' | 'baru'
-      adaLancar: boolean
-      penambahanBaruMaks: number
-    }>
-  }
   type SantriPeringkat = {
     id: string
     nama: string
@@ -600,75 +590,22 @@ async function notifNaikPeringkat() {
 
   const santriAktif = santriList as SantriPeringkat[]
   const jenjangSantri = new Map(santriAktif.map(santri => [santri.id, santri.jenjang]))
-  const normalisasiPenambahan = (value: unknown) => {
-    const angka = Number(value)
-    return Number.isFinite(angka) ? angka : 0
-  }
-  const statsKosong = (): StatsPeringkat => ({
-    totalPoin: 0,
-    totalPenambahanBaru: 0,
-    totalJuz: 0,
-    hariSetorBaru: new Set(),
-    najihBaru: 0,
-    adaDataKonsistensi: false,
-    adaDataSemangat: false,
-    kombinasi: new Map(),
-  })
 
-  const hitungStats = (setoranData: SetoranPeringkat[], hariAktif: string[]) => {
-    const statsMap: Record<string, StatsPeringkat> = {}
-    const hariAktifSet = new Set(hariAktif)
-
-    setoranData.forEach(setoran => {
-      if (setoran.status_kehadiran !== 'hadir') return
-      if (setoran.jenis !== 'lama' && setoran.jenis !== 'baru') return
-
-      if (!statsMap[setoran.santri_id]) statsMap[setoran.santri_id] = statsKosong()
-      const stats = statsMap[setoran.santri_id]
-
-      if (setoran.jenis === 'baru') {
-        stats.adaDataSemangat = true
-        stats.totalJuz += normalisasiPenambahan(setoran.penambahan_juz)
-        if (hariAktifSet.has(setoran.tanggal)) stats.hariSetorBaru.add(setoran.tanggal)
-        if (setoran.status === 'lancar') stats.najihBaru++
-      }
-
-      if (!hariAktifSet.has(setoran.tanggal)) return
-      if (jenjangSantri.get(setoran.santri_id) === 'ulya' && setoran.jenis === 'baru') return
-
-      stats.adaDataKonsistensi = true
-      const jenis = setoran.jenis
-      const kunciKombinasi = `${setoran.tanggal}:${jenis}`
-      const kombinasi = stats.kombinasi.get(kunciKombinasi) || {
-        jenis,
-        adaLancar: false,
-        penambahanBaruMaks: 0,
-      }
-      if (setoran.status === 'lancar') kombinasi.adaLancar = true
-      if (jenis === 'baru' && setoran.status === 'lancar') {
-        kombinasi.penambahanBaruMaks = Math.max(
-          kombinasi.penambahanBaruMaks,
-          normalisasiPenambahan(setoran.penambahan_juz)
-        )
-      }
-      stats.kombinasi.set(kunciKombinasi, kombinasi)
-    })
-
-    Object.values(statsMap).forEach(stats => {
-      stats.kombinasi.forEach(kombinasi => {
-        if (!kombinasi.adaLancar) return
-        stats.totalPoin++
-        if (kombinasi.jenis === 'baru') {
-          stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
-        }
-      })
-    })
-
-    return statsMap
-  }
-
-  const statsIni = hitungStats((setoranMingguIni || []) as SetoranPeringkat[], hariAktifMingguIni)
-  const statsLalu = hitungStats((setoranMingguLalu || []) as SetoranPeringkat[], hariAktifMingguLalu)
+  // Query setoranMingguIni/setoranMingguLalu sudah difilter status_kehadiran='hadir'
+  // di level SQL (lihat .eq('status_kehadiran', 'hadir') di atas), sehingga tidak
+  // perlu difilter ulang di sini.
+  const statsKonsistensiIni = hitungStatsKonsistensi(
+    (setoranMingguIni || []) as SetoranPeringkat[], new Set(hariAktifMingguIni), id => jenjangSantri.get(id)
+  )
+  const statsSemangatIni = hitungStatsSemangat(
+    (setoranMingguIni || []) as SetoranPeringkat[], new Set(hariAktifMingguIni)
+  )
+  const statsKonsistensiLalu = hitungStatsKonsistensi(
+    (setoranMingguLalu || []) as SetoranPeringkat[], new Set(hariAktifMingguLalu), id => jenjangSantri.get(id)
+  )
+  const statsSemangatLalu = hitungStatsSemangat(
+    (setoranMingguLalu || []) as SetoranPeringkat[], new Set(hariAktifMingguLalu)
+  )
 
   const perKelas: Record<string, SantriPeringkat[]> = {}
   santriAktif.forEach(s => {
@@ -694,46 +631,35 @@ async function notifNaikPeringkat() {
   const peringkatIni: Record<string, PeringkatMingguan> = {}
   const peringkatLalu: Record<string, PeringkatMingguan> = {}
 
-  const sortKonsistensi = (anggota: SantriPeringkat[], stats: Record<string, StatsPeringkat>) =>
-    [...anggota].sort((a, b) => {
-      const aSt = stats[a.id] || statsKosong()
-      const bSt = stats[b.id] || statsKosong()
-      if (bSt.totalPoin !== aSt.totalPoin) return bSt.totalPoin - aSt.totalPoin
-      if (a.jenjang !== 'ulya' && b.jenjang !== 'ulya' && bSt.totalPenambahanBaru !== aSt.totalPenambahanBaru) {
-        return bSt.totalPenambahanBaru - aSt.totalPenambahanBaru
-      }
-      return a.nama.localeCompare(b.nama, 'id') || a.id.localeCompare(b.id)
-  })
+  const kosongKonsistensi: StatsKonsistensi = { totalPoin: 0, totalPenambahanBaru: 0, najihLama: 0, rosibLama: 0, najihBaru: 0, rosibBaru: 0, adaData: false }
+  const kosongSemangat: StatsSemangat = { totalJuz: 0, hariSetor: new Set(), najih: 0, adaData: false }
 
-  const sortSemangat = (anggota: SantriPeringkat[], stats: Record<string, StatsPeringkat>) => [...anggota].sort((a, b) => {
-    const aSt = stats[a.id] || statsKosong()
-    const bSt = stats[b.id] || statsKosong()
-    if (bSt.totalJuz !== aSt.totalJuz) return bSt.totalJuz - aSt.totalJuz
-    if (bSt.hariSetorBaru.size !== aSt.hariSetorBaru.size) return bSt.hariSetorBaru.size - aSt.hariSetorBaru.size
-    if (bSt.najihBaru !== aSt.najihBaru) return bSt.najihBaru - aSt.najihBaru
-    return a.nama.localeCompare(b.nama, 'id') || a.id.localeCompare(b.id)
-  })
+  const sortKonsistensi = (anggota: SantriPeringkat[], stats: Map<string, StatsKonsistensi>) =>
+    [...anggota].sort((a, b) => bandingkanKonsistensi(id => stats.get(id) || kosongKonsistensi, a, b))
+
+  const sortSemangat = (anggota: SantriPeringkat[], stats: Map<string, StatsSemangat>) =>
+    [...anggota].sort((a, b) => bandingkanSemangat(id => stats.get(id) || kosongSemangat, a, b))
 
   for (const [, anggota] of Object.entries(perKelas)) {
-    sortKonsistensi(anggota, statsIni).forEach((s, idx) => {
+    sortKonsistensi(anggota, statsKonsistensiIni).forEach((s, idx) => {
       if (!peringkatIni[s.id]) peringkatIni[s.id] = posisiKosong()
       peringkatIni[s.id].konsistensi = idx + 1
-      peringkatIni[s.id].konsistensiValid = !!statsIni[s.id]?.adaDataKonsistensi
+      peringkatIni[s.id].konsistensiValid = !!statsKonsistensiIni.get(s.id)?.adaData
     })
-    sortKonsistensi(anggota, statsLalu).forEach((s, idx) => {
+    sortKonsistensi(anggota, statsKonsistensiLalu).forEach((s, idx) => {
       if (!peringkatLalu[s.id]) peringkatLalu[s.id] = posisiKosong()
       peringkatLalu[s.id].konsistensi = idx + 1
-      peringkatLalu[s.id].konsistensiValid = !!statsLalu[s.id]?.adaDataKonsistensi
+      peringkatLalu[s.id].konsistensiValid = !!statsKonsistensiLalu.get(s.id)?.adaData
     })
-    sortSemangat(anggota, statsIni).forEach((s, idx) => {
+    sortSemangat(anggota, statsSemangatIni).forEach((s, idx) => {
       if (!peringkatIni[s.id]) peringkatIni[s.id] = posisiKosong()
       peringkatIni[s.id].semangat = idx + 1
-      peringkatIni[s.id].semangatValid = !!statsIni[s.id]?.adaDataSemangat
+      peringkatIni[s.id].semangatValid = !!statsSemangatIni.get(s.id)?.adaData
     })
-    sortSemangat(anggota, statsLalu).forEach((s, idx) => {
+    sortSemangat(anggota, statsSemangatLalu).forEach((s, idx) => {
       if (!peringkatLalu[s.id]) peringkatLalu[s.id] = posisiKosong()
       peringkatLalu[s.id].semangat = idx + 1
-      peringkatLalu[s.id].semangatValid = !!statsLalu[s.id]?.adaDataSemangat
+      peringkatLalu[s.id].semangatValid = !!statsSemangatLalu.get(s.id)?.adaData
     })
   }
 

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authorize } from '../../lib/serverAuth'
 import { getPeriodePekanTertutup } from '../../lib/dateWib'
+import {
+  hitungStatsKonsistensi, bandingkanKonsistensi, type StatsKonsistensi,
+  hitungStatsSemangat, bandingkanSemangat, type StatsSemangat,
+  bandingkanTotalHafalan,
+} from '../../lib/ranking'
 
 type TipeRanking = 'total' | 'konsistensi' | 'semangat'
 
@@ -27,23 +32,6 @@ type SetoranRanking = {
 type LiburAkademik = {
   tanggal_mulai: string
   tanggal_selesai: string
-}
-
-type StatsRanking = {
-  hariSetorLama: Set<string>
-  hariSetorBaru: Set<string>
-  najihLama: number
-  rosibLama: number
-  najihBaru: number
-  rosibBaru: number
-  totalJuzBaru: number
-  totalPoin: number
-  totalPenambahanBaru: number
-  kombinasiKonsistensi: Map<string, {
-    jenis: 'lama' | 'baru'
-    adaLancar: boolean
-    penambahanBaruMaks: number
-  }>
 }
 
 type BarisRanking = {
@@ -104,26 +92,6 @@ function hitungHariAktif(mulai: string, selesai: string, daftarLibur: LiburAkade
   return hariAktif
 }
 
-function statsKosong(): StatsRanking {
-  return {
-    hariSetorLama: new Set(),
-    hariSetorBaru: new Set(),
-    najihLama: 0,
-    rosibLama: 0,
-    najihBaru: 0,
-    rosibBaru: 0,
-    totalJuzBaru: 0,
-    totalPoin: 0,
-    totalPenambahanBaru: 0,
-    kombinasiKonsistensi: new Map(),
-  }
-}
-
-function normalisasiPenambahan(value: unknown) {
-  const angka = Number(value)
-  return Number.isFinite(angka) ? angka : 0
-}
-
 export async function GET(req: NextRequest) {
   const auth = await authorize(req, ['admin'])
   if (auth.response) return auth.response
@@ -170,7 +138,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Tidak ada data santri' }, { status: 404 })
   }
 
-  const statsPerSantri: Record<string, StatsRanking> = {}
+  let statsKonsistensi = new Map<string, StatsKonsistensi>()
+  let statsSemangat = new Map<string, StatsSemangat>()
   let totalHariAktif = 0
   let labelPeriode = ''
   const hariIniWIB = getWIBDate()
@@ -212,64 +181,10 @@ export async function GET(req: NextRequest) {
     const hariAktifSet = new Set(hariAktif)
     totalHariAktif = hariAktif.length
 
-    setoranList.forEach(setoran => {
-      if (!statsPerSantri[setoran.santri_id]) {
-        statsPerSantri[setoran.santri_id] = statsKosong()
-      }
-      const stats = statsPerSantri[setoran.santri_id]
-
-      if (tipe === 'konsistensi') {
-        if (!hariAktifSet.has(setoran.tanggal)) return
-
-        if (setoran.jenis !== 'lama' && setoran.jenis !== 'baru') return
-        if (jenjang === 'ulya' && setoran.jenis === 'baru') return
-
-        const jenis = setoran.jenis
-        const kunciKombinasi = `${setoran.tanggal}:${jenis}`
-        const kombinasi = stats.kombinasiKonsistensi.get(kunciKombinasi) || {
-          jenis,
-          adaLancar: false,
-          penambahanBaruMaks: 0,
-        }
-
-        if (jenis === 'lama') stats.hariSetorLama.add(setoran.tanggal)
-        if (jenis === 'baru') stats.hariSetorBaru.add(setoran.tanggal)
-        if (setoran.status === 'lancar') {
-          kombinasi.adaLancar = true
-          if (jenis === 'lama') stats.najihLama++
-          if (jenis === 'baru') stats.najihBaru++
-        }
-        if (setoran.status === 'rosib') {
-          if (jenis === 'lama') stats.rosibLama++
-          if (jenis === 'baru') stats.rosibBaru++
-        }
-
-        if (jenis === 'baru' && setoran.status === 'lancar') {
-          kombinasi.penambahanBaruMaks = Math.max(
-            kombinasi.penambahanBaruMaks,
-            normalisasiPenambahan(setoran.penambahan_juz)
-          )
-        }
-
-        stats.kombinasiKonsistensi.set(kunciKombinasi, kombinasi)
-      } else if (setoran.jenis === 'baru') {
-        stats.totalJuzBaru += setoran.penambahan_juz || 0
-        if (hariAktifSet.has(setoran.tanggal)) stats.hariSetorBaru.add(setoran.tanggal)
-        if (setoran.status === 'lancar') stats.najihBaru++
-      }
-    })
-
     if (tipe === 'konsistensi') {
-      Object.values(statsPerSantri).forEach(stats => {
-        stats.kombinasiKonsistensi.forEach(kombinasi => {
-          if (kombinasi.adaLancar) {
-            stats.totalPoin++
-            if (kombinasi.jenis === 'baru') {
-              stats.totalPenambahanBaru += kombinasi.penambahanBaruMaks
-            }
-          }
-        })
-      })
+      statsKonsistensi = hitungStatsKonsistensi(setoranList, hariAktifSet, () => jenjang)
+    } else {
+      statsSemangat = hitungStatsSemangat(setoranList, hariAktifSet)
     }
   }
 
@@ -281,37 +196,15 @@ export async function GET(req: NextRequest) {
     kelasMap[k].push(s)
   })
 
-  const getStats = (santriId: string) => statsPerSantri[santriId] || statsKosong()
+  const kosongKonsistensi: StatsKonsistensi = { totalPoin: 0, totalPenambahanBaru: 0, najihLama: 0, rosibLama: 0, najihBaru: 0, rosibBaru: 0, adaData: false }
+  const kosongSemangat: StatsSemangat = { totalJuz: 0, hariSetor: new Set(), najih: 0, adaData: false }
+  const getStatsKonsistensi = (santriId: string) => statsKonsistensi.get(santriId) || kosongKonsistensi
+  const getStatsSemangat = (santriId: string) => statsSemangat.get(santriId) || kosongSemangat
 
   const urutkanRanking = (a: SantriRanking, b: SantriRanking) => {
-    if (tipe === 'total') {
-      const selisihTotal = (b.total_hafalan_juz || 0) - (a.total_hafalan_juz || 0)
-      return selisihTotal || a.nama.localeCompare(b.nama, 'id')
-    }
-
-    const statsA = getStats(a.id)
-    const statsB = getStats(b.id)
-
-    if (tipe === 'konsistensi') {
-      if (jenjang === 'ulya') {
-        if (statsB.totalPoin !== statsA.totalPoin) return statsB.totalPoin - statsA.totalPoin
-      } else {
-        if (statsB.totalPoin !== statsA.totalPoin) return statsB.totalPoin - statsA.totalPoin
-        if (statsB.totalPenambahanBaru !== statsA.totalPenambahanBaru) {
-          return statsB.totalPenambahanBaru - statsA.totalPenambahanBaru
-        }
-      }
-      return a.nama.localeCompare(b.nama, 'id') || a.id.localeCompare(b.id)
-    }
-
-    if (statsB.totalJuzBaru !== statsA.totalJuzBaru) {
-      return statsB.totalJuzBaru - statsA.totalJuzBaru
-    }
-    if (statsB.hariSetorBaru.size !== statsA.hariSetorBaru.size) {
-      return statsB.hariSetorBaru.size - statsA.hariSetorBaru.size
-    }
-    if (statsB.najihBaru !== statsA.najihBaru) return statsB.najihBaru - statsA.najihBaru
-    return a.nama.localeCompare(b.nama, 'id')
+    if (tipe === 'total') return bandingkanTotalHafalan(a, b)
+    if (tipe === 'konsistensi') return bandingkanKonsistensi(getStatsKonsistensi, a, b)
+    return bandingkanSemangat(getStatsSemangat, a, b)
   }
 
   const buatBarisRanking = (santri: SantriRanking, index: number): BarisRanking => {
@@ -323,9 +216,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const stats = getStats(santri.id)
-
     if (tipe === 'konsistensi') {
+      const stats = getStatsKonsistensi(santri.id)
       const isUlya = jenjang === 'ulya'
       const poinMaksimal = isUlya ? totalHariAktif : totalHariAktif * 2
       const nilaiKonsistensi = stats.totalPoin
@@ -353,11 +245,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const stats = getStatsSemangat(santri.id)
     return {
       peringkat: index + 1,
       nama: santri.nama,
-      nilai: `${stats.totalJuzBaru.toFixed(3)} Juz`,
-      detail: `±${(stats.totalJuzBaru * 20).toFixed(1)} halaman`,
+      nilai: `${stats.totalJuz.toFixed(3)} Juz`,
+      detail: `±${(stats.totalJuz * 20).toFixed(1)} halaman`,
     }
   }
 
