@@ -6,6 +6,7 @@ import type { ProfileRow } from '../lib/authClient'
 
 export type Guru = ProfileRow & {
   nama?: string
+  jenis_kelas?: string | null
 }
 
 export type Santri = {

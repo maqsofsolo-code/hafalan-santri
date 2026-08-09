@@ -1,20 +1,28 @@
 'use client'
-import { getKelasOptions } from '../utils'
+import { getKelasOptions, groupMurojaahByKelas, jenjangLabel } from '../utils'
 import type { useKepsekMurojaah } from '../hooks/useKepsekMurojaah'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 
 type Murojaah = ReturnType<typeof useKepsekMurojaah>
 
-// Tab "Monitor Murojaah" -- dipindah dari app/kepsek/page.tsx (Modularisasi
-// Tahap 7A). JSX/className identik dengan sebelumnya.
+// Tab "Monitor Murojaah" -- didesain ulang Tahap 7B: dari kartu panjang per
+// santri (bisa >100 kartu sekaligus), menjadi Ringkasan (3 stat, tetap) lalu
+// dikelompokkan per kelas (groupMurojaahByKelas di utils.ts, murni
+// presentational) yang bisa dibuka satu-satu untuk lihat nama. Kelompok yang
+// masih ada "Kurang"/"Belum Murojaah" dibuka default, kelompok yang sudah
+// sesuai target semua tertutup default. Filter dan rumus target/persentase
+// TIDAK diubah.
 export function MurojaahSection(props: { today: string } & Murojaah) {
   const {
     today,
     murojaahTanggal, handleUbahTanggalMurojaah,
     filterMurojaahJenjang, setFilterMurojaahJenjang, filterMurojaahKelas, setFilterMurojaahKelas,
+    filterKelompokSantri, setFilterKelompokSantri,
     searchMurojaah, setSearchMurojaah, loadingMurojaah, hasilMonitorMurojaah,
   } = props
+
+  const kelompokKelas = groupMurojaahByKelas(hasilMonitorMurojaah)
 
   return (
     <div>
@@ -58,11 +66,19 @@ export function MurojaahSection(props: { today: string } & Murojaah) {
               placeholder="Nama santri..." className={inputClass} />
           </div>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <p className="text-xs text-gray-400">
             Tanggal: <span className="font-semibold text-gray-600">{new Date(murojaahTanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
           </p>
           {loadingMurojaah && <span className="text-xs text-purple-500">Memuat...</span>}
+        </div>
+        <div className="flex gap-2">
+          {(['semua', 'banin', 'banat'] as const).map(k => (
+            <button key={k} onClick={() => setFilterKelompokSantri(k)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${filterKelompokSantri === k ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+              {k === 'semua' ? 'Semua' : k === 'banin' ? 'Banin' : 'Banat'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -81,51 +97,68 @@ export function MurojaahSection(props: { today: string } & Murojaah) {
         ))}
       </div>
 
-      {/* Detail */}
-      <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
-          <h3 className="text-white font-bold">Detail Murojaah Per Santri</h3>
-          <p className="text-purple-200 text-xs mt-0.5">Diurutkan dari yang paling perlu perhatian</p>
-        </div>
-        <div className="p-4 space-y-3">
-          {hasilMonitorMurojaah.length === 0 && <p className="text-gray-400 text-sm text-center py-6">Tidak ada data santri</p>}
-          {hasilMonitorMurojaah.map((santri) => (
-            <div key={santri.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
-                    {santri.nama?.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
-                    <div className="text-xs text-gray-400">{santri.kelas || '-'} • Guru: {santri.guru?.nama || '-'}</div>
-                  </div>
+      {/* Detail per kelas -- dibuka default hanya kelompok yang masih bermasalah */}
+      <div className="space-y-3">
+        {kelompokKelas.length === 0 && (
+          <div className="bg-white rounded-2xl shadow border border-gray-100 p-6 text-center text-gray-400 text-sm">Tidak ada data santri</div>
+        )}
+        {kelompokKelas.map(grup => {
+          const bermasalah = grup.kurang + grup.belumMurojaah > 0
+          return (
+            <details key={grup.kelasLabel} className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden" open={bermasalah}>
+              <summary className="cursor-pointer select-none px-5 py-4 flex items-center justify-between gap-3 flex-wrap"
+                style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
+                <div>
+                  <h3 className="text-white font-bold">Kelas {grup.kelasLabel} {jenjangLabel(grup.jenjang)}</h3>
+                  <p className="text-purple-200 text-xs mt-0.5">{grup.santriList.length} santri</p>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${santri.statusBg} ${santri.statusColor}`}>{santri.statusLabel}</span>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  {grup.sesuaiTarget > 0 && <span className="text-xs bg-white bg-opacity-25 text-white px-2 py-1 rounded-full font-semibold">✓ {grup.sesuaiTarget}</span>}
+                  {grup.kurang > 0 && <span className="text-xs bg-yellow-300 text-yellow-900 px-2 py-1 rounded-full font-semibold">△ {grup.kurang}</span>}
+                  {grup.belumMurojaah > 0 && <span className="text-xs bg-white text-purple-800 px-2 py-1 rounded-full font-semibold">○ {grup.belumMurojaah}</span>}
+                </div>
+              </summary>
+              <div className="p-4 space-y-3">
+                {grup.santriList.map((santri) => (
+                  <div key={santri.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                          style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)' }}>
+                          {santri.nama?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm text-gray-800">{santri.nama}</div>
+                          <div className="text-xs text-gray-400">Guru: {santri.guru?.nama || '-'}</div>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${santri.statusBg} ${santri.statusColor}`}>{santri.statusLabel}</span>
+                    </div>
+                    <div className="mt-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-gray-500">Target: <span className="font-semibold">{santri.targetHalaman.toFixed(1)} hal</span> <span className="text-gray-400">(≈ {santri.targetLembar.toFixed(1)} lembar)</span></span>
+                        <span className="font-bold" style={{ color: '#9333ea' }}>{santri.persentase}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="h-2 rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(santri.persentase, 100)}%`,
+                            background: santri.persentase >= 80 ? 'linear-gradient(135deg, #166534, #16a34a)' : santri.persentase >= 50 ? 'linear-gradient(135deg, #d97706, #f59e0b)' : santri.persentase > 0 ? 'linear-gradient(135deg, #dc2626, #ef4444)' : '#e5e7eb'
+                          }} />
+                      </div>
+                      {santri.sudahMurojaah && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Disetor: <span className="font-semibold text-gray-600">{santri.totalHalamanSetor.toFixed(1)} hal</span>
+                          <span className="ml-1">(≈ {santri.totalLembarSetor.toFixed(1)} lembar)</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="mt-2">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-500">Target: <span className="font-semibold">{santri.targetHalaman.toFixed(1)} hal</span> <span className="text-gray-400">(≈ {santri.targetLembar.toFixed(1)} lembar)</span></span>
-                  <span className="font-bold" style={{ color: '#9333ea' }}>{santri.persentase}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="h-2 rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(santri.persentase, 100)}%`,
-                      background: santri.persentase >= 80 ? 'linear-gradient(135deg, #166534, #16a34a)' : santri.persentase >= 50 ? 'linear-gradient(135deg, #d97706, #f59e0b)' : santri.persentase > 0 ? 'linear-gradient(135deg, #dc2626, #ef4444)' : '#e5e7eb'
-                    }} />
-                </div>
-                {santri.sudahMurojaah && (
-                  <div className="text-xs text-gray-400 mt-1">
-                    Disetor: <span className="font-semibold text-gray-600">{santri.totalHalamanSetor.toFixed(1)} hal</span>
-                    <span className="ml-1">(≈ {santri.totalLembarSetor.toFixed(1)} lembar)</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+            </details>
+          )
+        })}
       </div>
     </div>
   )

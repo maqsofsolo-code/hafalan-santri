@@ -2,7 +2,7 @@
 import { useCallback, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getTanggalWIB } from '../../lib/dateWib'
-import { hitungMonitorMurojaah } from '../utils'
+import { hitungMonitorMurojaah, getKelompokSantri } from '../utils'
 import type { Santri, SetoranRow } from '../types'
 
 // Tab "Monitor Murojaah" -- dipindah dari app/kepsek/page.tsx (Modularisasi
@@ -19,6 +19,10 @@ export function useKepsekMurojaah(
   const [filterMurojaahKelas, setFilterMurojaahKelas] = useState('semua')
   const [murojaahTanggal, setMurojaahTanggal] = useState(getTanggalWIB())
   const [loadingMurojaah, setLoadingMurojaah] = useState(false)
+  // Semua | Banin | Banat -- Koreksi Tahap 7B, diterapkan SETELAH rumus
+  // target/persentase/status dihitung (hitungMonitorMurojaah), sebelum
+  // dikelompokkan per kelas. Rumus murojaah itu sendiri tidak disentuh.
+  const [filterKelompokSantri, setFilterKelompokSantri] = useState<'semua' | 'banin' | 'banat'>('semua')
 
   const fetchMurojaahTanggal = useCallback(async (tgl: string) => {
     setLoadingMurojaah(true)
@@ -35,13 +39,17 @@ export function useKepsekMurojaah(
     fetchMurojaahTanggal(tgl)
   }
 
-  const hasilMonitorMurojaah = hitungMonitorMurojaah(santriList, setoranMurojaahTanggal, {
+  const hasilMonitorMurojaahDasar = hitungMonitorMurojaah(santriList, setoranMurojaahTanggal, {
     filterMurojaahJenjang, filterMurojaahKelas, searchMurojaah,
   })
+  const hasilMonitorMurojaah = filterKelompokSantri === 'semua'
+    ? hasilMonitorMurojaahDasar
+    : hasilMonitorMurojaahDasar.filter(s => getKelompokSantri(s.jenis_kelas) === filterKelompokSantri)
 
   return {
     searchMurojaah, setSearchMurojaah, filterMurojaahJenjang, setFilterMurojaahJenjang,
     filterMurojaahKelas, setFilterMurojaahKelas, murojaahTanggal, loadingMurojaah,
+    filterKelompokSantri, setFilterKelompokSantri,
     handleUbahTanggalMurojaah, hasilMonitorMurojaah,
   }
 }

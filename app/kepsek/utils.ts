@@ -2,7 +2,13 @@
 // dari app/kepsek/page.tsx pada Modularisasi Tahap 7A. Logic TIDAK diubah
 // dari implementasi lama, hanya dipindah dan closure atas state diganti jadi
 // parameter eksplisit (pola sama seperti app/admin/utils.ts).
-import type { Santri, SetoranRow, NilaiUjianRow } from './types'
+//
+// Helper di bawah `kategoriSetoranSantri`/`filterSantriMonitoring`/
+// `hitungMonitorMurojaah` (groupBelumDiinputByGuru, buildClipboardBelumDiinput,
+// ringkasAbsensiGuru, groupMurojaahByKelas) ditambahkan pada Tahap 7B --
+// SEMUANYA murni presentational (pengelompokan/format teks dari hasil
+// kategorisasi yang SUDAH ADA), tidak mengubah rumus kategori/target apa pun.
+import type { Santri, Guru, SetoranRow, NilaiUjianRow } from './types'
 
 export function getKelasOptions(jenjang: string): number[] {
   if (jenjang === 'ula') return [1, 2, 3, 4, 5, 6]
@@ -126,4 +132,163 @@ export function hitungRekapNilaiPerKelas(nilaiUjianList: NilaiUjianRow[]): Rekap
     map[key].count += 1
   })
   return Object.values(map).map(v => ({ ...v, rata: Math.round((v.total / v.count) * 10) / 10 })).sort((a, b) => b.rata - a.rata)
+}
+
+// ============================================================
+// DASHBOARD ACTION BOARD (Modularisasi Tahap 7B) -- helper presentational
+// murni, dipakai DashboardSection/MonitoringSection/MurojaahSection.
+// ============================================================
+
+export type KelompokSantri = 'banin' | 'banat' | 'belum_terklasifikasi'
+export type KelompokGuru = 'putra' | 'putri' | 'belum_terklasifikasi'
+
+/**
+ * Kelompok Banin/Banat SANTRI dari field jenis_kelas existing (Koreksi
+ * Tahap 7B). tn_a/tn_b (Ulya putri) masuk Banat -- SAMA dengan mapping
+ * `filterKelompok==='tn'` di app/admin/utils.ts::cocokKelompokMonitoring dan
+ * app/guru/utils.ts::filterSantriGuruPengganti. Nilai null/tidak dikenal
+ * TIDAK ditebak -- masuk 'belum_terklasifikasi'.
+ */
+export function getKelompokSantri(jenisKelas: string | null | undefined): KelompokSantri {
+  if (jenisKelas === 'banin') return 'banin'
+  if (jenisKelas === 'banat' || jenisKelas === 'tn_a' || jenisKelas === 'tn_b') return 'banat'
+  return 'belum_terklasifikasi'
+}
+
+/**
+ * Kelompok Putra/Putri GURU dari field jenis_kelas profile guru -- BEDA
+ * domain dari getKelompokSantri (jangan dicampur). Guru pakai 'tn' TANPA
+ * akhiran _a/_b (bukan 'tn_a'/'tn_b' seperti santri) -- dikonfirmasi dari
+ * app/guru/utils.ts::filterSantriGuruPengganti, app/api/setoran/route.ts
+ * (bisaAksesJenisKelas), dan RLS
+ * supabase/migrations/20260808220000_secure_santri_setoran_rls.sql
+ * (current_user_can_access_jenis_kelas): guru jenis_kelas 'banin'->akses
+ * santri banin, 'banat'->akses banat+tn_a+tn_b, 'tn'->akses tn_a+tn_b saja.
+ * Form Tambah/Edit Guru di Admin (GuruSection.tsx) saat ini hanya punya opsi
+ * 'banin'/'banat' (belum ada opsi 'tn' di UI), tapi 'tn' tetap nilai valid
+ * yang mungkin ada di data. Nilai lain/null -> 'belum_terklasifikasi'
+ * (TIDAK ditebak masuk Putra/Putri).
+ */
+export function getKelompokGuru(jenisKelas: string | null | undefined): KelompokGuru {
+  if (jenisKelas === 'banin') return 'putra'
+  if (jenisKelas === 'banat' || jenisKelas === 'tn') return 'putri'
+  return 'belum_terklasifikasi'
+}
+
+export type GuruBelumDiinputGroup = {
+  guruId: string
+  guruNama: string
+  kelasRingkas: string
+  santriList: Santri[]
+}
+
+/**
+ * Kelompokkan santri berkategori 'belum_diinput' per Guru (guru_id), untuk
+ * tampilan "Belum Diinput Guru" di Dashboard. Santri tanpa guru_id/nama guru
+ * dikelompokkan sebagai "Belum Ada Guru" dan ditaruh di akhir daftar.
+ */
+export function groupBelumDiinputByGuru(santriBelumDiinput: Santri[]): GuruBelumDiinputGroup[] {
+  const map = new Map<string, GuruBelumDiinputGroup>()
+  santriBelumDiinput.forEach(s => {
+    const guruId = s.guru_id || '__tanpa_guru__'
+    const guruNama = s.guru?.nama || 'Belum Ada Guru'
+    if (!map.has(guruId)) map.set(guruId, { guruId, guruNama, kelasRingkas: '', santriList: [] })
+    map.get(guruId)!.santriList.push(s)
+  })
+  const groups = Array.from(map.values()).map(g => ({
+    ...g,
+    kelasRingkas: [...new Set(g.santriList.map(s => s.kelas || '-'))].join(', '),
+  }))
+  return groups.sort((a, b) => {
+    if (a.guruId === '__tanpa_guru__') return 1
+    if (b.guruId === '__tanpa_guru__') return -1
+    return a.guruNama.localeCompare(b.guruNama, 'id')
+  })
+}
+
+/**
+ * Susun teks siap-salin (Clipboard) daftar Belum Diinput per Guru, untuk
+ * dikirim manual ke grup WA pondok oleh Kepsek. `judul` baris pertama (mis.
+ * "MONITORING SETORAN BANIN") ditentukan caller supaya bisa dibedakan per
+ * kelompok (Koreksi Tahap 7B). Tidak ada pengiriman otomatis -- murni format
+ * string.
+ */
+export function buildClipboardBelumDiinput(judul: string, groups: GuruBelumDiinputGroup[], tanggalLabel: string): string {
+  const baris: string[] = [judul, tanggalLabel, '', 'Belum diinput:', '']
+  groups.forEach(g => {
+    baris.push(`${g.guruNama} — ${g.santriList.length} santri`)
+    if (g.kelasRingkas) baris.push(g.kelasRingkas)
+    g.santriList.forEach(s => baris.push(`- ${s.nama}`))
+    baris.push('')
+  })
+  baris.push('Mohon segera melengkapi input setoran hari ini.')
+  return baris.join('\n')
+}
+
+export type AbsensiSesiRingkas = { hadir: number, belumAbsen: Guru[] }
+
+/** Ringkasan absensi guru 1 sesi: jumlah hadir + daftar guru yang BELUM absen. */
+export function ringkasAbsensiGuru(guruList: Guru[], guruIdHadirSesi: string[]): AbsensiSesiRingkas {
+  return {
+    hadir: guruIdHadirSesi.length,
+    belumAbsen: guruList.filter(g => !guruIdHadirSesi.includes(g.id)),
+  }
+}
+
+/**
+ * Susun teks siap-salin (Clipboard) daftar Guru yang belum absen (per
+ * kelompok Putra/Putri), untuk dikirim manual ke grup terkait (Koreksi
+ * Tahap 7B). `labelKelompok` dipakai pada kalimat "Semua X sudah
+ * melengkapi absensi." (mis. "Guru Putra").
+ */
+export function buildClipboardAbsensiGuru(
+  judul: string,
+  labelKelompok: string,
+  tanggalLabel: string,
+  belumAbsenSubuh: Guru[],
+  belumAbsenPagi: Guru[],
+): string {
+  if (belumAbsenSubuh.length === 0 && belumAbsenPagi.length === 0) {
+    return [judul, tanggalLabel, '', `Semua ${labelKelompok} sudah melengkapi absensi.`].join('\n')
+  }
+  const baris: string[] = [judul, tanggalLabel, '']
+  if (belumAbsenSubuh.length > 0) {
+    baris.push('Belum Absen Subuh:')
+    belumAbsenSubuh.forEach(g => baris.push(`- ${g.nama}`))
+    baris.push('')
+  }
+  if (belumAbsenPagi.length > 0) {
+    baris.push('Belum Absen Pagi:')
+    belumAbsenPagi.forEach(g => baris.push(`- ${g.nama}`))
+    baris.push('')
+  }
+  baris.push('Mohon segera melengkapi absensi hari ini.')
+  return baris.join('\n')
+}
+
+export type MurojaahKelasGroup = {
+  kelasLabel: string
+  jenjang: string
+  santriList: MurojaahResult[]
+  sesuaiTarget: number
+  kurang: number
+  belumMurojaah: number
+}
+
+/**
+ * Kelompokkan hasil monitor murojaah per kelas, diurutkan dari kelas dengan
+ * jumlah "kurang + belum murojaah" terbanyak (paling perlu perhatian dulu).
+ */
+export function groupMurojaahByKelas(hasilMonitorMurojaah: MurojaahResult[]): MurojaahKelasGroup[] {
+  const map = new Map<string, MurojaahKelasGroup>()
+  hasilMonitorMurojaah.forEach(s => {
+    const key = s.kelas || '-'
+    if (!map.has(key)) map.set(key, { kelasLabel: key, jenjang: s.jenjang || '', santriList: [], sesuaiTarget: 0, kurang: 0, belumMurojaah: 0 })
+    const grup = map.get(key)!
+    grup.santriList.push(s)
+    if (!s.sudahMurojaah) grup.belumMurojaah++
+    else if (s.persentase >= 80) grup.sesuaiTarget++
+    else grup.kurang++
+  })
+  return Array.from(map.values()).sort((a, b) => (b.belumMurojaah + b.kurang) - (a.belumMurojaah + a.kurang))
 }

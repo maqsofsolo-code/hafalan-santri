@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
-import { getTanggalWIB } from '../lib/dateWib'
+import { getTanggalWIB, getHariWIB, parseTanggalDbAman } from '../lib/dateWib'
 
 import { useKepsekData } from './hooks/useKepsekData'
 import { useKepsekMonitoring } from './hooks/useKepsekMonitoring'
@@ -48,14 +48,20 @@ export default function KepsekDashboard() {
   }
 
   const today = getTanggalWIB()
-  // new Date().getDay() (bukan getTanggalWIB()) -- fragmen lama yang sengaja
-  // TIDAK diperbaiki di Tahap 7A ini (structural refactor saja, lihat laporan).
-  const hariMinggu = new Date().getDay()
+  // Tahap 7B: diganti dari new Date().getDay() ke getHariWIB() (app/lib/dateWib.ts)
+  // -- rule Jumat/Ahad sekarang jadi business requirement UI eksplisit (lihat
+  // laporan Tahap 7B), jadi fragmen lama ini boleh diperbaiki sekarang.
+  const hariMinggu = getHariWIB()
   const isLiburMingguan = hariMinggu === 0 || hariMinggu === 5
   const isLibur = isLiburMingguan || data.kalenderAktif?.tipe === 'libur'
   const isUjian = data.kalenderAktif && (data.kalenderAktif.tipe === 'mid_semester' || data.kalenderAktif.tipe === 'semester')
 
-  const tanggal = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  // Tahap 7B: dibangun dari `today` (WIB) lewat parseTanggalDbAman, bukan
+  // new Date() browser-lokal -- konsisten dengan hariMinggu/isLibur di atas
+  // yang sekarang juga WIB, supaya nama hari yang tampil tidak pernah
+  // berbeda dari status libur yang dihitung.
+  const tanggalWIBDate = parseTanggalDbAman(today)
+  const tanggal = (tanggalWIBDate || new Date()).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
   if (data.loading) {
     return (
