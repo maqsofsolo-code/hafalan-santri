@@ -1,20 +1,7 @@
 'use client'
+import { useState } from 'react'
 import Image from 'next/image'
-
-export const menuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◈' },
-  { id: 'monitoring', label: 'Monitoring', icon: '◉' },
-  { id: 'kalender', label: 'Kalender Akademik', icon: '📅' },
-  { id: 'guru', label: 'Data Guru', icon: '▤' },
-  { id: 'santri', label: 'Data Santri', icon: '◎' },
-  { id: 'alumni', label: 'Data Alumni', icon: '🎓' },
-  { id: 'naik-kelas', label: 'Naik Kelas', icon: '⬆' },
-  { id: 'wali', label: 'Data Wali', icon: '◍' },
-  { id: 'ranking', label: 'Ranking Santri', icon: '✦' },
-  { id: 'laporan', label: 'Laporan Bulanan', icon: '📊' },
-  { id: 'rapot', label: 'Rapot Digital', icon: '📋' },
-  { id: 'rekap-nilai-ujian', label: 'Rekap Nilai Ujian', icon: '📝' },
-]
+import { dashboardItem, navigationGroups, findGroupForMenu, isNavSubgroup } from '../navigation'
 
 // Header mobile (fixed, di luar <div className="flex">) -- dipindah dari
 // app/admin/page.tsx (Modularisasi Tahap 6A), dipisah dari AdminSidebarNav
@@ -54,6 +41,38 @@ export function AdminSidebarNav(props: {
   onLogout: () => void
 }) {
   const { activeMenu, onSelectMenu, sidebarOpen, setSidebarOpen, onLogout } = props
+
+  // Accordion: undefined = pakai default (terbuka jika berisi activeMenu).
+  // Klik header group/subgroup menimpa default lewat entry eksplisit di sini.
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({})
+  const [subgroupOpen, setSubgroupOpen] = useState<Record<string, boolean>>({})
+
+  const active = findGroupForMenu(activeMenu)
+
+  // "active group otomatis terbuka": saat activeMenu pindah ke group/subgroup
+  // lain, paksa entry itu terbuka (tanpa menutup paksa group lain yang sedang
+  // dibuka user secara manual). Disesuaikan langsung di badan render (pola
+  // "adjusting state when a prop changes" ala React docs) supaya tidak
+  // memicu setState di dalam effect.
+  const [prevActiveMenu, setPrevActiveMenu] = useState(activeMenu)
+  if (activeMenu !== prevActiveMenu) {
+    setPrevActiveMenu(activeMenu)
+    if (active) {
+      if (!groupOpen[active.groupLabel]) setGroupOpen(prev => ({ ...prev, [active.groupLabel]: true }))
+      if (active.subgroupLabel && !subgroupOpen[active.subgroupLabel]) {
+        setSubgroupOpen(prev => ({ ...prev, [active.subgroupLabel!]: true }))
+      }
+    }
+  }
+
+  const isGroupOpen = (label: string) => groupOpen[label] ?? (active?.groupLabel === label)
+  const isSubgroupOpen = (label: string) => subgroupOpen[label] ?? (active?.subgroupLabel === label)
+  const toggleGroup = (label: string) => setGroupOpen(prev => ({ ...prev, [label]: !isGroupOpen(label) }))
+  const toggleSubgroup = (label: string) => setSubgroupOpen(prev => ({ ...prev, [label]: !isSubgroupOpen(label) }))
+
+  const leafButtonClass = (menuId: string) =>
+    `w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${activeMenu === menuId ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'}`
+
   return (
     <div className={`fixed inset-y-0 left-0 z-50 w-72 flex flex-col transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 md:w-64`}
       style={{ background: 'linear-gradient(180deg, #1a3a5c 0%, #1e4080 100%)' }}>
@@ -74,13 +93,57 @@ export function AdminSidebarNav(props: {
         </div>
       </div>
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {menuItems.map(menu => (
-          <button key={menu.id}
-            onClick={() => onSelectMenu(menu.id)}
-            className={`w-full text-left px-4 py-3 rounded-xl transition-all text-sm font-medium flex items-center gap-3 ${activeMenu === menu.id ? 'bg-white text-blue-900 shadow-md font-bold' : 'text-blue-100 hover:bg-white hover:bg-opacity-10'}`}>
-            <span>{menu.icon}</span>{menu.label}
-          </button>
-        ))}
+        <button onClick={() => onSelectMenu(dashboardItem.id)} className={leafButtonClass(dashboardItem.id)}>
+          <span>{dashboardItem.icon}</span>{dashboardItem.label}
+        </button>
+
+        {navigationGroups.map(group => {
+          const open = isGroupOpen(group.label)
+          return (
+            <div key={group.label} className="pt-1">
+              <button onClick={() => toggleGroup(group.label)}
+                className="w-full text-left px-4 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide text-blue-300 hover:bg-white hover:bg-opacity-10 flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2"><span>{group.icon}</span>{group.label}</span>
+                <span className="text-[10px]">{open ? '▾' : '▸'}</span>
+              </button>
+
+              {open && (
+                <div className="mt-1 space-y-1">
+                  {group.items.map(entry => {
+                    if (isNavSubgroup(entry)) {
+                      const subOpen = isSubgroupOpen(entry.label)
+                      return (
+                        <div key={entry.label} className="pl-3">
+                          <button onClick={() => toggleSubgroup(entry.label)}
+                            className="w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-white hover:bg-opacity-10 flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-3"><span>{entry.icon}</span>{entry.label}</span>
+                            <span className="text-[10px]">{subOpen ? '▾' : '▸'}</span>
+                          </button>
+                          {subOpen && (
+                            <div className="mt-1 space-y-1 pl-3">
+                              {entry.children.map(leaf => (
+                                <button key={leaf.id} onClick={() => onSelectMenu(leaf.id)} className={leafButtonClass(leaf.id)}>
+                                  <span>{leaf.icon}</span>{leaf.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={entry.id} className="pl-3">
+                        <button onClick={() => onSelectMenu(entry.id)} className={leafButtonClass(entry.id)}>
+                          <span>{entry.icon}</span>{entry.label}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </nav>
       <div className="p-4 border-t border-blue-700">
         <button onClick={onLogout} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-semibold">Keluar</button>
