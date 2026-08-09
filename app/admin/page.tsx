@@ -143,6 +143,8 @@ export default function AdminDashboard() {
               santriList={data.santriList}
               searchGuru={filters.searchGuru}
               setSearchGuru={filters.setSearchGuru}
+              filterKelompokGuru={filters.filterKelompokGuru}
+              setFilterKelompokGuru={filters.setFilterKelompokGuru}
             />
           )}
 

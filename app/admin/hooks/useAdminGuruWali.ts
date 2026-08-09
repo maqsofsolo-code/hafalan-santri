@@ -99,6 +99,31 @@ export function useAdminGuruWali(form: EntityForm, fetchData: () => void) {
     form.setSuccessMsg('Data wali berhasil diupdate!'); form.setShowForm(false); form.setEditWaliId(null); form.resetForm(); fetchData(); form.setLoading(false)
   }
 
+  // Bulk set jenis_kelas (Putra/Putri/Putri TN) untuk beberapa guru sekaligus
+  // (Tahap 7C) -- pakai mekanisme update profiles yang SAMA dengan
+  // handleUpdateGuru di atas (browser Admin, bukan API/service-role baru),
+  // hanya diperluas dari .eq('id', satuId) jadi .in('id', banyakId). `.select('id')`
+  // dipakai supaya bisa tahu id mana yang BENAR-BENAR ter-update (bukan
+  // asumsi semua berhasil) -- kalau RLS/DB menolak sebagian baris, itu akan
+  // hilang dari `data` dan dilaporkan sebagai gagal, bukan diklaim sukses.
+  const handleBulkUpdateJenisKelas = async (
+    guruIds: string[],
+    jenisKelas: 'banin' | 'banat' | 'tn'
+  ): Promise<{ berhasil: string[], gagal: string[], errorMsg: string }> => {
+    if (guruIds.length === 0) return { berhasil: [], gagal: [], errorMsg: '' }
+    const { data, error } = await supabase.from('profiles')
+      .update({ jenis_kelas: jenisKelas })
+      .in('id', guruIds)
+      .select('id')
+    if (error) {
+      return { berhasil: [], gagal: guruIds, errorMsg: error.message }
+    }
+    const berhasil = (data || []).map(row => row.id as string)
+    const gagal = guruIds.filter(id => !berhasil.includes(id))
+    fetchData()
+    return { berhasil, gagal, errorMsg: gagal.length > 0 ? 'Sebagian guru gagal diperbarui.' : '' }
+  }
+
   const handleHapusGuru = async (id: string) => {
     if (!confirm('Yakin hapus guru ini?')) return
     const result = await requestCreateUser({ isDelete: true, userId: id })
@@ -132,6 +157,7 @@ export function useAdminGuruWali(form: EntityForm, fetchData: () => void) {
 
   return {
     handleTambahGuru, handleEditGuru, handleUpdateGuru, handleHapusGuru,
+    handleBulkUpdateJenisKelas,
     handleTambahWali, handleEditWali, handleUpdateWali, handleHapusWali,
     importWaliLoading, importWaliMsg, handleImportWali,
   }

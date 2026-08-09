@@ -79,3 +79,29 @@ export function filterSantriList(santriList: Santri[], filters: {
     return true
   })
 }
+
+export type KelompokGuru = 'putra' | 'putri' | 'belum_terklasifikasi'
+
+/**
+ * Kelompok Putra/Putri GURU dari field profiles.jenis_kelas (Tahap 7C).
+ * SAMA PERSIS dengan mapping akses existing yang sudah dipakai
+ * app/guru/utils.ts (filterSantriGuruPengganti), app/api/setoran/route.ts
+ * (bisaAksesJenisKelas), dan RLS
+ * supabase/migrations/20260808220000_secure_santri_setoran_rls.sql
+ * (current_user_can_access_jenis_kelas): banin->Putra, banat/tn->Putri.
+ * Nilai lain/null -> belum_terklasifikasi, TIDAK ditebak dari nama guru.
+ * Ini murni fungsi presentational/grouping -- tidak menyentuh access model.
+ */
+export function getKelompokGuru(jenisKelas: string | null | undefined): KelompokGuru {
+  if (jenisKelas === 'banin') return 'putra'
+  if (jenisKelas === 'banat' || jenisKelas === 'tn') return 'putri'
+  return 'belum_terklasifikasi'
+}
+
+/** Label tampilan UI untuk jenis_kelas guru -- nilai DB (banin/banat/tn) TIDAK berubah, hanya label yang lebih mudah dibaca. */
+export function labelJenisKelasGuru(jenisKelas: string | null | undefined): string {
+  if (jenisKelas === 'banin') return 'Putra'
+  if (jenisKelas === 'banat') return 'Putri'
+  if (jenisKelas === 'tn') return 'Putri (TN)'
+  return 'Belum Terklasifikasi'
+}
