@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { authorize, createServiceRoleClient } from '../../lib/serverAuth'
 import { getTanggalWIB } from '../../lib/dateWib'
 
 type NilaiUjianBody = Record<string, unknown> & {
@@ -57,61 +57,7 @@ function responseError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
-function getSupabaseConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !anonKey || !serviceRoleKey) return null
-  return { url, anonKey, serviceRoleKey }
-}
-
-function createServiceClient(url: string, serviceRoleKey: string) {
-  return createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-}
-
-type ServiceClient = ReturnType<typeof createServiceClient>
-
-async function authorizeGuru(request: Request) {
-  const authorization = request.headers.get('authorization')
-  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-
-  if (!bearerMatch) {
-    return { response: responseError('Sesi login tidak valid atau sudah berakhir', 401) }
-  }
-
-  const config = getSupabaseConfig()
-  if (!config) {
-    return { response: responseError('Konfigurasi server tidak lengkap', 500) }
-  }
-
-  const accessToken = bearerMatch[1]
-  const authenticatedClient = createClient(config.url, config.anonKey, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-
-  const { data: userData, error: userError } = await authenticatedClient.auth.getUser(accessToken)
-  if (userError || !userData.user) {
-    return { response: responseError('Sesi login tidak valid atau sudah berakhir', 401) }
-  }
-
-  const { data: profile, error: profileError } = await authenticatedClient
-    .from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle()
-
-  if (profileError || profile?.role !== 'guru') {
-    return { response: responseError('Akses ditolak', 403) }
-  }
-
-  const serviceClient = createServiceClient(config.url, config.serviceRoleKey)
-
-  return { userId: userData.user.id, serviceClient }
-}
+type ServiceClient = ReturnType<typeof createServiceRoleClient>
 
 // getTanggalWIB dipindah ke app/lib/dateWib.ts (Modularisasi Tahap 2,
 // diimpor di atas) -- hasilnya diverifikasi identik dengan implementasi
@@ -233,10 +179,11 @@ async function getMasterSegments(serviceClient: ServiceClient) {
 }
 
 export async function GET(request: Request) {
-  const auth = await authorizeGuru(request)
+  const auth = await authorize(request, ['guru'])
   if ('response' in auth) return auth.response
 
-  const { userId, serviceClient } = auth
+  const userId = auth.userId
+  const serviceClient = createServiceRoleClient()
   const { data: santriData, error: santriError } = await serviceClient
     .from('santri')
     .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
@@ -423,7 +370,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorizeGuru(request)
+  const auth = await authorize(request, ['guru'])
   if ('response' in auth) return auth.response
 
   let body: NilaiUjianBody
@@ -452,7 +399,8 @@ export async function POST(request: Request) {
   const catatan = typeof body.catatan === 'string' && body.catatan.trim()
     ? body.catatan.trim().slice(0, 2000)
     : null
-  const { userId, serviceClient } = auth
+  const userId = auth.userId
+  const serviceClient = createServiceRoleClient()
   const { data: santriData, error: santriError } = await serviceClient
     .from('santri')
     .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')

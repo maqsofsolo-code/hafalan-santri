@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
 import {
   getCakupanSegment,
   hitungRingkasanJuz,
@@ -19,48 +19,6 @@ const KELOMPOK_VALID = new Set<Kelompok>(['banin', 'banat', 'tn'])
 
 function responseError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
-}
-
-function createAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  )
-}
-
-function createAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function authorizeAdmin(request: Request) {
-  const authorization = request.headers.get('authorization')
-  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-  if (!bearerMatch) return { response: responseError('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.', 401) }
-
-  const accessToken = bearerMatch[1]
-  const supabaseAuthenticated = createAuthenticatedClient(accessToken)
-  const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
-  if (userError || !userData.user) return { response: responseError('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.', 401) }
-
-  const { data: profile, error: profileError } = await supabaseAuthenticated
-    .from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle()
-  // Bedakan "gagal memverifikasi" (masalah server/koneksi) dari "terverifikasi bukan admin", sama
-  // seperti app/api/admin/nilai-ujian/route.ts.
-  if (profileError) return { response: responseError('Gagal memverifikasi akses. Coba lagi.', 500) }
-  if (profile?.role !== 'admin') return { response: responseError('Akun ini tidak memiliki akses Admin.', 403) }
-
-  return { adminClient: createAdminClient() }
 }
 
 function labelFilterKelompok(kelompok: Kelompok) {
@@ -101,7 +59,7 @@ function jenisKelasUntukWaliKelas(jenisKelas: string | null | undefined): JenisK
 // santri.guru_id/guru_id_2 (Pentasmi'/Guru Musami', peran berbeda). Tidak ada dimensi periode pada
 // is_wali_kelas saat ini, jadi ini selalu assignment TERKINI -- keterbatasan model data yang ada.
 async function cariNamaWaliKelas(
-  adminClient: ReturnType<typeof createAdminClient>,
+  adminClient: ReturnType<typeof createServiceRoleClient>,
   kelasNum: number | null | undefined,
   jenisKelasSantri: string | null | undefined,
 ): Promise<string> {
@@ -129,9 +87,9 @@ async function cariNamaWaliKelas(
 }
 
 export async function GET(request: Request) {
-  const auth = await authorizeAdmin(request)
-  if ('response' in auth) return auth.response
-  const { adminClient } = auth
+  const auth = await authorize(request, ['admin'])
+  if (auth.response) return auth.response
+  const adminClient = createServiceRoleClient()
 
   const url = new URL(request.url)
   const periode = url.searchParams.get('periode') || ''

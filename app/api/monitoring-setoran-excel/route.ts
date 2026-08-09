@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
+import { authorize, createServiceRoleClient } from '../../lib/serverAuth'
 import { getTanggalWIB } from '../../lib/dateWib'
 
 type Jenjang = 'ula' | 'wustha' | 'ulya'
@@ -37,24 +37,6 @@ const JENJANG_VALID = new Set<Jenjang>(['ula', 'wustha', 'ulya'])
 const KELOMPOK_VALID = new Set<Kelompok>(['banin', 'banat', 'tn'])
 const JENIS_LAPORAN_VALID = new Set<JenisLaporan>(['rosib', 'belum-diinput'])
 
-function createAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  )
-}
-
-function createAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
 
 function tanggalValid(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -136,27 +118,8 @@ function detailSetoran(setoran: SetoranRosib) {
 }
 
 export async function GET(request: Request) {
-  const authorization = request.headers.get('authorization')
-  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-  if (!bearerMatch) {
-    return NextResponse.json({ error: 'Sesi login tidak valid atau sudah berakhir' }, { status: 401 })
-  }
-
-  const accessToken = bearerMatch[1]
-  const supabaseAuthenticated = createAuthenticatedClient(accessToken)
-  const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
-  if (userError || !userData.user) {
-    return NextResponse.json({ error: 'Sesi login tidak valid atau sudah berakhir' }, { status: 401 })
-  }
-
-  const { data: profile, error: profileError } = await supabaseAuthenticated
-    .from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle()
-  if (profileError || profile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 })
-  }
+  const auth = await authorize(request, ['admin'])
+  if (auth.response) return auth.response
 
   const { searchParams } = new URL(request.url)
   const jenisLaporan = searchParams.get('jenis') || ''
@@ -185,7 +148,7 @@ export async function GET(request: Request) {
   const jenisFinal = jenisLaporan as JenisLaporan
   const jenjangFinal = jenjang as Jenjang
   const kelompokFinal = kelompok as Kelompok
-  const supabaseAdmin = createAdminClient()
+  const supabaseAdmin = createServiceRoleClient()
 
   let santriQuery = supabaseAdmin
     .from('santri')

@@ -1,22 +1,10 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { createServiceRoleClient } from '../../../lib/serverAuth'
+import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
 import { getTanggalWIB, getPeriodePekanTertutup } from '../../../lib/dateWib'
 
 // getTanggalWIB/formatTanggalUTC/getPeriodePekanTertutup dipindah ke
 // app/lib/dateWib.ts (Modularisasi Tahap 2, diimpor di atas) -- hasilnya
 // diverifikasi identik dengan implementasi lama via scripts/verify-date-wib.mts.
-
-function createAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  )
-}
 
 // Field yang dikirim ke Wali TERBATAS sengaja -- lihat Security Fix Tahap 4
 // bagian G. Tidak ada NIK/NISN/alamat/tempat-tanggal lahir/wali_id/guru_id/
@@ -26,27 +14,9 @@ const KOLOM_SANTRI_KELAS = 'id, nama, total_hafalan_juz, kelas_num, jenjang, jen
 const KOLOM_SETORAN_KELAS = 'santri_id, tanggal, jenis, penambahan_juz, status_kehadiran, status'
 
 export async function GET(request: Request) {
-  const authorization = request.headers.get('authorization')
-  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-  if (!bearerMatch) {
-    return NextResponse.json({ error: 'Sesi login tidak valid atau sudah berakhir' }, { status: 401 })
-  }
-
-  const accessToken = bearerMatch[1]
-  const supabaseAuthenticated = createAuthenticatedClient(accessToken)
-  const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
-  if (userError || !userData.user) {
-    return NextResponse.json({ error: 'Sesi login tidak valid atau sudah berakhir' }, { status: 401 })
-  }
-
-  const { data: callerProfile, error: callerProfileError } = await supabaseAuthenticated
-    .from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle()
-  if (callerProfileError || callerProfile?.role !== 'wali') {
-    return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 })
-  }
+  const auth = await authorize(request, ['wali'])
+  if ('response' in auth) return auth.response
+  const { userId, authClient: supabaseAuthenticated } = auth
 
   const { searchParams } = new URL(request.url)
   const santriId = searchParams.get('santriId')
@@ -62,7 +32,7 @@ export async function GET(request: Request) {
     .from('santri')
     .select('id, kelas_num, jenjang, jenis_kelas')
     .eq('id', santriId)
-    .eq('wali_id', userData.user.id)
+    .eq('wali_id', userId)
     .maybeSingle()
 
   if (santriError) {

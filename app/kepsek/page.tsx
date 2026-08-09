@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import { getPeriodePekanTertutup, getTanggalWIB } from '../lib/dateWib'
 import { hitungRankingTotalHafalan, hitungRankingKonsistensi, hitungRankingSemangat } from '../lib/ranking'
+import { requireProfile, fetchWithAuth } from '../lib/authClient'
 
 // formatTanggalUTC/getPeriodePekanTertutup dipindah ke app/lib/dateWib.ts
 // (Modularisasi Tahap 2, diimpor di atas) -- hasilnya diverifikasi identik
@@ -67,10 +68,8 @@ useEffect(() => {
   useEffect(() => { fetchAllData() }, [])
 
   const fetchAllData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/'; return }
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    if (profile?.role !== 'kepsek') { window.location.href = '/'; return }
+    const profile = await requireProfile('kepsek')
+    if (!profile) return
 
     const today = getTanggalWIB()
     const tujuhHariLalu = new Date()
@@ -235,7 +234,7 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
     setLaporanLoading('')
     return
   }
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+  const response = await fetchWithAuth(url, session.access_token)
   if (!response.ok) {
     if (response.status === 401) alert('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
     else if (response.status === 403) alert('Anda tidak memiliki akses untuk laporan ini.')

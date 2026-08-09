@@ -6,6 +6,7 @@ import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 import InputNilaiUjianSegment from '../components/InputNilaiUjianSegment'
 import RekapNilaiUjianGuru, { type CakupanSantriMap, type MasterSegmentLite, type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
 import { getTanggalWIB, getHariWIB } from '../lib/dateWib'
+import { requireProfile, fetchWithAuth } from '../lib/authClient'
 import { hitungRankingTotalHafalan } from '../lib/ranking'
 
 const PESAN_POPUP_WUSTHA = 'Santri ini belum lancar pada setoran hafalan lama sebelumnya. Silakan setorkan hafalan lama terlebih dahulu. Hafalan baru akan terbuka setelah mendapatkan status Najih.'
@@ -111,10 +112,9 @@ const [riwayatLoadingMore, setRiwayatLoadingMore] = useState(false)
   }
 
   const fetchGuruData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/'; return }
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    if (profile?.role !== 'guru') { window.location.href = '/'; return }
+    const profile = await requireProfile('guru')
+    if (!profile) return
+    const user = { id: profile.id }
     setGuruProfile(profile)
 
     const { data: santri1 } = await supabase.from('santri')
@@ -315,9 +315,9 @@ setRapotSantriList(allRapotSantri)
     let nilaiList: any[] = []
     const { data: { session: sesiRekap } } = await supabase.auth.getSession()
     if (sesiRekap?.access_token) {
-      const resRekap = await fetch(
+      const resRekap = await fetchWithAuth(
         `/api/guru/rapot-digital-rekap-kelas?periode_id=${encodeURIComponent(periodeAktif.id)}&kelas_num=${parseInt(kelas)}`,
-        { headers: { Authorization: `Bearer ${sesiRekap.access_token}` } }
+        sesiRekap.access_token
       )
       if (resRekap.ok) {
         const hasilRekap = await resRekap.json().catch(() => null)
@@ -360,8 +360,7 @@ setRapotSantriList(allRapotSantri)
         return
       }
 
-      const response = await fetch('/api/nilai-ujian', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const response = await fetchWithAuth('/api/nilai-ujian', session.access_token, {
         cache: 'no-store',
       })
       const result = await response.json()
@@ -695,12 +694,9 @@ const tampilPopupSukses = (msg: string) => {
       return
     }
 
-    const response = await fetch('/api/setoran', {
+    const response = await fetchWithAuth('/api/setoran', session.access_token, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(insertData),
     })
     const result = await response.json().catch(() => ({}))

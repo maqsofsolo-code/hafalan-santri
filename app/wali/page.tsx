@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 import { getTanggalWIB, getHariWIB } from '../lib/dateWib'
 import { hitungRankingTotalHafalan, hitungRankingKonsistensi, hitungRankingSemangat } from '../lib/ranking'
+import { requireProfile, fetchWithAuth } from '../lib/authClient'
 
 // Perhitungan periode konsistensi (getPeriodePekanTertutup) sekarang dilakukan
 // server-side di app/api/wali/ranking-data (identik) dan dikirim balik dalam
@@ -64,12 +65,9 @@ const handleTestNotif = async () => {
         return
       }
 
-      const res = await fetch('/api/push/test', {
+      const res = await fetchWithAuth('/api/push/test', session.access_token, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       })
       const data = await res.json()
@@ -87,14 +85,12 @@ const handleTestNotif = async () => {
   }
   
   const fetchWaliData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/'; return }
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    if (profile?.role !== 'wali') { window.location.href = '/'; return }
+    const profile = await requireProfile('wali')
+    if (!profile) return
     setWaliProfile(profile)
 
     const { data: santri } = await supabase
-      .from('santri').select('*, guru:guru_id(nama)').eq('wali_id', user.id)
+      .from('santri').select('*, guru:guru_id(nama)').eq('wali_id', profile.id)
     setSantriList(santri || [])
 
     if (santri && santri.length > 0) {
@@ -121,9 +117,7 @@ const handleTestNotif = async () => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     if (sessionError || !session?.access_token) return
 
-    const response = await fetch(`/api/wali/ranking-data?santriId=${encodeURIComponent(santri.id)}`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
+    const response = await fetchWithAuth(`/api/wali/ranking-data?santriId=${encodeURIComponent(santri.id)}`, session.access_token)
     if (!response.ok) return
     const hasil = await response.json().catch(() => null)
     if (!hasil) return

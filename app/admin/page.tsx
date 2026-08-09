@@ -6,6 +6,7 @@ import Image from 'next/image'
 import AdminRekapNilaiUjian from '../components/AdminRekapNilaiUjian'
 import { getTanggalWIB, getHariWIB, getPeriodePekanTertutup } from '../lib/dateWib'
 import { hitungRankingTotalHafalan, hitungRankingKonsistensi, hitungRankingSemangat } from '../lib/ranking'
+import { fetchWithAuth } from '../lib/authClient'
 
 function FormEmailPassword({
   isEdit, 
@@ -373,12 +374,9 @@ const fetchPeriode = async () => {
       return { error: 'Session tidak tersedia atau sudah berakhir. Silakan login kembali.' }
     }
 
-    const res = await fetch('/api/create-user', {
+    const res = await fetchWithAuth('/api/create-user', session.access_token, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     const result = await res.json() as CreateUserResponse
@@ -552,9 +550,7 @@ const fetchPeriode = async () => {
         return
       }
 
-      const response = await fetch('/api/download-data', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
+      const response = await fetchWithAuth('/api/download-data', session.access_token)
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -609,7 +605,7 @@ const fetchPeriode = async () => {
       alert('Sesi login sudah berakhir. Silakan login kembali.')
       return
     }
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+    const response = await fetchWithAuth(url, session.access_token)
     if (!response.ok) {
       if (response.status === 401) { alert('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.'); return }
       if (response.status === 403) { alert('Anda tidak memiliki akses untuk laporan ini.'); return }
@@ -653,9 +649,7 @@ const fetchPeriode = async () => {
         kelas: monitoringDownloadKelas,
         kelompok: monitoringDownloadKelompok,
       })
-      const response = await fetch(`/api/monitoring-setoran-excel?${params}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
+      const response = await fetchWithAuth(`/api/monitoring-setoran-excel?${params}`, session.access_token)
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -726,7 +720,7 @@ const fetchPeriode = async () => {
     setLaporanLoading('')
     return
   }
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+  const response = await fetchWithAuth(url, session.access_token)
   if (!response.ok) {
     if (response.status === 401) alert('Sesi login tidak valid atau sudah berakhir. Silakan login kembali.')
     else if (response.status === 403) alert('Anda tidak memiliki akses untuk laporan ini.')
@@ -1037,10 +1031,7 @@ const fetchPeriode = async () => {
       setImportMsg('Sesi login sudah berakhir. Silakan login kembali.'); setImportLoading(false); return
     }
     const formData = new FormData(); formData.append('file', file)
-    const res = await fetch('/api/import-excel', {
-      method: 'POST', body: formData,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
+    const res = await fetchWithAuth('/api/import-excel', session.access_token, { method: 'POST', body: formData })
     const result = await res.json()
     setImportMsg(result.message || result.error); setImportLoading(false); fetchData()
   }
@@ -1052,10 +1043,7 @@ const handleImportWali = async (e: any) => {
       setImportWaliMsg('Sesi login sudah berakhir. Silakan login kembali.'); setImportWaliLoading(false); return
     }
     const formData = new FormData(); formData.append('file', file)
-    const res = await fetch('/api/import-wali', {
-      method: 'POST', body: formData,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
+    const res = await fetchWithAuth('/api/import-wali', session.access_token, { method: 'POST', body: formData })
     const result = await res.json()
     let msg = result.message || result.error
     if (result.detail && result.detail.length > 0) {

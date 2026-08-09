@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { createServiceRoleClient } from '../../../lib/serverAuth'
+import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
 
 // Endpoint minimal untuk kebutuhan historis Rapot Digital: Rekap Kelas di
 // app/guru/page.tsx (fetchRekapKelasByGuru) menampilkan nilai_rapot jenjang
@@ -21,39 +20,9 @@ import { createServiceRoleClient } from '../../../lib/serverAuth'
 // app/guru/page.tsx, hanya lokasi eksekusinya. Perhitungan rata-rata/
 // peringkat tetap sepenuhnya di client (tidak dipindah), tidak diubah sama
 // sekali.
-function createAuthenticatedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  )
-}
-
 export async function GET(request: Request) {
-  const authorization = request.headers.get('authorization')
-  const bearerMatch = authorization?.match(/^Bearer\s+(\S+)$/i)
-  if (!bearerMatch) {
-    return NextResponse.json({ error: 'Sesi login tidak valid atau sudah berakhir' }, { status: 401 })
-  }
-
-  const accessToken = bearerMatch[1]
-  const supabaseAuthenticated = createAuthenticatedClient(accessToken)
-  const { data: userData, error: userError } = await supabaseAuthenticated.auth.getUser(accessToken)
-  if (userError || !userData.user) {
-    return NextResponse.json({ error: 'Sesi login tidak valid atau sudah berakhir' }, { status: 401 })
-  }
-
-  const { data: callerProfile, error: callerProfileError } = await supabaseAuthenticated
-    .from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle()
-  if (callerProfileError || callerProfile?.role !== 'guru') {
-    return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 })
-  }
+  const auth = await authorize(request, ['guru'])
+  if (auth.response) return auth.response
 
   const { searchParams } = new URL(request.url)
   const periodeId = searchParams.get('periode_id')
