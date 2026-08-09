@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
+import { getTanggalWIB } from '../../lib/dateWib'
 
 type Jenjang = 'ula' | 'wustha' | 'ulya'
 type Kelompok = 'banin' | 'banat' | 'tn'
@@ -65,16 +66,9 @@ function tanggalValid(value: string) {
   return date.getUTCFullYear() === tahun && date.getUTCMonth() === bulan - 1 && date.getUTCDate() === tanggal
 }
 
-function getTanggalWIB() {
-  const bagian = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date())
-  const nilai = Object.fromEntries(bagian.filter(item => item.type !== 'literal').map(item => [item.type, item.value]))
-  return `${nilai.year}-${nilai.month}-${nilai.day}`
-}
+// getTanggalWIB dipindah ke app/lib/dateWib.ts (Modularisasi Tahap 2,
+// diimpor di atas) -- hasilnya diverifikasi identik dengan implementasi
+// lama via scripts/verify-date-wib.mts.
 
 function formatTanggalIndonesia(value: string) {
   const [tahun, bulan, tanggal] = value.split('-').map(Number)

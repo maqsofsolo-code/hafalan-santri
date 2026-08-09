@@ -9,6 +9,7 @@ import {
   type SantriScope,
 } from '../../../lib/adminNilaiUjian'
 import { buildRaportHifzhWorkbook, type SantriRaport } from '../../../lib/raportHifzhExcel'
+import { getWIBDate } from '../../../lib/dateWib'
 
 type Jenjang = 'ula' | 'wustha' | 'ulya'
 type Kelompok = 'banin' | 'banat' | 'tn'
@@ -83,9 +84,9 @@ function slugify(value: string) {
     || 'raport'
 }
 
-function getWIBDate() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-}
+// getWIBDate dipindah ke app/lib/dateWib.ts (Modularisasi Tahap 2, diimpor
+// di atas) -- hasilnya diverifikasi identik dengan implementasi lama via
+// scripts/verify-date-wib.mts.
 
 type JenisKelasWali = 'banin' | 'banat' | 'tn'
 

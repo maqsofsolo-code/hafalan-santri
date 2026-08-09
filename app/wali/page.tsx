@@ -3,17 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
-
-function getTanggalWIB() {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-function getHariWIB() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
-}
+import { getTanggalWIB, getHariWIB } from '../lib/dateWib'
 
 // Perhitungan periode konsistensi (getPeriodePekanTertutup) sekarang dilakukan
 // server-side di app/api/wali/ranking-data (identik) dan dikirim balik dalam

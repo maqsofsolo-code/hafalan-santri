@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { kirimPushKeUser } from '../../lib/sendPush'
+import { getTanggalWIB as getWIBDate, getHariWIB, formatTanggalUTC } from '../../lib/dateWib'
 
 const JENIS_WHATSAPP = new Set([
   'reminder-guru-subuh',
@@ -93,24 +94,12 @@ async function kirimWA(nomor: string, pesan: string) {
   }
 }
 
-function getWIBDate() {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function getHariWIB() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
-}
-
-function formatTanggalUTC(date: Date) {
-  const tahun = date.getUTCFullYear()
-  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const tanggal = String(date.getUTCDate()).padStart(2, '0')
-  return `${tahun}-${bulan}-${tanggal}`
-}
+// getWIBDate (alias getTanggalWIB)/getHariWIB/formatTanggalUTC dipindah ke
+// app/lib/dateWib.ts (Modularisasi Tahap 2, diimpor di atas) -- hasilnya
+// diverifikasi identik dengan implementasi lama via scripts/verify-date-wib.mts.
+// getDuaPekanTertutup TIDAK dipindah -- ini varian 2-periode (current+
+// previous) untuk notifNaikPeringkat, bukan duplikat getPeriodePekanTertutup,
+// tetap memakai formatTanggalUTC yang sekarang diimpor.
 
 function getDuaPekanTertutup(saatIni = new Date()) {
   const bagianWIB = new Intl.DateTimeFormat('en-GB', {

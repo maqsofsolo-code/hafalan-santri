@@ -2,71 +2,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import Image from 'next/image'
+import { getPeriodePekanTertutup, getTanggalWIB } from '../lib/dateWib'
 
-function formatTanggalUTC(date: Date) {
-  const tahun = date.getUTCFullYear()
-  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const tanggal = String(date.getUTCDate()).padStart(2, '0')
-  return `${tahun}-${bulan}-${tanggal}`
-}
-
-function getPeriodePekanTertutup(saatIni = new Date()) {
-  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(saatIni)
-  const nilaiBagian = Object.fromEntries(
-    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
-  )
-  const tahun = Number(nilaiBagian.year)
-  const bulan = Number(nilaiBagian.month)
-  const tanggal = Number(nilaiBagian.day)
-  const jam = Number(nilaiBagian.hour)
-  const tanggalWIB = new Date(Date.UTC(tahun, bulan - 1, tanggal))
-  const nomorHari = tanggalWIB.getUTCDay()
-  const jarakDariSenin = (nomorHari + 6) % 7
-  const seninPekanBerjalan = new Date(tanggalWIB)
-  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
-
-  const sabtuSudahDitutup = nomorHari === 6 && jam >= 17
-  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
-  const tanggalMulaiDate = new Date(seninPekanBerjalan)
-  if (!gunakanPekanBerjalan) {
-    tanggalMulaiDate.setUTCDate(tanggalMulaiDate.getUTCDate() - 7)
-  }
-  const tanggalSelesaiDate = new Date(tanggalMulaiDate)
-  tanggalSelesaiDate.setUTCDate(tanggalSelesaiDate.getUTCDate() + 5)
-
-  const namaBulan = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-  ]
-  const mulaiTanggal = tanggalMulaiDate.getUTCDate()
-  const selesaiTanggal = tanggalSelesaiDate.getUTCDate()
-  const mulaiBulan = tanggalMulaiDate.getUTCMonth()
-  const selesaiBulan = tanggalSelesaiDate.getUTCMonth()
-  const mulaiTahun = tanggalMulaiDate.getUTCFullYear()
-  const selesaiTahun = tanggalSelesaiDate.getUTCFullYear()
-  let labelPeriode: string
-
-  if (mulaiBulan === selesaiBulan && mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else if (mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]} ${mulaiTahun}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  }
-
-  return {
-    tanggalMulai: formatTanggalUTC(tanggalMulaiDate),
-    tanggalSelesai: formatTanggalUTC(tanggalSelesaiDate),
-    labelPeriode,
-  }
-}
+// formatTanggalUTC/getPeriodePekanTertutup dipindah ke app/lib/dateWib.ts
+// (Modularisasi Tahap 2, diimpor di atas) -- hasilnya diverifikasi identik
+// dengan implementasi lama via scripts/verify-date-wib.mts. Seluruh
+// "hari ini" di file ini sekarang memakai getTanggalWIB() (keputusan bisnis
+// final: hari ini operasional harus WIB) -- lihat laporan Tahap 2 lanjutan.
 
 export default function KepsekDashboard() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
@@ -96,7 +38,7 @@ export default function KepsekDashboard() {
   const [filterUjianKelas, setFilterUjianKelas] = useState('semua')
 
   // Filter & search monitoring
-  const [monitoringTanggal, setMonitoringTanggal] = useState(new Date().toISOString().split('T')[0])
+  const [monitoringTanggal, setMonitoringTanggal] = useState(getTanggalWIB())
   const [searchMonitoring, setSearchMonitoring] = useState('')
   const [filterMonitoringJenjang, setFilterMonitoringJenjang] = useState('semua')
   const [filterMonitoringKelas, setFilterMonitoringKelas] = useState('semua')
@@ -108,7 +50,7 @@ export default function KepsekDashboard() {
   const [searchMurojaah, setSearchMurojaah] = useState('')
   const [filterMurojaahJenjang, setFilterMurojaahJenjang] = useState('semua')
   const [filterMurojaahKelas, setFilterMurojaahKelas] = useState('semua')
-  const [murojaahTanggal, setMurojaahTanggal] = useState(new Date().toISOString().split('T')[0])
+  const [murojaahTanggal, setMurojaahTanggal] = useState(getTanggalWIB())
   const [setoranMurojaahTanggal, setSetoranMurojaahTanggal] = useState<any[]>([])
   const [loadingMurojaah, setLoadingMurojaah] = useState(false)
   const [laporanBulan, setLaporanBulan] = useState('')
@@ -118,7 +60,7 @@ const [laporanSantriId, setLaporanSantriId] = useState('semua')
 const [laporanLoading, setLaporanLoading] = useState('')
 
 useEffect(() => {
-  setLaporanBulan(new Date().toISOString().slice(0, 7))
+  setLaporanBulan(getTanggalWIB().slice(0, 7))
 }, [])
 
   useEffect(() => { fetchAllData() }, [])
@@ -129,7 +71,7 @@ useEffect(() => {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     if (profile?.role !== 'kepsek') { window.location.href = '/'; return }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTanggalWIB()
     const tujuhHariLalu = new Date()
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
@@ -456,7 +398,7 @@ const handleDownloadLaporan = async (format: 'excel' | 'pdf') => {
 
   const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/' }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTanggalWIB()
   const hariMinggu = new Date().getDay()
   const isLiburMingguan = hariMinggu === 0 || hariMinggu === 5
   const isLibur = isLiburMingguan || kalenderAktif?.tipe === 'libur'

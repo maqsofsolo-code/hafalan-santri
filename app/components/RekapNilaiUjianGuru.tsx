@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatTanggalPendekID as formatTanggal } from '../lib/dateWib'
 
 export type NilaiUjianGuru = {
   id: string
@@ -117,16 +118,9 @@ function labelKelasSantri(santri: SantriRingkas) {
   return `${kelas} ${labelKelompok(santri.jenis_kelas)}`
 }
 
-function formatTanggal(value: string | null | undefined) {
-  if (!value) return '-'
-  const [year, month, day] = value.split('-').map(Number)
-  if (!year || !month || !day) return value
-  return new Date(year, month - 1, day).toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
+// formatTanggal dipindah ke app/lib/dateWib.ts sebagai formatTanggalPendekID
+// (Modularisasi Tahap 2, diimpor di atas dengan alias supaya call site tidak
+// berubah) -- hasilnya diverifikasi identik dengan implementasi lama.
 
 function formatWaktu(value: string | null | undefined) {
   if (!value) return '-'

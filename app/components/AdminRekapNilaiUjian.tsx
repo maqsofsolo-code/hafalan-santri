@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { formatTanggalPendekID as formatTanggal } from '../lib/dateWib'
 
 type StatusJuz = 'belum_dimulai' | 'belum_selesai' | 'selesai'
 
@@ -120,12 +121,9 @@ function labelTipe(value: string | null | undefined) {
   return value ? value.replaceAll('_', ' ') : '-'
 }
 
-function formatTanggal(value: string | null | undefined) {
-  if (!value) return '-'
-  const [year, month, day] = value.split('-').map(Number)
-  if (!year || !month || !day) return value
-  return new Date(year, month - 1, day).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-}
+// formatTanggal dipindah ke app/lib/dateWib.ts sebagai formatTanggalPendekID
+// (Modularisasi Tahap 2, diimpor di atas dengan alias supaya call site tidak
+// berubah) -- hasilnya diverifikasi identik dengan implementasi lama.
 
 function formatWaktu(value: string | null | undefined) {
   if (!value) return '-'

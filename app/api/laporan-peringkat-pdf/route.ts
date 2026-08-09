@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authorize } from '../../lib/serverAuth'
+import { getPeriodePekanTertutup } from '../../lib/dateWib'
 
 type TipeRanking = 'total' | 'konsistensi' | 'semangat'
 
@@ -74,70 +75,12 @@ function formatTanggal(date: Date) {
   return `${tahun}-${bulan}-${tanggal}`
 }
 
-function formatTanggalUTC(date: Date) {
-  const tahun = date.getUTCFullYear()
-  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const tanggal = String(date.getUTCDate()).padStart(2, '0')
-  return `${tahun}-${bulan}-${tanggal}`
-}
-
-function getPeriodePekanTertutup(saatIni = new Date()) {
-  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(saatIni)
-  const nilaiBagian = Object.fromEntries(
-    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
-  )
-  const tahun = Number(nilaiBagian.year)
-  const bulan = Number(nilaiBagian.month)
-  const tanggal = Number(nilaiBagian.day)
-  const jam = Number(nilaiBagian.hour)
-  const tanggalWIB = new Date(Date.UTC(tahun, bulan - 1, tanggal))
-  const nomorHari = tanggalWIB.getUTCDay()
-  const jarakDariSenin = (nomorHari + 6) % 7
-  const seninPekanBerjalan = new Date(tanggalWIB)
-  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
-
-  const sabtuSudahDitutup = nomorHari === 6 && jam >= 17
-  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
-  const tanggalMulaiDate = new Date(seninPekanBerjalan)
-  if (!gunakanPekanBerjalan) {
-    tanggalMulaiDate.setUTCDate(tanggalMulaiDate.getUTCDate() - 7)
-  }
-  const tanggalSelesaiDate = new Date(tanggalMulaiDate)
-  tanggalSelesaiDate.setUTCDate(tanggalSelesaiDate.getUTCDate() + 5)
-
-  const namaBulan = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-  ]
-  const mulaiTanggal = tanggalMulaiDate.getUTCDate()
-  const selesaiTanggal = tanggalSelesaiDate.getUTCDate()
-  const mulaiBulan = tanggalMulaiDate.getUTCMonth()
-  const selesaiBulan = tanggalSelesaiDate.getUTCMonth()
-  const mulaiTahun = tanggalMulaiDate.getUTCFullYear()
-  const selesaiTahun = tanggalSelesaiDate.getUTCFullYear()
-  let labelPeriode: string
-
-  if (mulaiBulan === selesaiBulan && mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else if (mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]} ${mulaiTahun}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  }
-
-  return {
-    tanggalMulai: formatTanggalUTC(tanggalMulaiDate),
-    tanggalSelesai: formatTanggalUTC(tanggalSelesaiDate),
-    labelPeriode,
-  }
-}
+// formatTanggalUTC/getPeriodePekanTertutup dipindah ke app/lib/dateWib.ts
+// (Modularisasi Tahap 2, diimpor di atas). getWIBDate()/formatTanggal(date)
+// di atas SENGAJA TIDAK dipindah -- dipakai untuk aritmetika Date (mis.
+// tujuhHariLaluWIB = getWIBDate() lalu di-setDate() manual) yang berisiko
+// hasil berbeda jika di-reroute lewat konversi WIB modul (lihat laporan
+// Tahap 2).
 
 function hitungHariAktif(mulai: string, selesai: string, daftarLibur: LiburAkademik[]) {
   const hariAktif: string[] = []

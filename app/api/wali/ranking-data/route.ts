@@ -1,83 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '../../../lib/serverAuth'
+import { getTanggalWIB, getPeriodePekanTertutup } from '../../../lib/dateWib'
 
-function getTanggalWIB() {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function formatTanggalUTC(date: Date) {
-  const tahun = date.getUTCFullYear()
-  const bulan = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const tanggal = String(date.getUTCDate()).padStart(2, '0')
-  return `${tahun}-${bulan}-${tanggal}`
-}
-
-// Identik dengan getPeriodePekanTertutup di app/wali/page.tsx -- dipertahankan
-// persis (termasuk aturan "Sabtu sudah ditutup setelah jam 17:00 WIB") supaya
-// rentang tanggal query setoran di server sama persis dengan yang dipakai
-// client untuk menghitung hari aktif/label periode.
-function getPeriodePekanTertutup(saatIni = new Date()) {
-  const bagianWIB = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(saatIni)
-  const nilaiBagian = Object.fromEntries(
-    bagianWIB.filter(bagian => bagian.type !== 'literal').map(bagian => [bagian.type, bagian.value])
-  )
-  const tahun = Number(nilaiBagian.year)
-  const bulan = Number(nilaiBagian.month)
-  const tanggal = Number(nilaiBagian.day)
-  const jam = Number(nilaiBagian.hour)
-  const tanggalWIB = new Date(Date.UTC(tahun, bulan - 1, tanggal))
-  const nomorHari = tanggalWIB.getUTCDay()
-  const jarakDariSenin = (nomorHari + 6) % 7
-  const seninPekanBerjalan = new Date(tanggalWIB)
-  seninPekanBerjalan.setUTCDate(seninPekanBerjalan.getUTCDate() - jarakDariSenin)
-
-  const sabtuSudahDitutup = nomorHari === 6 && jam >= 17
-  const gunakanPekanBerjalan = nomorHari === 0 || sabtuSudahDitutup
-  const tanggalMulaiDate = new Date(seninPekanBerjalan)
-  if (!gunakanPekanBerjalan) {
-    tanggalMulaiDate.setUTCDate(tanggalMulaiDate.getUTCDate() - 7)
-  }
-  const tanggalSelesaiDate = new Date(tanggalMulaiDate)
-  tanggalSelesaiDate.setUTCDate(tanggalSelesaiDate.getUTCDate() + 5)
-
-  const namaBulan = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-  ]
-  const mulaiTanggal = tanggalMulaiDate.getUTCDate()
-  const selesaiTanggal = tanggalSelesaiDate.getUTCDate()
-  const mulaiBulan = tanggalMulaiDate.getUTCMonth()
-  const selesaiBulan = tanggalSelesaiDate.getUTCMonth()
-  const mulaiTahun = tanggalMulaiDate.getUTCFullYear()
-  const selesaiTahun = tanggalSelesaiDate.getUTCFullYear()
-  let labelPeriode: string
-
-  if (mulaiBulan === selesaiBulan && mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else if (mulaiTahun === selesaiTahun) {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  } else {
-    labelPeriode = `${mulaiTanggal} ${namaBulan[mulaiBulan]} ${mulaiTahun}–${selesaiTanggal} ${namaBulan[selesaiBulan]} ${selesaiTahun}`
-  }
-
-  return {
-    tanggalMulai: formatTanggalUTC(tanggalMulaiDate),
-    tanggalSelesai: formatTanggalUTC(tanggalSelesaiDate),
-    labelPeriode,
-  }
-}
+// getTanggalWIB/formatTanggalUTC/getPeriodePekanTertutup dipindah ke
+// app/lib/dateWib.ts (Modularisasi Tahap 2, diimpor di atas) -- hasilnya
+// diverifikasi identik dengan implementasi lama via scripts/verify-date-wib.mts.
 
 function createAuthenticatedClient(accessToken: string) {
   return createClient(

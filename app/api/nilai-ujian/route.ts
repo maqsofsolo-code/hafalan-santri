@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { getTanggalWIB } from '../../lib/dateWib'
 
 type NilaiUjianBody = Record<string, unknown> & {
   santri_id?: unknown
@@ -112,16 +113,9 @@ async function authorizeGuru(request: Request) {
   return { userId: userData.user.id, serviceClient }
 }
 
-function getTanggalWIB() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date())
-  const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
-  return `${values.year}-${values.month}-${values.day}`
-}
+// getTanggalWIB dipindah ke app/lib/dateWib.ts (Modularisasi Tahap 2,
+// diimpor di atas) -- hasilnya diverifikasi identik dengan implementasi
+// lama via scripts/verify-date-wib.mts.
 
 function toNonNegativeInteger(value: unknown) {
   const numberValue = typeof value === 'number' ? value : Number(value)

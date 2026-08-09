@@ -5,18 +5,7 @@ import Image from 'next/image'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 import InputNilaiUjianSegment from '../components/InputNilaiUjianSegment'
 import RekapNilaiUjianGuru, { type CakupanSantriMap, type MasterSegmentLite, type NilaiUjianGuru } from '../components/RekapNilaiUjianGuru'
-
-function getTanggalWIB() {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function getHariWIB() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).getDay()
-}
+import { getTanggalWIB, getHariWIB } from '../lib/dateWib'
 
 const PESAN_POPUP_WUSTHA = 'Santri ini belum lancar pada setoran hafalan lama sebelumnya. Silakan setorkan hafalan lama terlebih dahulu. Hafalan baru akan terbuka setelah mendapatkan status Najih.'
 const PESAN_SERVER_WUSTHA = 'Santri masih memiliki tanggungan hafalan lama. Setorkan hafalan lama hingga Najih terlebih dahulu.'
