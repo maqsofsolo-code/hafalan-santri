@@ -40,7 +40,14 @@ type SegmentUjian = {
 }
 
 type Props = {
-  santriList: SantriUjian[]
+  // "Santri Saya" (guru_id/guru_id_2) -- prioritas tampilan urutan atas.
+  // guru_id/guru_id_2 TIDAK LAGI authorization gate Nilai Ujian (URGENT FIX),
+  // tapi tetap dipakai untuk membedakan prioritas UI ini.
+  santriSaya: SantriUjian[]
+  // Santri aktif lain dalam wing (jenis_kelas) yang sama, di luar Santri Saya
+  // -- server (app/api/nilai-ujian) tetap memvalidasi ulang wing ini secara
+  // independen, daftar di sini murni untuk kenyamanan pencarian.
+  santriLain: SantriUjian[]
 }
 
 const inputClass = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-300'
@@ -82,7 +89,7 @@ async function getAccessToken() {
   return session?.access_token || null
 }
 
-export default function InputNilaiUjianSegment({ santriList }: Props) {
+export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props) {
   const [selectedSantri, setSelectedSantri] = useState<SantriUjian | null>(null)
   const [searchSantri, setSearchSantri] = useState('')
   const [segments, setSegments] = useState<SegmentUjian[]>([])
@@ -99,11 +106,17 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
   const [confirmUjiUlang, setConfirmUjiUlang] = useState<SegmentUjian | null>(null)
   const submitLockRef = useRef(false)
 
+  const idSantriSaya = useMemo(() => new Set(santriSaya.map(santri => santri.id)), [santriSaya])
+
+  // Santri Saya diprioritaskan di urutan atas (baik saat kosong maupun saat
+  // dicari); santri lain dalam wing yang sama menyusul di bawahnya.
   const santriTampil = useMemo(() => {
     const keyword = searchSantri.trim().toLocaleLowerCase('id')
-    if (!keyword) return santriList
-    return santriList.filter(santri => santri.nama.toLocaleLowerCase('id').includes(keyword))
-  }, [santriList, searchSantri])
+    if (!keyword) return santriSaya
+    const cocokSaya = santriSaya.filter(santri => santri.nama.toLocaleLowerCase('id').includes(keyword))
+    const cocokLain = santriLain.filter(santri => santri.nama.toLocaleLowerCase('id').includes(keyword))
+    return [...cocokSaya, ...cocokLain]
+  }, [santriSaya, santriLain, searchSantri])
 
   const daftarJuz = useMemo(() => {
     return [...new Set(segments.map(segment => segment.juz))].sort((a, b) => b - a)
@@ -252,6 +265,11 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
       <h3 className="font-bold text-gray-800 mb-4">Pilih Santri dan Segmen Ujian</h3>
       <div className="mb-4">
         <label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Santri</label>
+        {!searchSantri && (
+          <p className="text-xs text-gray-400 mb-2">
+            {santriSaya.length > 0 ? 'Santri Saya' : 'Belum ada Santri Saya -- cari santri lain di kolom di bawah'}
+          </p>
+        )}
         <input type="text" value={searchSantri} onChange={event => {
           setSearchSantri(event.target.value)
           if (selectedSantri && event.target.value !== selectedSantri.nama) {
@@ -260,7 +278,7 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
             setSelectedJuz(null)
             resetInput()
           }
-        }} placeholder="Cari nama santri..." className={`${inputClass} mb-2`} />
+        }} placeholder="Cari nama santri, termasuk santri lain..." className={`${inputClass} mb-2`} />
         {searchSantri !== selectedSantri?.nama && (
           <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
             {santriTampil.map(santri => (
@@ -268,6 +286,9 @@ export default function InputNilaiUjianSegment({ santriList }: Props) {
                 className="w-full text-left px-4 py-2.5 hover:bg-orange-50 border-b last:border-0 text-sm">
                 <span className="font-medium">{santri.nama}</span>
                 <span className="text-gray-400 text-xs ml-2">{kelasSantri(santri)}</span>
+                {!idSantriSaya.has(santri.id) && (
+                  <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Santri Lain</span>
+                )}
               </button>
             ))}
             {santriTampil.length === 0 && <div className="px-4 py-3 text-sm text-gray-400">Tidak ditemukan</div>}

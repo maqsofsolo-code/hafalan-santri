@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { daftarkanNotifikasi, cekStatusNotifikasi } from '../lib/push'
 import RekapNilaiUjianGuru from '../components/RekapNilaiUjianGuru'
 import { getHariWIB } from '../lib/dateWib'
+import { filterSantriGuruPengganti } from './utils'
 
 import { useGuruProfileData } from './hooks/useGuruProfileData'
 import { useAbsensi } from './hooks/useAbsensi'
@@ -49,6 +50,22 @@ export default function GuruDashboard() {
     santriList, allSantriList, surahList, guruProfile,
     setErrorMsg, refetch: fetchGuruData,
   })
+
+  // URGENT FIX -- akses Nilai Ujian sekarang berbasis wing (jenis_kelas),
+  // bukan lagi santri.guru_id/guru_id_2 (lihat app/api/nilai-ujian/route.ts).
+  // santriWingUjian = seluruh santri aktif dalam wing guru (dipakai server
+  // untuk otorisasi juga); santriLainUjian = wing dikurangi Santri Saya,
+  // dipakai untuk "Cari santri lain" di Input Nilai Ujian. Reuse
+  // filterSantriGuruPengganti (utils.ts) yang sudah ada untuk mode Guru
+  // Pengganti Setoran -- bukan mapping wing baru.
+  const santriWingUjian = useMemo(
+    () => filterSantriGuruPengganti(allSantriList, '', guruProfile?.jenis_kelas),
+    [allSantriList, guruProfile?.jenis_kelas]
+  )
+  const santriLainUjian = useMemo(
+    () => santriWingUjian.filter(s => !santriList.some(own => own.id === s.id)),
+    [santriWingUjian, santriList]
+  )
 
   useEffect(() => { fetchGuruData() }, [fetchGuruData])
 
@@ -158,6 +175,7 @@ export default function GuruDashboard() {
               kalenderUjianGanda={kalenderUjianGanda}
               kalenderUjianAktif={kalenderUjianAktif}
               santriList={santriList}
+              santriLain={santriLainUjian}
             />
           )}
 
@@ -166,7 +184,7 @@ export default function GuruDashboard() {
               data={ujianRekap.nilaiUjianList}
               cakupanSantri={ujianRekap.ujianCakupanSantri}
               masterSegments={ujianRekap.ujianMasterSegments}
-              santriList={santriList}
+              santriList={santriWingUjian}
               loading={ujianRekap.ujianRekapLoading}
               error={ujianRekap.ujianRekapError}
               onRefresh={ujianRekap.fetchNilaiUjian}

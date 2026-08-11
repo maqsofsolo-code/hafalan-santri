@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '../../lib/serverAuth'
+import { bisaAksesJenisKelas } from '../../lib/wingAkses'
 
 type SetoranBody = Record<string, unknown> & {
   santri_id?: unknown
@@ -14,19 +15,12 @@ type SetoranBody = Record<string, unknown> & {
   penambahan_juz?: unknown
 }
 
-// Mapping wing produksi (keputusan bisnis final, OPSI A) -- persis logic yang
-// sebelumnya ada di app/guru/page.tsx (client-side, mode guru pengganti).
-// Direplikasi di sini (bukan equality murni) supaya server menolak setoran ke
-// santri di luar wing guru sebelum menyentuh database, dan direplikasi juga di
-// migration 20260808220000 (public.current_user_can_access_jenis_kelas) supaya
-// RLS jadi lapisan pertahanan kedua dengan aturan yang identik.
-function bisaAksesJenisKelas(guruJenisKelas: unknown, targetJenisKelas: unknown): boolean {
-  if (typeof targetJenisKelas !== 'string' || !targetJenisKelas) return false
-  if (guruJenisKelas === 'banin') return targetJenisKelas === 'banin'
-  if (guruJenisKelas === 'banat') return targetJenisKelas === 'banat' || targetJenisKelas === 'tn_a' || targetJenisKelas === 'tn_b'
-  if (guruJenisKelas === 'tn') return targetJenisKelas === 'tn_a' || targetJenisKelas === 'tn_b'
-  return false
-}
+// bisaAksesJenisKelas (mapping wing produksi, keputusan bisnis final OPSI A)
+// dipindah ke app/lib/wingAkses.ts (URGENT FIX akses Nilai Ujian) supaya
+// app/api/nilai-ujian/route.ts bisa reuse persis definisi yang sama -- logic
+// TIDAK diubah, hanya lokasinya. Tetap direplikasi juga di migration
+// 20260808220000 (public.current_user_can_access_jenis_kelas) sebagai lapisan
+// pertahanan kedua di RLS.
 
 const FIELD_SETORAN_DIIZINKAN = [
   'santri_id',

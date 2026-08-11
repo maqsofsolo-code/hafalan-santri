@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../lib/serverAuth'
 import { getTanggalWIB } from '../../lib/dateWib'
+import { bisaAksesJenisKelas, jenisKelasWingList } from '../../lib/wingAkses'
 
 type NilaiUjianBody = Record<string, unknown> & {
   santri_id?: unknown
@@ -184,17 +185,40 @@ export async function GET(request: Request) {
 
   const userId = auth.userId
   const serviceClient = createServiceRoleClient()
-  const { data: santriData, error: santriError } = await serviceClient
-    .from('santri')
-    .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
-    .eq('status', 'aktif')
-    .or(`guru_id.eq.${userId},guru_id_2.eq.${userId}`)
 
-  if (santriError) {
-    return responseError('Gagal memuat cakupan santri', 500)
+  // URGENT FIX: akses Nilai Ujian tidak lagi ditentukan oleh santri.guru_id/
+  // guru_id_2 (assignment perorangan) -- santri sering berpindah guru/musami'
+  // di lapangan, sehingga assignment tersimpan tidak selalu sama dengan guru
+  // yang benar-benar menguji. Sekarang memakai WING (profiles.jenis_kelas guru
+  // vs santri.jenis_kelas), mapping identik dengan app/api/setoran/route.ts dan
+  // RLS current_user_can_access_jenis_kelas -- lihat app/lib/wingAkses.ts.
+  // guru_id/guru_id_2 TETAP dipakai, tapi hanya untuk prioritas UI "Santri
+  // Saya" (dihitung di client, lihat app/guru/page.tsx), bukan lagi gate akses.
+  const { data: callerProfile, error: callerProfileError } = await serviceClient
+    .from('profiles')
+    .select('jenis_kelas')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (callerProfileError) {
+    return responseError('Gagal memverifikasi akses', 500)
   }
 
-  const santri = (santriData || []) as SantriScope[]
+  const wingList = jenisKelasWingList(callerProfile?.jenis_kelas)
+  let santri: SantriScope[] = []
+  if (wingList.length > 0) {
+    const { data: santriWingData, error: santriError } = await serviceClient
+      .from('santri')
+      .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
+      .eq('status', 'aktif')
+      .in('jenis_kelas', wingList)
+
+    if (santriError) {
+      return responseError('Gagal memuat cakupan santri', 500)
+    }
+    santri = (santriWingData || []) as SantriScope[]
+  }
+
   const santriIds = santri.map(item => item.id)
   const { data: masterData, error: masterError } = await getMasterSegments(serviceClient)
 
@@ -212,7 +236,7 @@ export async function GET(request: Request) {
   if (santriId !== null) {
     if (!isUuid(santriId)) return responseError('Data santri tidak valid', 400)
     const santriDipilih = santri.find(item => item.id === santriId)
-    if (!santriDipilih) return responseError('Santri bukan tanggung jawab guru', 403)
+    if (!santriDipilih) return responseError('Santri ini bukan bagian dari kelas yang Anda tangani', 403)
 
     const cakupan = getCakupanSegment(santriDipilih, masterSegments)
     if (!cakupan.lengkap) {
@@ -401,19 +425,32 @@ export async function POST(request: Request) {
     : null
   const userId = auth.userId
   const serviceClient = createServiceRoleClient()
+
+  // URGENT FIX: otorisasi target santri memakai WING (profiles.jenis_kelas
+  // guru vs santri.jenis_kelas), bukan lagi santri.guru_id/guru_id_2 -- lihat
+  // catatan lengkap di GET di atas dan app/lib/wingAkses.ts.
+  const { data: callerProfile, error: callerProfileError } = await serviceClient
+    .from('profiles')
+    .select('jenis_kelas')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (callerProfileError) {
+    return responseError('Gagal memverifikasi akses', 500)
+  }
+
   const { data: santriData, error: santriError } = await serviceClient
     .from('santri')
     .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
     .eq('id', santriId)
     .eq('status', 'aktif')
-    .or(`guru_id.eq.${userId},guru_id_2.eq.${userId}`)
     .maybeSingle()
 
   if (santriError) {
     return responseError('Gagal memverifikasi data santri', 500)
   }
-  if (!santriData) {
-    return responseError('Santri bukan tanggung jawab guru', 403)
+  if (!santriData || !bisaAksesJenisKelas(callerProfile?.jenis_kelas, santriData.jenis_kelas)) {
+    return responseError('Santri ini bukan bagian dari kelas yang Anda tangani', 403)
   }
 
   const { data: masterData, error: masterError } = await getMasterSegments(serviceClient)

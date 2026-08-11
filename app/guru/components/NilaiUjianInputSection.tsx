@@ -10,8 +10,9 @@ export function NilaiUjianInputSection(props: {
   kalenderUjianGanda: boolean
   kalenderUjianAktif: { id: string, nama: string, tipe: string, semester: number | null } | null
   santriList: Santri[]
+  santriLain: Santri[]
 }) {
-  const { tanggal, kalenderUjianGanda, kalenderUjianAktif, santriList } = props
+  const { tanggal, kalenderUjianGanda, kalenderUjianAktif, santriList, santriLain } = props
   return (
     <div>
       <div className="rounded-2xl p-5 mb-4 text-white relative overflow-hidden shadow-lg"
@@ -39,7 +40,7 @@ export function NilaiUjianInputSection(props: {
       </div>
 
       {kalenderUjianAktif ? (
-        <InputNilaiUjianSegment santriList={santriList} />
+        <InputNilaiUjianSegment santriSaya={santriList} santriLain={santriLain} />
       ) : (
         <div className="bg-white rounded-2xl shadow p-6 border border-gray-100 text-center text-gray-500 text-sm">
           {kalenderUjianGanda
