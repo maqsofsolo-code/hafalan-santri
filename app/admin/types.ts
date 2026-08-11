@@ -4,6 +4,7 @@
 // untuk seluruh skema database. Field nullable ditulis nullable sesuai data
 // aslinya, tidak dipaksa non-null demi TypeScript.
 import type { ProfileRow } from '../lib/authClient'
+import type { PenugasanHafalan, WaliKelasAssignment } from '../lib/assignmentTypes'
 
 /** Baris profil guru (tabel profiles, role='guru') + kolom yang dipakai halaman Admin. */
 export interface Guru extends ProfileRow {
@@ -155,4 +156,21 @@ export type SantriRanking = Santri & {
 export type SantriKelompokMonitoring = {
   jenjang?: unknown
   jenis_kelas?: unknown
+}
+
+// ===== Tahap 9D -- Penugasan Guru (fondasi tabel dari Tahap 9B) =====
+// Type dasar (PeriodeAkademik/PenugasanHafalan/WaliKelasAssignment) hidup di
+// app/lib/assignmentTypes.ts (dibuat Tahap 9B, dipakai lintas modul kalau
+// perlu) -- di sini hanya diperluas dengan relasi guru:guru_id(nama) yang
+// di-embed lewat query Admin, supaya tidak duplikasi field dasar.
+export type { PeriodeAkademik } from '../lib/assignmentTypes'
+
+/** Baris penugasan_hafalan + relasi guru:guru_id(nama) yang di-embed query Admin. */
+export type PenugasanHafalanRow = PenugasanHafalan & {
+  guru?: { nama: string | null } | null
+}
+
+/** Baris wali_kelas_assignment + relasi guru:guru_id(nama) yang di-embed query Admin. */
+export type WaliKelasAssignmentRow = WaliKelasAssignment & {
+  guru?: { nama: string | null } | null
 }

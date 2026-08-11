@@ -105,3 +105,59 @@ export function labelJenisKelasGuru(jenisKelas: string | null | undefined): stri
   if (jenisKelas === 'tn') return 'Putri (TN)'
   return 'Belum Terklasifikasi'
 }
+
+// ===== Tahap 9D -- Penugasan Guru (UI Admin) =====
+// Semua fungsi di bagian ini murni UX FILTERING untuk form assign Guru
+// Hafalan/Wali Kelas -- BUKAN access model produksi (itu tetap
+// app/lib/wingAkses.ts, dipakai Input Setoran & Nilai Ujian, TIDAK disentuh
+// Tahap 9D). Database (constraint max-2, partial unique index) tetap jadi
+// enforcement terakhir kalau admin memilih guru di luar rekomendasi filter
+// ini -- lihat komentar di masing-masing hook.
+
+/**
+ * Guru mana yang cocok ditampilkan sebagai kandidat untuk jenis_kelas
+ * (domain SANTRI: banin/banat/tn_a/tn_b) target -- dipakai baik untuk
+ * dropdown assign Guru Hafalan (target = santri.jenis_kelas) maupun form
+ * Wali Kelas (target = jenis_kelas yang dipilih di form). Mapping SENGAJA
+ * berbeda dari wing akses produksi (yang membolehkan wing 'banat' mencakup
+ * tn_a/tn_b sekaligus) -- ini murni rekomendasi kandidat sesuai instruksi
+ * Tahap 9D, bukan aturan keamanan.
+ */
+export function cocokGuruUntukJenisKelasSantri(guruJenisKelas: string | null | undefined, jenisKelasTarget: string | null | undefined): boolean {
+  if (!guruJenisKelas || !jenisKelasTarget) return false
+  if (jenisKelasTarget === 'banin') return guruJenisKelas === 'banin'
+  if (jenisKelasTarget === 'banat') return guruJenisKelas === 'banat'
+  if (jenisKelasTarget === 'tn_a' || jenisKelasTarget === 'tn_b') return guruJenisKelas === 'banat' || guruJenisKelas === 'tn'
+  return false
+}
+
+/**
+ * Jenjang dihitung (bukan ditebak) dari kelas_num lama (profiles.wali_kelas_num)
+ * memakai rentang yang sama dengan getKelasOptions() di atas -- dipakai
+ * murni untuk panel referensi "Data Wali Kelas Lama" (Tahap 9D bagian L),
+ * bukan untuk menulis data apa pun.
+ */
+export function jenjangDariKelasNumLama(kelasNum: number | null | undefined): string | null {
+  if (kelasNum == null) return null
+  if (kelasNum >= 1 && kelasNum <= 6) return 'ula'
+  if (kelasNum >= 7 && kelasNum <= 9) return 'wustha'
+  if (kelasNum >= 10 && kelasNum <= 12) return 'ulya'
+  return null
+}
+
+/** Label jenis_kelas WALI KELAS LAMA (domain guru: banin/banat/tn) -- 'tn' sengaja diberi label ambigu eksplisit, bukan ditebak jadi tn_a/tn_b. */
+export function labelJenisKelasWaliLama(jenisKelas: string | null | undefined): string {
+  if (jenisKelas === 'banin') return 'Banin'
+  if (jenisKelas === 'banat') return 'Banat'
+  if (jenisKelas === 'tn') return 'TN — perlu ditentukan TN A/TN B'
+  return '-'
+}
+
+/** Label jenis_kelas ASSIGNMENT BARU (domain santri: banin/banat/tn_a/tn_b) untuk tampilan wali_kelas_assignment. */
+export function labelJenisKelasSantriUntukAssignment(jenisKelas: string | null | undefined): string {
+  if (jenisKelas === 'banin') return 'Banin'
+  if (jenisKelas === 'banat') return 'Banat'
+  if (jenisKelas === 'tn_a') return 'TN A'
+  if (jenisKelas === 'tn_b') return 'TN B'
+  return '-'
+}

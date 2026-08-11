@@ -14,12 +14,15 @@ import { useAdminFilters } from './hooks/useAdminFilters'
 import { useAdminMonitoring } from './hooks/useAdminMonitoring'
 import { useAdminRapot } from './hooks/useAdminRapot'
 import { useAdminLaporan } from './hooks/useAdminLaporan'
+import { useAdminPeriodeAkademik } from './hooks/useAdminPeriodeAkademik'
+import { useAdminPenugasanGuru } from './hooks/useAdminPenugasanGuru'
 
 import { AdminMobileHeader, AdminSidebarNav } from './components/AdminSidebar'
 import { DashboardSection } from './components/DashboardSection'
 import { MonitoringSection } from './components/MonitoringSection'
 import { KalenderSection } from './components/KalenderSection'
 import { GuruSection } from './components/GuruSection'
+import { PenugasanGuruSection } from './components/PenugasanGuruSection'
 import { SantriSection } from './components/SantriSection'
 import { WaliSection } from './components/WaliSection'
 import { RankingSection } from './components/RankingSection'
@@ -49,9 +52,14 @@ export default function AdminDashboard() {
   const monitoring = useAdminMonitoring(data.santriList, data.guruList, data.setoranHariIni)
   const rapot = useAdminRapot({ setLoading: form.setLoading, setErrorMsg: form.setErrorMsg, setSuccessMsg: form.setSuccessMsg })
   const laporan = useAdminLaporan(data.bukaLaporanHTML)
+  const periodeAkademik = useAdminPeriodeAkademik()
+  const penugasanGuru = useAdminPenugasanGuru()
 
   const { fetchData } = data
   useEffect(() => { fetchData() }, [fetchData])
+
+  const { fetchPeriodeList } = periodeAkademik
+  useEffect(() => { fetchPeriodeList() }, [fetchPeriodeList])
 
   const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/' }
 
@@ -145,6 +153,15 @@ export default function AdminDashboard() {
               setSearchGuru={filters.setSearchGuru}
               filterKelompokGuru={filters.filterKelompokGuru}
               setFilterKelompokGuru={filters.setFilterKelompokGuru}
+            />
+          )}
+
+          {activeMenu === 'penugasan-guru' && (
+            <PenugasanGuruSection
+              periodeAkademik={periodeAkademik}
+              penugasan={penugasanGuru}
+              guruList={data.guruList}
+              santriList={data.santriList}
             />
           )}
 

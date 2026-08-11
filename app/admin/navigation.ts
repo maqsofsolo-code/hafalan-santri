@@ -5,11 +5,12 @@
 // `id` pada setiap NavLeaf HARUS sama persis dengan `activeMenu` yang dipakai
 // app/admin/page.tsx (dibaca dari kode page.tsx asli, bukan ditebak).
 //
-// Menu yang fiturnya BELUM ada (Penugasan Guru, Mata Pelajaran, Notifikasi,
-// Pengaturan) SENGAJA tidak dimasukkan ke config ini sama sekali -- solusi
-// paling sederhana supaya tidak ada item placeholder yang bisa diklik.
-// Ketika fitur itu dibuat, tinggal tambah NavLeaf baru di group terkait
-// (Guru & Wali / Akademik) atau tambah group baru "Sistem".
+// Menu yang fiturnya BELUM ada (Mata Pelajaran, Notifikasi, Pengaturan)
+// SENGAJA tidak dimasukkan ke config ini sama sekali -- solusi paling
+// sederhana supaya tidak ada item placeholder yang bisa diklik. Ketika
+// fitur itu dibuat, tinggal tambah NavLeaf baru di group terkait (Guru &
+// Wali / Akademik) atau tambah group baru "Sistem". Penugasan Guru sudah
+// jadi fitur nyata sejak Tahap 9D (lihat item 'penugasan-guru' di bawah).
 
 export interface NavLeaf {
   id: string
@@ -61,6 +62,7 @@ export const navigationGroups: NavGroup[] = [
     icon: '▤',
     items: [
       { id: 'guru', label: 'Data Guru', icon: '▤' },
+      { id: 'penugasan-guru', label: 'Penugasan Guru', icon: '🧩' },
       { id: 'wali', label: 'Data Wali', icon: '◍' },
     ],
   },
