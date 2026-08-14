@@ -180,6 +180,20 @@ export async function GET(request: Request) {
     nilaiTerbaruPerSantri.get(row.santri_id)!.set(row.segment_ujian_id, Number(row.nilai_akhir))
   })
 
+  // Nilai Tajwid, discope ke periode (kalender_id) yang sama persis dengan Kelancaran di atas.
+  const { data: tajwidRows, error: tajwidError } = await adminClient
+    .from('nilai_tajwid_juz')
+    .select('santri_id, juz, nilai')
+    .in('santri_id', santriIds)
+    .eq('kalender_id', periode)
+  if (tajwidError) return responseError('Gagal memuat nilai tajwid', 500)
+
+  const tajwidPerSantri = new Map<string, Map<number, number>>()
+  ;(tajwidRows || []).forEach(row => {
+    if (!tajwidPerSantri.has(row.santri_id)) tajwidPerSantri.set(row.santri_id, new Map())
+    tajwidPerSantri.get(row.santri_id)!.set(row.juz, Number(row.nilai))
+  })
+
   // Label periode dan semester berasal dari data kalender itu sendiri -- bukan tebakan dari bulan
   // tanggal_mulai (heuristik lama bisa salah, mis. kalender "Semester Genap" yang tanggal_mulai-nya
   // jatuh di bulan Juli-Desember akan salah dilabeli GANJIL).
@@ -205,6 +219,16 @@ export async function GET(request: Request) {
       juzNilai.set(j.juz, j.status === 'selesai' ? nilaiRapor(j.rata) : null)
     })
 
+    // Tajwid: skala 0.0-10.0 dikonversi ke skala rapor (50-100) memakai nilaiRapor() yang SAMA
+    // dengan Kelancaran (Rule L -- tidak boleh ada skala kedua). Juz yang Tajwid-nya belum diisi
+    // TETAP null (bukan 0) -- kolom T pada Excel dibiarkan kosong untuk juz tsb.
+    const tajwidSantri = tajwidPerSantri.get(santri.id) || new Map<number, number>()
+    const juzTajwid = new Map<number, number | null>()
+    juzList.forEach(j => {
+      const nilaiTajwid = tajwidSantri.get(j.juz)
+      juzTajwid.set(j.juz, typeof nilaiTajwid === 'number' ? nilaiRapor(nilaiTajwid) : null)
+    })
+
     return {
       id: santri.id,
       nama: santri.nama,
@@ -213,6 +237,7 @@ export async function GET(request: Request) {
       jenjang: santri.jenjang,
       jenisKelas: santri.jenis_kelas,
       juzNilai,
+      juzTajwid,
     }
   })
 

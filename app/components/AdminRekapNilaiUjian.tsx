@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatTanggalPendekID as formatTanggal } from '../lib/dateWib'
+import { hitungNilaiUjianKeseluruhan, validasiNilaiTajwid } from '../lib/adminNilaiUjian'
 
 type StatusJuz = 'belum_dimulai' | 'belum_selesai' | 'selesai'
 
@@ -15,9 +16,11 @@ type SantriRingkas = {
   jenis_kelas: string | null
   juzDimulai: number
   juzSelesai: number
-  rataUmum: number | null
+  nilaiUjianKeseluruhan: number | null
   adaFormatLama: boolean
 }
+
+type TajwidInfo = { nilai: number, guru_id: string, updated_at: string }
 
 type PeriodeOption = { id: string, nama: string, tipe: string | null }
 
@@ -229,6 +232,7 @@ export default function AdminRekapNilaiUjian() {
   const [errorDetail, setErrorDetail] = useState('')
   const [showFormatLama, setShowFormatLama] = useState(false)
   const [riwayatSegmentId, setRiwayatSegmentId] = useState<string | null>(null)
+  const [detailTajwid, setDetailTajwid] = useState<Record<number, TajwidInfo>>({})
 
   // Edit
   const [editRecord, setEditRecord] = useState<NilaiUjianRow | null>(null)
@@ -238,6 +242,13 @@ export default function AdminRekapNilaiUjian() {
   const [editCatatan, setEditCatatan] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   const [errorEdit, setErrorEdit] = useState('')
+
+  // Koreksi Nilai Tajwid (Rule M) -- upsert lewat PUT /api/admin/nilai-ujian, gating "seluruh
+  // segmen juz selesai" tetap diverifikasi ulang server-side, sama seperti PUT guru.
+  const [editTajwidValue, setEditTajwidValue] = useState('')
+  const [savingTajwid, setSavingTajwid] = useState(false)
+  const [errorTajwid, setErrorTajwid] = useState('')
+  const [successTajwid, setSuccessTajwid] = useState('')
 
   const [downloading, setDownloading] = useState(false)
   const [errorDownload, setErrorDownload] = useState('')
@@ -342,6 +353,7 @@ export default function AdminRekapNilaiUjian() {
       setDetailData(Array.isArray(result.data) ? result.data : [])
       setDetailCakupan(result.cakupan || null)
       setMasterSegments(Array.isArray(result.masterSegments) ? result.masterSegments : [])
+      setDetailTajwid(result.tajwid && typeof result.tajwid === 'object' ? result.tajwid : {})
     } catch (error) {
       setErrorDetail(error instanceof Error ? error.message : 'Gagal memuat detail santri.')
     } finally {
@@ -354,6 +366,7 @@ export default function AdminRekapNilaiUjian() {
     setSelectedJuz(null)
     setShowFormatLama(false)
     setRiwayatSegmentId(null)
+    setDetailTajwid({})
     fetchDetail(id)
   }
 
@@ -411,11 +424,52 @@ export default function AdminRekapNilaiUjian() {
         .filter((item): item is NilaiUjianRow => Boolean(item))
       const rata = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + nilaiAman(item.nilai_akhir), 0) / nilaiJuz.length : null
       const status: StatusJuz = nilaiJuz.length === 0 ? 'belum_dimulai' : nilaiJuz.length >= target ? 'selesai' : 'belum_selesai'
-      return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds }
+      const tajwid = detailTajwid[juz] ?? null
+      return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds, tajwid }
     }).sort((a, b) => b.juz - a.juz)
-  }, [detailCakupan, masterSegments, nilaiTerbaruPerSegmen])
+  }, [detailCakupan, masterSegments, nilaiTerbaruPerSegmen, detailTajwid])
+
+  // Nilai Ujian Keseluruhan = rata-rata Nilai Kelancaran HANYA juz 'selesai' (Rule F), helper
+  // canonical yang sama dipakai guru & raport hifzh -- Tajwid tidak pernah ikut di sini.
+  const detailNilaiUjianKeseluruhan = useMemo(() => hitungNilaiUjianKeseluruhan(juzList), [juzList])
 
   const selectedJuzInfo = juzList.find(j => j.juz === selectedJuz) || null
+
+  // Sinkronkan input koreksi Tajwid dengan nilai existing setiap kali juz aktif berganti (pola
+  // "adjust state during render", sama seperti InputNilaiUjianSegment.tsx).
+  const [tajwidJuzTerakhir, setTajwidJuzTerakhir] = useState<number | null>(null)
+  if (selectedJuz !== tajwidJuzTerakhir) {
+    setTajwidJuzTerakhir(selectedJuz)
+    setEditTajwidValue(selectedJuz !== null && detailTajwid[selectedJuz] ? String(detailTajwid[selectedJuz].nilai) : '')
+    setErrorTajwid('')
+    setSuccessTajwid('')
+  }
+
+  const simpanTajwidAdmin = async () => {
+    if (!selectedSantriId || selectedJuz === null || filterPeriode === 'tanpa-periode') return
+    const nilai = validasiNilaiTajwid(editTajwidValue.replace(',', '.'))
+    if (nilai === null) { setErrorTajwid('Nilai Tajwid harus berupa angka 0,0-10,0.'); return }
+    setSavingTajwid(true)
+    setErrorTajwid('')
+    setSuccessTajwid('')
+    try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
+      const response = await fetch('/api/admin/nilai-ujian', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ santri_id: selectedSantriId, juz: selectedJuz, kalender_id: filterPeriode, nilai }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'Gagal menyimpan nilai Tajwid.')
+      setDetailTajwid(current => ({ ...current, [selectedJuz]: result.data }))
+      setSuccessTajwid(`Nilai Tajwid Juz ${selectedJuz} berhasil disimpan: ${nilai.toFixed(1)}`)
+    } catch (error) {
+      setErrorTajwid(error instanceof Error ? error.message : 'Gagal menyimpan nilai Tajwid.')
+    } finally {
+      setSavingTajwid(false)
+    }
+  }
 
   const segmenDetailList = useMemo(() => {
     if (!selectedJuzInfo || !detailCakupan) return []
@@ -650,8 +704,8 @@ export default function AdminRekapNilaiUjian() {
                         <div><span className="font-bold text-blue-700">{santri.juzDimulai}</span> <span className="text-gray-400 text-xs">juz dimulai</span></div>
                         <div><span className="font-bold text-green-700">{santri.juzSelesai}</span> <span className="text-gray-400 text-xs">juz selesai</span></div>
                       </div>
-                      {santri.rataUmum !== null && (
-                        <div className="mt-1 text-xs text-gray-500">Rata-rata: <span className="font-semibold text-gray-700">{formatNilai(santri.rataUmum)} / {nilaiRapor(santri.rataUmum)}</span></div>
+                      {santri.nilaiUjianKeseluruhan !== null && (
+                        <div className="mt-1 text-xs text-gray-500">Nilai Ujian Keseluruhan: <span className="font-semibold text-gray-700">{formatNilai(santri.nilaiUjianKeseluruhan)} / {nilaiRapor(santri.nilaiUjianKeseluruhan)}</span></div>
                       )}
                     </>
                   )}
@@ -689,6 +743,9 @@ export default function AdminRekapNilaiUjian() {
               <div className="bg-white rounded-2xl shadow border border-gray-100 p-4 mb-5">
                 <div className="font-bold text-lg text-gray-800">{detailSantri.nama}</div>
                 <div className="text-xs text-gray-500">{labelJenjang(detailSantri.jenjang)} · {labelKelas(detailSantri)}</div>
+                {detailNilaiUjianKeseluruhan !== null && (
+                  <div className="mt-1 text-sm text-gray-600">Nilai Ujian Keseluruhan: <span className="font-bold text-blue-700">{formatNilai(detailNilaiUjianKeseluruhan)} / {nilaiRapor(detailNilaiUjianKeseluruhan)}</span></div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
@@ -702,9 +759,12 @@ export default function AdminRekapNilaiUjian() {
                     <div className="text-xs text-gray-500 mt-1">{item.dinilai} dari {item.target} segmen selesai</div>
                     {item.rata !== null && (
                       <div className={`mt-2 text-lg font-bold ${item.status === 'selesai' ? 'text-green-700' : 'text-blue-700'}`}>
-                        {formatNilai(item.rata)} / {nilaiRapor(item.rata)}
+                        Nilai Kelancaran: {formatNilai(item.rata)} / {nilaiRapor(item.rata)}
                       </div>
                     )}
+                    <div className="mt-1 text-xs text-gray-500">
+                      Nilai Tajwid: <span className="font-semibold text-gray-700">{item.tajwid !== null ? formatNilai(item.tajwid.nilai) : '-'}</span>
+                    </div>
                   </button>
                 ))}
                 {juzList.length === 0 && (
@@ -749,6 +809,30 @@ export default function AdminRekapNilaiUjian() {
               <div className="text-xs text-gray-500 truncate">{detailSantri?.nama}</div>
             </div>
             {selectedJuzInfo && <StatusBadge status={selectedJuzInfo.status} />}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow border border-gray-100 p-4 mb-5">
+            <div className="text-sm font-semibold text-gray-700 mb-2">Nilai Tajwid</div>
+            {periodeTanpaKalender ? (
+              <p className="text-xs text-gray-400">Koreksi Nilai Tajwid tidak tersedia untuk &quot;Tanpa Periode Kalender&quot;.</p>
+            ) : selectedJuzInfo?.status !== 'selesai' ? (
+              <p className="text-xs text-gray-400">Nilai Tajwid dapat diisi setelah seluruh segmen juz ini selesai dinilai.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <input type="text" inputMode="decimal" value={editTajwidValue}
+                    onChange={e => setEditTajwidValue(e.target.value)}
+                    placeholder="0.0 - 10.0" className={inputClass} />
+                  <button type="button" disabled={savingTajwid} onClick={simpanTajwidAdmin}
+                    className="flex-shrink-0 px-4 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 shadow"
+                    style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
+                    {savingTajwid ? 'Menyimpan...' : 'Simpan'}
+                  </button>
+                </div>
+                {errorTajwid && <p className="text-xs text-red-600 mt-1.5">{errorTajwid}</p>}
+                {successTajwid && <p className="text-xs text-green-600 mt-1.5">✓ {successTajwid}</p>}
+              </>
+            )}
           </div>
 
           <div className="space-y-3">

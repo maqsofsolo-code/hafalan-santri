@@ -2,6 +2,13 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { validasiNilaiTajwid } from '../lib/adminNilaiUjian'
+
+type TajwidInfo = {
+  nilai: number
+  guru_id: string
+  updated_at: string
+}
 
 type SantriUjian = {
   id: string
@@ -106,6 +113,22 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
   const [confirmUjiUlang, setConfirmUjiUlang] = useState<SegmentUjian | null>(null)
   const submitLockRef = useRef(false)
 
+  // Nilai Tajwid: satu nilai per juz (bukan per segmen), dimuat sekaligus saat santri dipilih
+  // (lihat GET /api/nilai-ujian?santri_id=... yang sekarang menyertakan `tajwid` + `juzBelumTajwid`).
+  const [tajwidMap, setTajwidMap] = useState<Record<number, TajwidInfo>>({})
+  const [juzBelumTajwid, setJuzBelumTajwid] = useState<number[]>([])
+  const [tajwidJuzTerakhir, setTajwidJuzTerakhir] = useState<number | null>(null)
+  const [tajwidInputValue, setTajwidInputValue] = useState('')
+  const [savingTajwid, setSavingTajwid] = useState(false)
+  const [tajwidError, setTajwidError] = useState('')
+  const [tajwidSuccess, setTajwidSuccess] = useState('')
+  // Popup setelah segmen terakhir suatu juz baru saja selesai (Rule G) -- guru boleh menutupnya
+  // ("Nanti") tanpa mengisi, juz tetap dianggap selesai dari sisi Kelancaran.
+  const [showTajwidModal, setShowTajwidModal] = useState<number | null>(null)
+  const [modalTajwidInputValue, setModalTajwidInputValue] = useState('')
+  const [savingModalTajwid, setSavingModalTajwid] = useState(false)
+  const [modalTajwidError, setModalTajwidError] = useState('')
+
   const idSantriSaya = useMemo(() => new Set(santriSaya.map(santri => santri.id)), [santriSaya])
 
   // Santri Saya diprioritaskan di urutan atas (baik saat kosong maupun saat
@@ -139,6 +162,15 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
     return { target, dinilai, rata, status }
   }, [segmentsJuz])
 
+  // Sinkronkan input Nilai Tajwid dengan nilai existing setiap kali juz aktif berganti (pola
+  // "adjust state during render", bukan useEffect -- lihat dokumentasi React tentang derived state).
+  if (selectedJuz !== tajwidJuzTerakhir) {
+    setTajwidJuzTerakhir(selectedJuz)
+    setTajwidInputValue(selectedJuz !== null && tajwidMap[selectedJuz] ? String(tajwidMap[selectedJuz].nilai) : '')
+    setTajwidError('')
+    setTajwidSuccess('')
+  }
+
   const resetInput = () => {
     setExpandedSegmentId(null)
     setJumlahTegur('0')
@@ -152,6 +184,8 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
     setSearchSantri(santri.nama)
     setSegments([])
     setSelectedJuz(null)
+    setTajwidMap({})
+    setJuzBelumTajwid([])
     resetInput()
     setError('')
     setSuccess('')
@@ -175,6 +209,8 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
       setSegments(daftar)
       const juzPertama = [...new Set(daftar.map(segment => segment.juz))].sort((a, b) => b - a)[0]
       setSelectedJuz(juzPertama ?? null)
+      setTajwidMap(result.tajwid && typeof result.tajwid === 'object' ? result.tajwid : {})
+      setJuzBelumTajwid(Array.isArray(result.juzBelumTajwid) ? result.juzBelumTajwid : [])
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Gagal memuat segmen ujian.')
     } finally {
@@ -202,6 +238,13 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
     setSaving(true)
     setError('')
     setSuccess('')
+
+    // Ditangkap SEBELUM request supaya bisa mendeteksi transisi belum-selesai -> selesai akibat
+    // save ini secara spesifik (Rule G) -- bukan setiap kali segmen pada juz yang SUDAH selesai
+    // diuji ulang.
+    const segmenBelumDinilaiSebelumnya = !segment.nilai_terakhir
+    const dinilaiSebelum = segmentsJuz.filter(item => item.nilai_terakhir).length
+    const targetSebelum = segmentsJuz.length
 
     try {
       const accessToken = await getAccessToken()
@@ -233,6 +276,13 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
         : item))
       setSuccess(`Nilai Juz ${segment.juz} Segmen ${segment.segmen} berhasil disimpan: ${result.nilai_akhir}`)
       resetInput()
+
+      const barusSelesai = segmenBelumDinilaiSebelumnya && targetSebelum > 0 && (dinilaiSebelum + 1) >= targetSebelum
+      if (barusSelesai) {
+        setModalTajwidInputValue(tajwidMap[segment.juz] ? String(tajwidMap[segment.juz].nilai) : '')
+        setModalTajwidError('')
+        setShowTajwidModal(segment.juz)
+      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Gagal menyimpan nilai ujian.')
     } finally {
@@ -260,6 +310,56 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
     simpanNilai(segment)
   }
 
+  // Simpan/edit Nilai Tajwid (satu nilai per juz, upsert -- PUT /api/nilai-ujian). Dipakai baik dari
+  // blok ringkasan juz maupun dari popup setelah segmen terakhir (Rule F/G) -- keduanya menyimpan ke
+  // juz + periode ujian aktif yang sama, hanya berbeda sumber input dan indikator loading/error.
+  const simpanTajwid = async (juz: number, nilaiInput: string, sumber: 'blok' | 'modal') => {
+    const setSaving = sumber === 'modal' ? setSavingModalTajwid : setSavingTajwid
+    const setErr = sumber === 'modal' ? setModalTajwidError : setTajwidError
+    if (!selectedSantri) return
+
+    const nilai = validasiNilaiTajwid(nilaiInput.replace(',', '.'))
+    if (nilai === null) {
+      setErr('Nilai Tajwid harus berupa angka 0,0-10,0.')
+      return
+    }
+
+    setSaving(true)
+    setErr('')
+    if (sumber === 'blok') setTajwidSuccess('')
+
+    try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
+      const response = await fetch('/api/nilai-ujian', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ santri_id: selectedSantri.id, juz, nilai }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Sesi login tidak valid atau sudah berakhir.')
+        if (response.status === 403) throw new Error(result.error || 'Akses penyimpanan nilai Tajwid ditolak.')
+        throw new Error(result.error || 'Gagal menyimpan nilai Tajwid.')
+      }
+
+      setTajwidMap(current => ({ ...current, [juz]: result.data }))
+      setJuzBelumTajwid(current => current.filter(item => item !== juz))
+      if (sumber === 'blok') {
+        setTajwidSuccess(`Nilai Tajwid Juz ${juz} berhasil disimpan: ${nilai.toFixed(1)}`)
+      } else {
+        setShowTajwidModal(null)
+      }
+    } catch (saveError) {
+      setErr(saveError instanceof Error ? saveError.message : 'Gagal menyimpan nilai Tajwid.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow p-4 sm:p-5 border border-gray-100 mb-5">
       <h3 className="font-bold text-gray-800 mb-4">Pilih Santri dan Segmen Ujian</h3>
@@ -276,6 +376,8 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
             setSelectedSantri(null)
             setSegments([])
             setSelectedJuz(null)
+            setTajwidMap({})
+            setJuzBelumTajwid([])
             resetInput()
           }
         }} placeholder="Cari nama santri, termasuk santri lain..." className={`${inputClass} mb-2`} />
@@ -309,9 +411,27 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
               setSearchSantri('')
               setSegments([])
               setSelectedJuz(null)
+              setTajwidMap({})
+              setJuzBelumTajwid([])
               resetInput()
               setError('')
             }} className="text-gray-400 hover:text-gray-600 text-xl" aria-label="Batalkan pilihan santri">×</button>
+          </div>
+        </div>
+      )}
+
+      {selectedSantri && juzBelumTajwid.length > 0 && (
+        <div className="mb-5 p-4 rounded-xl border border-yellow-200 bg-yellow-50">
+          <p className="text-sm font-semibold text-yellow-800">
+            {juzBelumTajwid.length} juz sudah selesai diuji tetapi Nilai Tajwid belum diisi.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {juzBelumTajwid.map(juz => (
+              <button key={juz} type="button" onClick={() => setSelectedJuz(juz)}
+                className="text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800 hover:bg-yellow-200">
+                Juz {juz}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -348,8 +468,36 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
               </div>
               {ringkasanJuzAktif.rata !== null && (
                 <div className={`mt-2 text-2xl font-bold ${ringkasanJuzAktif.status === 'selesai' ? 'text-green-700' : 'text-blue-700'}`}>
-                  {ringkasanJuzAktif.status === 'selesai' ? 'Nilai akhir: ' : 'Nilai sementara: '}{ringkasanJuzAktif.rata.toFixed(1)}
+                  Nilai Kelancaran: {ringkasanJuzAktif.rata.toFixed(1)}
                 </div>
+              )}
+            </div>
+          )}
+
+          {ringkasanJuzAktif && selectedJuz !== null && (
+            <div className="mb-4 p-4 rounded-2xl border border-gray-200 bg-white">
+              <div className="text-sm font-semibold text-gray-700 mb-2">Nilai Tajwid</div>
+              {ringkasanJuzAktif.status !== 'selesai' ? (
+                <p className="text-xs text-gray-400">Nilai Tajwid dapat diisi setelah seluruh segmen selesai.</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input type="text" inputMode="decimal" value={tajwidInputValue}
+                      onChange={event => setTajwidInputValue(event.target.value)}
+                      placeholder="0.0 - 10.0" className={inputClass} />
+                    <button type="button" disabled={savingTajwid}
+                      onClick={() => simpanTajwid(selectedJuz, tajwidInputValue, 'blok')}
+                      className="flex-shrink-0 px-4 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 shadow"
+                      style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
+                      {savingTajwid ? 'Menyimpan...' : 'Simpan'}
+                    </button>
+                  </div>
+                  {tajwidMap[selectedJuz] && (
+                    <p className="text-xs text-gray-400 mt-1.5">Nilai Tajwid tersimpan: {tajwidMap[selectedJuz].nilai.toFixed(1)} -- boleh diedit di atas.</p>
+                  )}
+                  {tajwidError && <p className="text-xs text-red-600 mt-1.5">{tajwidError}</p>}
+                  {tajwidSuccess && <p className="text-xs text-green-600 mt-1.5">✓ {tajwidSuccess}</p>}
+                </>
               )}
             </div>
           )}
@@ -455,6 +603,29 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
               <button type="button" onClick={lanjutkanUjiUlang}
                 className="flex-1 py-3 rounded-xl font-semibold text-white shadow"
                 style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>Lanjut Uji Ulang</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTajwidModal !== null && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowTajwidModal(null)}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl p-5" onClick={event => event.stopPropagation()}>
+            <h3 className="font-bold text-lg text-gray-800 mb-2">Juz {showTajwidModal} telah selesai dinilai.</h3>
+            <p className="text-sm text-gray-600 mb-4">Silakan lengkapi Nilai Tajwid.</p>
+            <input type="text" inputMode="decimal" value={modalTajwidInputValue}
+              onChange={event => setModalTajwidInputValue(event.target.value)}
+              placeholder="0.0 - 10.0" className={`${inputClass} mb-2`} />
+            {modalTajwidError && <p className="text-xs text-red-600 mb-2">{modalTajwidError}</p>}
+            <div className="flex gap-3 mt-3">
+              <button type="button" onClick={() => setShowTajwidModal(null)}
+                className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-700">Nanti</button>
+              <button type="button" disabled={savingModalTajwid}
+                onClick={() => simpanTajwid(showTajwidModal, modalTajwidInputValue, 'modal')}
+                className="flex-1 py-3 rounded-xl font-semibold text-white shadow disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #7c2d12, #ea580c)' }}>
+                {savingModalTajwid ? 'Menyimpan...' : 'Simpan'}
+              </button>
             </div>
           </div>
         </div>

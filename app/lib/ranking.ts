@@ -312,3 +312,82 @@ export function hitungRankingSemangat<T extends SantriRankingInput>(
 
   return hasil.sort((a, b) => bandingkanSemangat(id => statsMap.get(id) || kosong, a, b))
 }
+
+// ============================================================
+// UJIAN HAFALAN (Peringkat Ujian Hafalan per kelas)
+// ============================================================
+//
+// KEPUTUSAN BISNIS FINAL (jangan ubah tanpa keputusan baru):
+// - Nilai Hafalan = (total_hafalan_juz santri / MAX(total_hafalan_juz) dalam kelas yang sama) x 10.
+//   total_hafalan_juz dipakai APA ADANYA (desimal, TIDAK di-floor/round sebelum rumus). MAX dihitung
+//   dari SELURUH santri di kelas ini (termasuk yang belum punya hasil ujian) -- pembagi ini murni
+//   soal jumlah hafalan kelas, terlepas dari kesiapan ujian.
+// - Nilai Peringkat = (Nilai Ujian Keseluruhan x 4 + Nilai Hafalan) / 5 (ujian 80%, hafalan 20%).
+// - Tajwid TIDAK ikut formula ini sama sekali, dan tidak pernah jadi bagian tipe input di sini.
+// - Eligibility: santri hanya masuk hasil `peringkat` (dan diberi nomor peringkat) jika sudah
+//   punya Nilai Ujian Keseluruhan (artinya minimal satu juz berstatus 'selesai' pada periode ujian
+//   yang dipilih -- lihat hitungNilaiUjianKeseluruhan di app/lib/adminNilaiUjian.ts). Santri tanpa
+//   itu TIDAK diberi skor 0 palsu -- dikembalikan terpisah lewat `belumAdaHasil`, caller wajib
+//   menampilkannya sebagai "Belum memiliki juz ujian selesai", bukan dicampur ke urutan ranking.
+// - Tie-breaker (urutan wajib, jangan diubah tanpa keputusan baru): nilai_peringkat desc ->
+//   nilai_ujian_keseluruhan desc -> total_hafalan_juz desc -> nama asc -> id asc.
+//
+// Modul ini murni fungsi domain (sama seperti bagian ranking.ts lainnya): tidak query Supabase.
+// Caller (API route) bertanggung jawab: (1) mengambil Nilai Ujian Keseluruhan per santri yang
+// SUDAH discope ke satu kalender_id/periode ujian (tidak boleh campur periode), dan (2) mengelompokkan
+// santri per identitas kelas (jenjang + kelas_num + jenis_kelas) SEBELUM memanggil fungsi di sini --
+// fungsi ini hanya memproses SATU kelompok kelas per panggilan.
+
+export type SantriUjianRankingInput = SantriRankingInput & {
+  total_hafalan_juz?: number | null
+  /** Nilai Ujian Keseluruhan santri ini pada periode yang dipilih; null jika belum ada juz 'selesai'. */
+  nilaiUjianKeseluruhan: number | null
+}
+
+export type SantriUjianRankingHasil<T> = T & {
+  nilaiUjianKeseluruhan: number
+  nilaiHafalan: number
+  nilaiPeringkat: number
+  peringkat: number
+}
+
+function bandingkanPeringkatUjian(
+  a: { nilaiPeringkat: number, nilaiUjianKeseluruhan: number, total_hafalan_juz?: number | null } & SantriRankingInput,
+  b: { nilaiPeringkat: number, nilaiUjianKeseluruhan: number, total_hafalan_juz?: number | null } & SantriRankingInput
+): number {
+  if (b.nilaiPeringkat !== a.nilaiPeringkat) return b.nilaiPeringkat - a.nilaiPeringkat
+  if (b.nilaiUjianKeseluruhan !== a.nilaiUjianKeseluruhan) return b.nilaiUjianKeseluruhan - a.nilaiUjianKeseluruhan
+  const hafalanA = a.total_hafalan_juz || 0
+  const hafalanB = b.total_hafalan_juz || 0
+  if (hafalanB !== hafalanA) return hafalanB - hafalanA
+  return bandingkanNamaId(a, b)
+}
+
+/**
+ * Hitung Peringkat Ujian Hafalan untuk SATU kelompok kelas (jenjang+kelas_num+jenis_kelas sama,
+ * satu periode ujian yang sama). Return terpisah: `peringkat` (santri dengan Nilai Ujian Keseluruhan,
+ * terurut + diberi nomor peringkat) dan `belumAdaHasil` (santri di kelas ini yang belum punya satu
+ * juz pun berstatus selesai pada periode ini -- TIDAK diberi skor/peringkat palsu).
+ */
+export function hitungRankingUjianHafalanKelas<T extends SantriUjianRankingInput>(santriKelas: T[]): {
+  peringkat: SantriUjianRankingHasil<T>[]
+  belumAdaHasil: T[]
+} {
+  const maxHafalan = Math.max(0, ...santriKelas.map(s => s.total_hafalan_juz || 0))
+
+  const eligible = santriKelas.filter(s => s.nilaiUjianKeseluruhan !== null)
+  const belumAdaHasil = santriKelas.filter(s => s.nilaiUjianKeseluruhan === null)
+
+  const dihitung = eligible.map(s => {
+    const nilaiHafalan = maxHafalan > 0 ? Math.round(((s.total_hafalan_juz || 0) / maxHafalan) * 10 * 10) / 10 : 0
+    const nilaiUjianKeseluruhan = s.nilaiUjianKeseluruhan as number
+    const nilaiPeringkat = Math.round(((nilaiUjianKeseluruhan * 4 + nilaiHafalan) / 5) * 10) / 10
+    return { ...s, nilaiUjianKeseluruhan, nilaiHafalan, nilaiPeringkat }
+  })
+
+  dihitung.sort(bandingkanPeringkatUjian)
+
+  const peringkat = dihitung.map((s, index) => ({ ...s, peringkat: index + 1 }))
+
+  return { peringkat, belumAdaHasil }
+}

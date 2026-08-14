@@ -145,3 +145,23 @@ export function hitungRingkasanJuz(cakupan: CakupanSegment, masterSegments: Mast
     return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds }
   }).sort((a, b) => b.juz - a.juz)
 }
+
+// Nilai Ujian Keseluruhan = rata-rata Nilai Kelancaran (RingkasanJuz.rata) HANYA untuk juz
+// berstatus 'selesai', dalam SATU kalender/periode ujian (caller wajib membangun `ringkasanJuz`
+// dari nilai yang sudah discope ke satu kalender_id -- fungsi ini murni agregasi, tidak melakukan
+// scoping periode sendiri). Tajwid TIDAK pernah ikut di sini (keputusan bisnis final). null jika
+// belum ada satu juz pun yang selesai.
+export function hitungNilaiUjianKeseluruhan(ringkasanJuz: RingkasanJuz[]): number | null {
+  const juzSelesai = ringkasanJuz.filter((j): j is RingkasanJuz & { rata: number } => j.status === 'selesai' && j.rata !== null)
+  if (juzSelesai.length === 0) return null
+  const total = juzSelesai.reduce((sum, j) => sum + j.rata, 0)
+  return Math.round((total / juzSelesai.length) * 10) / 10
+}
+
+// Validasi input Nilai Tajwid: skala 0.0-10.0, dibulatkan ke maksimal 1 angka desimal (sama seperti
+// pembulatan nilai_akhir segmen). Return null jika tidak valid (bukan angka, di luar rentang, dsb).
+export function validasiNilaiTajwid(value: unknown): number | null {
+  const nilai = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(nilai) || nilai < 0 || nilai > 10) return null
+  return Math.round(nilai * 10) / 10
+}

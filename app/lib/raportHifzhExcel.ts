@@ -64,6 +64,7 @@ export type SantriRaport = {
   jenjang: string | null
   jenisKelas: string | null
   juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-100) jika juz sudah selesai, null jika belum
+  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (skala sama, via nilaiRapor()) jika Tajwid sudah diisi, null jika belum -- TIDAK pernah diisi 0
 }
 
 export type BuildRaportParams = {
@@ -104,15 +105,15 @@ function formulaSheetRef(sheetName: string) {
   return `'${sheetName.replace(/'/g, "''")}'`
 }
 
-type JuzCellLocation = { row: number, kolomNilai: string }
+type JuzCellLocation = { row: number, kolomNilai: string, kolomTajwid: string }
 
-function cariBarisPertamaJuz(ws: Worksheet, kolomJuz: string, kolomNilai: string, rowMulai: number, rowSelesai: number) {
+function cariBarisPertamaJuz(ws: Worksheet, kolomJuz: string, kolomNilai: string, kolomTajwid: string, rowMulai: number, rowSelesai: number) {
   const hasil = new Map<number, JuzCellLocation>()
   for (let row = rowMulai; row <= rowSelesai; row += 1) {
     const nilaiSel = ws.getCell(`${kolomJuz}${row}`).value
     const juz = typeof nilaiSel === 'number' ? nilaiSel : (typeof nilaiSel === 'string' ? Number(nilaiSel) : NaN)
     if (!Number.isInteger(juz)) continue
-    if (!hasil.has(juz)) hasil.set(juz, { row, kolomNilai })
+    if (!hasil.has(juz)) hasil.set(juz, { row, kolomNilai, kolomTajwid })
   }
   return hasil
 }
@@ -148,9 +149,8 @@ function resetWarnaSel(ws: Worksheet, alamat: string) {
 
 // Template dipakai HANYA sebagai desain: seluruh nilai Kelancaran & Tajwid contoh bawaan template
 // (mis. "K"/"T" = 90/70 pada santri contoh) dibersihkan lebih dulu di setiap sheet individu, baru
-// nilai Kelancaran sungguhan (dari nilai_ujian) ditulis ulang di lokasi yang sama. Kolom Tajwid
-// sengaja tidak pernah ditulis ulang di tempat lain pada file ini -- guru mengisinya manual sebelum
-// print -- sehingga harus selalu kosong, bukan meninggalkan nilai contoh milik santri lain.
+// nilai Kelancaran & Tajwid sungguhan (dari nilai_ujian & nilai_tajwid_juz) ditulis ulang di lokasi
+// yang sama. Juz yang Tajwid-nya belum diisi dibiarkan kosong (bukan 0) -- lihat SantriRaport.juzTajwid.
 // Highlight merah/font berwarna bawaan sheet 2-11 (peninggalan cetak santri sungguhan sebelumnya)
 // juga dibersihkan total di sini -- lihat catatan pada KOLOM_RESET_WARNA_PER_BLOK.
 function kosongkanNilaiContohSheet(ws: Worksheet) {
@@ -222,9 +222,9 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
   if (!rekap) throw new Error('Sheet Rekap tidak ditemukan pada template')
 
   const juzMap = new Map<number, JuzCellLocation>([
-    ...cariBarisPertamaJuz(master, 'A', 'D', 14, 65),
-    ...cariBarisPertamaJuz(master, 'G', 'J', 14, 65),
-    ...cariBarisPertamaJuz(master, 'M', 'P', 14, 65),
+    ...cariBarisPertamaJuz(master, 'A', 'D', 'E', 14, 65),
+    ...cariBarisPertamaJuz(master, 'G', 'J', 'K', 14, 65),
+    ...cariBarisPertamaJuz(master, 'M', 'P', 'Q', 14, 65),
   ])
 
   const sheetTemplateAsli = wb.worksheets
@@ -266,17 +266,25 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     juzMap.forEach((lokasi, juz) => {
       const nilai = santri.juzNilai.get(juz)
       ws.getCell(`${lokasi.kolomNilai}${lokasi.row}`).value = (typeof nilai === 'number') ? nilai : null
+      const tajwid = santri.juzTajwid.get(juz)
+      ws.getCell(`${lokasi.kolomTajwid}${lokasi.row}`).value = (typeof tajwid === 'number') ? tajwid : null
     })
 
     // "Nilai Rata-rata" dihitung langsung dari nilai juz yang benar-benar final (bukan lewat formula
-    // template AZ14/AZ15 yang cache-nya bisa basi -- lihat catatan SEL_RATA_KELANCARAN). Tajwid rata-
-    // rata selalu kosong karena kolom Tajwid itu sendiri memang tidak pernah diisi sistem.
+    // template AZ14/AZ15 yang cache-nya bisa basi -- lihat catatan SEL_RATA_KELANCARAN). Tajwid
+    // rata-rata dihitung HANYA dari juz yang Tajwid-nya sudah diisi (kosong tidak ikut dihitung
+    // sebagai 0) -- kosong total jika belum ada satupun Tajwid terisi.
     const nilaiJuzFinal = [...santri.juzNilai.values()].filter((n): n is number => typeof n === 'number')
     const rataKelancaran = nilaiJuzFinal.length > 0
       ? Math.round((nilaiJuzFinal.reduce((sum, n) => sum + n, 0) / nilaiJuzFinal.length) * 10) / 10
       : null
     ws.getCell(SEL_RATA_KELANCARAN).value = rataKelancaran
-    ws.getCell(SEL_RATA_TAJWID).value = null
+
+    const tajwidJuzFinal = [...santri.juzTajwid.values()].filter((n): n is number => typeof n === 'number')
+    const rataTajwid = tajwidJuzFinal.length > 0
+      ? Math.round((tajwidJuzFinal.reduce((sum, n) => sum + n, 0) / tajwidJuzFinal.length) * 10) / 10
+      : null
+    ws.getCell(SEL_RATA_TAJWID).value = rataTajwid
   })
 
   // Hapus sheet template individu yang tidak terpakai (santri lebih sedikit dari kapasitas template).

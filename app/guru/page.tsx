@@ -184,6 +184,7 @@ export default function GuruDashboard() {
               data={ujianRekap.nilaiUjianList}
               cakupanSantri={ujianRekap.ujianCakupanSantri}
               masterSegments={ujianRekap.ujianMasterSegments}
+              tajwidList={ujianRekap.ujianTajwidList}
               santriList={santriWingUjian}
               loading={ujianRekap.ujianRekapLoading}
               error={ujianRekap.ujianRekapError}

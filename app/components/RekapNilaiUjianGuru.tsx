@@ -2,6 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatTanggalPendekID as formatTanggal } from '../lib/dateWib'
+import { hitungNilaiUjianKeseluruhan } from '../lib/adminNilaiUjian'
+
+export type TajwidRow = {
+  id: string
+  santri_id: string
+  juz: number
+  kalender_id: string
+  nilai: number
+  guru_id: string
+  updated_at: string
+}
 
 export type NilaiUjianGuru = {
   id: string
@@ -89,6 +100,7 @@ type Props = {
   data: NilaiUjianGuru[]
   cakupanSantri: CakupanSantriMap
   masterSegments: MasterSegmentLite[]
+  tajwidList: TajwidRow[]
   santriList: SantriRingkas[]
   loading: boolean
   error: string
@@ -175,7 +187,7 @@ function StatusBadge({ status }: { status: StatusJuz }) {
   return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${className}`}>{label}</span>
 }
 
-export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegments, santriList, loading, error, onRefresh, kalenderAktifId }: Props) {
+export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegments, tajwidList, santriList, loading, error, onRefresh, kalenderAktifId }: Props) {
   const [filterKelas, setFilterKelas] = useState('semua')
   const [pencarianSantri, setPencarianSantri] = useState('')
   const [filterPeriode, setFilterPeriode] = useState('semua')
@@ -289,6 +301,25 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
 
   const masterSegmentMap = useMemo(() => new Map(masterSegments.map(segment => [segment.id, segment])), [masterSegments])
 
+  // Tajwid HANYA dicocokkan pada kalender_id yang eksplisit dipilih (filterPeriode) -- saat
+  // filterPeriode bernilai 'semua' atau 'tanpa-periode' (bukan uuid kalender sungguhan), filter ini
+  // otomatis kosong (Tajwid tidak pernah punya kalender_id NULL, jadi tidak pernah cocok dengan
+  // "tanpa-periode"). Dipakai bersama gating `periodeTerpilih` di bawah supaya Tajwid juga tidak
+  // pernah tercampur lintas periode (Rule D).
+  const tajwidPerSantriJuz = useMemo(() => {
+    const map = new Map<string, number>()
+    tajwidList
+      .filter(row => row.kalender_id === filterPeriode)
+      .forEach(row => map.set(`${row.santri_id}|${row.juz}`, Number(row.nilai)))
+    return map
+  }, [tajwidList, filterPeriode])
+
+  // Nilai Kelancaran per juz, Nilai Tajwid per juz, dan Nilai Ujian Keseluruhan HANYA dihitung saat
+  // satu periode eksplisit dipilih (filterPeriode !== 'semua') -- memilih "Semua Periode" murni
+  // untuk menelusuri riwayat mentah per percobaan, BUKAN untuk ringkasan/rata-rata (Rule D: jangan
+  // lagi menghitung rangkuman dari kumpulan nilai lintas periode).
+  const periodeTerpilih = filterPeriode !== 'semua'
+
   const santriRingkasan = useMemo(() => {
     return santriList
       .filter(santri => filterKelas === 'semua' || kelasKeySantri(santri) === filterKelas)
@@ -298,7 +329,7 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
       })
       .map(santri => {
         const cakupan = cakupanSantri[santri.id]
-        const jumlahSegmenPerJuz = cakupan?.lengkap ? cakupan.jumlahSegmenPerJuz : {}
+        const jumlahSegmenPerJuz = cakupan?.lengkap && periodeTerpilih ? cakupan.jumlahSegmenPerJuz : {}
         const juzList = Object.entries(jumlahSegmenPerJuz).map(([juzText, target]) => {
           const juz = Number(juzText)
           const segmentIds = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
@@ -307,23 +338,23 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
             .filter((item): item is NilaiUjianGuru => Boolean(item))
           const rata = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + nilaiAman(item.nilai_akhir), 0) / nilaiJuz.length : null
           const status: StatusJuz = nilaiJuz.length === 0 ? 'belum_dimulai' : nilaiJuz.length >= target ? 'selesai' : 'belum_selesai'
-          return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds }
+          const tajwid = tajwidPerSantriJuz.get(`${santri.id}|${juz}`) ?? null
+          return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds, tajwid }
         }).sort((a, b) => b.juz - a.juz)
 
         const juzDimulai = juzList.filter(j => j.status !== 'belum_dimulai').length
         const juzSelesai = juzList.filter(j => j.status === 'selesai').length
-        const semuaNilaiSantri = [...nilaiTerbaruPerSegmen.values()].filter(item => item.santri_id === santri.id)
-        const rataUmum = semuaNilaiSantri.length > 0
-          ? semuaNilaiSantri.reduce((sum, item) => sum + nilaiAman(item.nilai_akhir), 0) / semuaNilaiSantri.length
-          : null
+        // Nilai Ujian Keseluruhan = rata-rata Nilai Kelancaran HANYA juz 'selesai' (Rule F) --
+        // helper canonical dari app/lib/adminNilaiUjian.ts, bukan rata-rata seluruh segmen langsung.
+        const nilaiUjianKeseluruhan = periodeTerpilih ? hitungNilaiUjianKeseluruhan(juzList) : null
         const formatLama = filteredData
           .filter(item => item.santri_id === santri.id && !item.segment_ujian_id)
           .sort(compareNilaiTerbaru)
 
-        return { santri, juzList, juzDimulai, juzSelesai, rataUmum, formatLama }
+        return { santri, juzList, juzDimulai, juzSelesai, nilaiUjianKeseluruhan, formatLama }
       })
       .sort((a, b) => a.santri.nama.localeCompare(b.santri.nama, 'id'))
-  }, [santriList, filterKelas, pencarianSantri, cakupanSantri, masterSegments, nilaiTerbaruPerSegmen, filteredData])
+  }, [santriList, filterKelas, pencarianSantri, cakupanSantri, masterSegments, nilaiTerbaruPerSegmen, filteredData, tajwidPerSantriJuz, periodeTerpilih])
 
   const selectedSantriRingkasan = useMemo(
     () => santriRingkasan.find(item => item.santri.id === selectedSantriId) || null,
@@ -481,21 +512,29 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
             </div>
           </div>
 
+          {!periodeTerpilih && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl mb-4 text-sm">
+              Pilih satu Periode untuk melihat ringkasan Nilai Kelancaran, Nilai Tajwid, dan Nilai Ujian Keseluruhan per juz. &quot;Semua Periode&quot; hanya untuk menelusuri riwayat mentah per percobaan.
+            </div>
+          )}
+
           {loading && data.length === 0 ? (
             <div className="bg-white rounded-2xl shadow border border-gray-100 p-10 text-center text-gray-400">Memuat rekap nilai ujian...</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {santriRingkasan.map(({ santri, juzDimulai, juzSelesai, rataUmum }) => (
+              {santriRingkasan.map(({ santri, juzDimulai, juzSelesai, nilaiUjianKeseluruhan }) => (
                 <button key={santri.id} type="button" onClick={() => pilihSantri(santri.id)}
                   className="text-left bg-white rounded-2xl shadow border border-gray-100 p-4 hover:border-orange-300 hover:shadow-md transition">
                   <div className="font-bold text-gray-800">{santri.nama}</div>
                   <div className="text-xs text-gray-500">{labelKelasSantri(santri)}</div>
-                  <div className="mt-2 flex gap-4 text-sm">
-                    <div><span className="font-bold text-orange-700">{juzDimulai}</span> <span className="text-gray-400 text-xs">juz dimulai</span></div>
-                    <div><span className="font-bold text-green-700">{juzSelesai}</span> <span className="text-gray-400 text-xs">juz selesai</span></div>
-                  </div>
-                  {rataUmum !== null && (
-                    <div className="mt-1 text-xs text-gray-500">Rata-rata: <span className="font-semibold text-gray-700">{formatNilai(rataUmum)}</span></div>
+                  {periodeTerpilih && (
+                    <div className="mt-2 flex gap-4 text-sm">
+                      <div><span className="font-bold text-orange-700">{juzDimulai}</span> <span className="text-gray-400 text-xs">juz dimulai</span></div>
+                      <div><span className="font-bold text-green-700">{juzSelesai}</span> <span className="text-gray-400 text-xs">juz selesai</span></div>
+                    </div>
+                  )}
+                  {nilaiUjianKeseluruhan !== null && (
+                    <div className="mt-1 text-xs text-gray-500">Nilai Ujian Keseluruhan: <span className="font-semibold text-gray-700">{formatNilai(nilaiUjianKeseluruhan)}</span></div>
                   )}
                 </button>
               ))}
@@ -513,7 +552,16 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
           <div className="bg-white rounded-2xl shadow border border-gray-100 p-4 mb-5">
             <div className="font-bold text-lg text-gray-800">{selectedSantriRingkasan.santri.nama}</div>
             <div className="text-xs text-gray-500">{labelKelasSantri(selectedSantriRingkasan.santri)}</div>
+            {selectedSantriRingkasan.nilaiUjianKeseluruhan !== null && (
+              <div className="mt-1 text-sm text-gray-600">Nilai Ujian Keseluruhan: <span className="font-bold text-orange-700">{formatNilai(selectedSantriRingkasan.nilaiUjianKeseluruhan)}</span></div>
+            )}
           </div>
+
+          {!periodeTerpilih && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl mb-4 text-sm">
+              Pilih satu Periode untuk melihat ringkasan per juz.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
             {selectedSantriRingkasan.juzList.map(item => (
@@ -526,9 +574,12 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
                 <div className="text-xs text-gray-500 mt-1">{item.dinilai} dari {item.target} segmen selesai</div>
                 {item.rata !== null && (
                   <div className={`mt-2 text-lg font-bold ${item.status === 'selesai' ? 'text-green-700' : 'text-blue-700'}`}>
-                    {item.status === 'selesai' ? 'Nilai akhir: ' : 'Nilai sementara: '}{formatNilai(item.rata)}
+                    Nilai Kelancaran: {formatNilai(item.rata)}
                   </div>
                 )}
+                <div className="mt-1 text-xs text-gray-500">
+                  Nilai Tajwid: <span className="font-semibold text-gray-700">{item.tajwid !== null ? formatNilai(item.tajwid) : '-'}</span>
+                </div>
               </button>
             ))}
             {selectedSantriRingkasan.juzList.length === 0 && (

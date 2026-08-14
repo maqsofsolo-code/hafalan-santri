@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../lib/serverAuth'
 import { getTanggalWIB } from '../../lib/dateWib'
 import { bisaAksesJenisKelas, jenisKelasWingList } from '../../lib/wingAkses'
+import { hitungNilaiUjianKeseluruhan, hitungRingkasanJuz, validasiNilaiTajwid } from '../../lib/adminNilaiUjian'
 
 type NilaiUjianBody = Record<string, unknown> & {
   santri_id?: unknown
@@ -281,6 +282,40 @@ export async function GET(request: Request) {
       }
     })
 
+    // Ringkasan Nilai Kelancaran per juz + Nilai Ujian Keseluruhan, dihitung dari helper canonical
+    // (app/lib/adminNilaiUjian.ts) memakai nilai yang SUDAH discope ke kalenderAktif.id di atas --
+    // supaya klien (InputNilaiUjianSegment) tidak perlu menghitung ulang sendiri dari data lintas
+    // periode, dan supaya gating Nilai Tajwid (di bawah + PUT) memakai satu sumber kebenaran yang
+    // sama dengan tampilan Nilai Kelancaran.
+    const nilaiTerbaruPerSegmenNum = new Map<string, number>()
+    nilaiTerakhir.forEach((row, segId) => {
+      const nilai = Number((row as { nilai_akhir?: number }).nilai_akhir)
+      if (Number.isFinite(nilai)) nilaiTerbaruPerSegmenNum.set(segId, nilai)
+    })
+    const ringkasanJuz = hitungRingkasanJuz(cakupan, masterSegments, nilaiTerbaruPerSegmenNum)
+    const nilaiUjianKeseluruhan = hitungNilaiUjianKeseluruhan(ringkasanJuz)
+
+    // Nilai Tajwid santri ini, discope ke periode ujian aktif yang sama persis dengan Nilai
+    // Kelancaran di atas (Rule D -- tidak boleh ada pembacaan Tajwid tanpa scope kalender_id).
+    const { data: tajwidRows, error: tajwidError } = await serviceClient
+      .from('nilai_tajwid_juz')
+      .select('juz, nilai, guru_id, updated_at')
+      .eq('santri_id', santriId)
+      .eq('kalender_id', kalenderAktif.id)
+    if (tajwidError) return responseError('Gagal memuat nilai tajwid', 500)
+
+    const tajwidMap: Record<number, { nilai: number, guru_id: string, updated_at: string }> = {}
+    ;(tajwidRows || []).forEach(row => {
+      tajwidMap[row.juz] = { nilai: Number(row.nilai), guru_id: row.guru_id, updated_at: row.updated_at }
+    })
+    // Juz yang seluruh segmennya sudah selesai dinilai pada periode aktif ini tapi belum punya
+    // Nilai Tajwid -- termasuk data lama (juz selesai sebelum fitur Tajwid ada). Dipakai UI untuk
+    // banner peringatan (Rule D/H) di bagian atas area input santri ini.
+    const juzBelumTajwid = ringkasanJuz
+      .filter(j => j.status === 'selesai' && !(j.juz in tajwidMap))
+      .map(j => j.juz)
+      .sort((a, b) => b - a)
+
     const adaSegmenParsial = segmentTersedia.some(segment => cakupan.segmenTersedia[segment.id]?.parsial)
     const surahMap = new Map<number, string>()
     if (adaSegmenParsial) {
@@ -293,6 +328,10 @@ export async function GET(request: Request) {
       success: true,
       santri: santriDipilih,
       kalender: kalenderAktif,
+      ringkasanJuz,
+      nilaiUjianKeseluruhan,
+      tajwid: tajwidMap,
+      juzBelumTajwid,
       data: segmentTersedia.map(segment => {
         const info = cakupan.segmenTersedia[segment.id]
         const parsial = info?.parsial || false
@@ -380,6 +419,19 @@ export async function GET(request: Request) {
     getCakupanSegment(item, masterSegments),
   ]))
 
+  // Nilai Tajwid seluruh wing, TIDAK difilter kalender_id di sini (sama seperti nilai_ujian di atas)
+  // -- klien (RekapNilaiUjianGuru) WAJIB menyaring per kalender_id yang eksplisit dipilih sebelum
+  // menghitung ringkasan apa pun (Rule D). Setiap baris membawa kalender_id sendiri sehingga
+  // penyaringan itu selalu mungkin dilakukan di sisi klien tanpa request tambahan.
+  const { data: tajwidRows, error: tajwidError } = await serviceClient
+    .from('nilai_tajwid_juz')
+    .select('id, santri_id, juz, kalender_id, nilai, guru_id, updated_at')
+    .in('santri_id', santriIds)
+
+  if (tajwidError) {
+    return responseError('Gagal memuat nilai tajwid', 500)
+  }
+
   return NextResponse.json({
     success: true,
     data: nilaiUjianDenganSegmen,
@@ -388,6 +440,7 @@ export async function GET(request: Request) {
     // bertingkat (santri -> juz -> segmen), termasuk segmen yang belum pernah dinilai,
     // tanpa perlu request tambahan per santri.
     masterSegments,
+    tajwidList: tajwidRows || [],
   }, {
     headers: { 'Cache-Control': 'no-store' },
   })
@@ -514,4 +567,140 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ success: true, nilai_akhir: nilaiAkhir, tanggal, data: nilaiBaru })
+}
+
+type TajwidBody = Record<string, unknown> & {
+  santri_id?: unknown
+  juz?: unknown
+  nilai?: unknown
+}
+
+// Simpan/edit Nilai Tajwid (satu nilai per santri+juz+kalender_id -- upsert, BUKAN append-only
+// seperti nilai_ujian per-segmen). Otorisasi & wing check identik dengan POST di atas. Tajwid
+// SELALU disimpan terhadap periode ujian aktif HARI INI (sama seperti Kelancaran per segmen) --
+// guru tidak memilih periode sendiri, supaya tidak mungkin Tajwid tersimpan ke periode yang salah.
+export async function PUT(request: Request) {
+  const auth = await authorize(request, ['guru'])
+  if ('response' in auth) return auth.response
+
+  let body: TajwidBody
+  try {
+    body = await request.json() as TajwidBody
+  } catch {
+    return responseError('Data nilai tajwid tidak valid', 400)
+  }
+
+  const santriId = body.santri_id
+  const juz = toNonNegativeInteger(body.juz)
+  const nilai = validasiNilaiTajwid(body.nilai)
+
+  if (!isUuid(santriId) || juz === null || juz < 1 || juz > 30 || nilai === null) {
+    return responseError('Data nilai tajwid tidak valid', 400)
+  }
+
+  const userId = auth.userId
+  const serviceClient = createServiceRoleClient()
+
+  // URGENT FIX yang sama seperti GET/POST di atas: otorisasi target santri memakai WING
+  // (profiles.jenis_kelas guru vs santri.jenis_kelas), bukan guru_id/guru_id_2.
+  const { data: callerProfile, error: callerProfileError } = await serviceClient
+    .from('profiles')
+    .select('jenis_kelas')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (callerProfileError) {
+    return responseError('Gagal memverifikasi akses', 500)
+  }
+
+  const { data: santriData, error: santriError } = await serviceClient
+    .from('santri')
+    .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
+    .eq('id', santriId)
+    .eq('status', 'aktif')
+    .maybeSingle()
+
+  if (santriError) {
+    return responseError('Gagal memverifikasi data santri', 500)
+  }
+  if (!santriData || !bisaAksesJenisKelas(callerProfile?.jenis_kelas, santriData.jenis_kelas)) {
+    return responseError('Santri ini bukan bagian dari kelas yang Anda tangani', 403)
+  }
+
+  const { data: masterData, error: masterError } = await getMasterSegments(serviceClient)
+  if (masterError) return responseError('Gagal memuat master segmen ujian', 500)
+  const masterSegments = (masterData || []) as unknown as MasterSegment[]
+  if (masterSegments.length !== 151) return responseError('Master segmen ujian belum lengkap', 500)
+
+  const cakupan = getCakupanSegment(santriData as SantriScope, masterSegments)
+  if (!cakupan.lengkap) {
+    return responseError('Data posisi hafalan santri (surah/ayat terakhir) belum lengkap. Silakan hubungi Admin.', 422)
+  }
+  if (!(String(juz) in cakupan.jumlahSegmenPerJuz)) {
+    return responseError('Juz ini belum dapat diujikan untuk santri ini', 400)
+  }
+
+  const tanggal = getTanggalWIB()
+  const kalenderResult = await getKalenderUjianAktif(serviceClient, tanggal)
+  if ('error' in kalenderResult) return responseError('Gagal memverifikasi periode ujian', 500)
+  if ('ganda' in kalenderResult) {
+    return responseError('Terdapat lebih dari satu periode ujian aktif. Silakan hubungi Admin.', 409)
+  }
+  const kalenderAktif = kalenderResult.kalender
+  if (!kalenderAktif) {
+    return responseError('Tidak ada periode ujian hafalan yang aktif hari ini. Silakan hubungi Admin.', 422)
+  }
+
+  // Gating (Rule B/C): Tajwid hanya boleh diisi/diedit setelah SELURUH segmen juz ini selesai
+  // dinilai PADA PERIODE AKTIF ini -- reuse hitungRingkasanJuz (canonical, app/lib/adminNilaiUjian)
+  // memakai nilai yang di-fetch hanya untuk segmen juz ini (cukup untuk menentukan status juz ini
+  // saja, tidak perlu memuat nilai seluruh juz santri).
+  const segmentIdsJuz = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
+  const { data: nilaiJuzRows, error: nilaiJuzError } = segmentIdsJuz.length > 0
+    ? await serviceClient
+        .from('nilai_ujian')
+        .select('segment_ujian_id, nilai_akhir, tanggal, created_at, id')
+        .eq('santri_id', santriId)
+        .eq('kalender_id', kalenderAktif.id)
+        .in('segment_ujian_id', segmentIdsJuz)
+        .order('tanggal', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+    : { data: [], error: null }
+
+  if (nilaiJuzError) {
+    return responseError('Gagal memverifikasi status segmen juz', 500)
+  }
+
+  const nilaiTerbaruPerSegmenJuz = new Map<string, number>()
+  ;(nilaiJuzRows || []).forEach(row => {
+    if (row.segment_ujian_id && !nilaiTerbaruPerSegmenJuz.has(row.segment_ujian_id)) {
+      const nilaiSegmen = Number(row.nilai_akhir)
+      if (Number.isFinite(nilaiSegmen)) nilaiTerbaruPerSegmenJuz.set(row.segment_ujian_id, nilaiSegmen)
+    }
+  })
+
+  const ringkasanJuz = hitungRingkasanJuz(cakupan, masterSegments, nilaiTerbaruPerSegmenJuz)
+  const ringkasanJuzTarget = ringkasanJuz.find(item => item.juz === juz)
+  if (!ringkasanJuzTarget || ringkasanJuzTarget.status !== 'selesai') {
+    return responseError('Nilai Tajwid hanya dapat diisi setelah seluruh segmen juz ini selesai dinilai', 422)
+  }
+
+  const { data: tajwidBaru, error: upsertError } = await serviceClient
+    .from('nilai_tajwid_juz')
+    .upsert({
+      santri_id: santriId,
+      juz,
+      kalender_id: kalenderAktif.id,
+      nilai,
+      guru_id: userId,
+    }, { onConflict: 'santri_id,juz,kalender_id' })
+    .select('id, juz, nilai, guru_id, updated_at')
+    .single()
+
+  if (upsertError) {
+    return responseError('Gagal menyimpan nilai tajwid', 500)
+  }
+
+  return NextResponse.json({ success: true, data: tajwidBaru })
 }

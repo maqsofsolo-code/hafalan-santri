@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fetchWithAuth } from '../../lib/authClient'
-import type { CakupanSantriMap, MasterSegmentLite, NilaiUjianGuru } from '../../components/RekapNilaiUjianGuru'
+import type { CakupanSantriMap, MasterSegmentLite, NilaiUjianGuru, TajwidRow } from '../../components/RekapNilaiUjianGuru'
 
 // Rekap Nilai Ujian milik guru yang login, dibaca lewat /api/nilai-ujian.
 // Dipindah dari app/guru/page.tsx (Modularisasi Tahap 5A) TANPA mengubah
@@ -11,6 +11,7 @@ export function useNilaiUjianRekap() {
   const [nilaiUjianList, setNilaiUjianList] = useState<NilaiUjianGuru[]>([])
   const [ujianCakupanSantri, setUjianCakupanSantri] = useState<CakupanSantriMap>({})
   const [ujianMasterSegments, setUjianMasterSegments] = useState<MasterSegmentLite[]>([])
+  const [ujianTajwidList, setUjianTajwidList] = useState<TajwidRow[]>([])
   const [ujianRekapLoading, setUjianRekapLoading] = useState(false)
   const [ujianRekapError, setUjianRekapError] = useState('')
 
@@ -38,6 +39,7 @@ export function useNilaiUjianRekap() {
       setNilaiUjianList(Array.isArray(result.data) ? result.data : [])
       setUjianCakupanSantri(result.cakupanSantri && typeof result.cakupanSantri === 'object' ? result.cakupanSantri : {})
       setUjianMasterSegments(Array.isArray(result.masterSegments) ? result.masterSegments : [])
+      setUjianTajwidList(Array.isArray(result.tajwidList) ? result.tajwidList : [])
     } catch (error) {
       setUjianRekapError(error instanceof Error ? error.message : 'Gagal memuat rekap nilai ujian.')
     } finally {
@@ -46,7 +48,7 @@ export function useNilaiUjianRekap() {
   }
 
   return {
-    nilaiUjianList, ujianCakupanSantri, ujianMasterSegments, ujianRekapLoading, ujianRekapError,
+    nilaiUjianList, ujianCakupanSantri, ujianMasterSegments, ujianTajwidList, ujianRekapLoading, ujianRekapError,
     fetchNilaiUjian,
   }
 }
