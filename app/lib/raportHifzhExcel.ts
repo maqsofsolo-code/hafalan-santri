@@ -35,6 +35,18 @@ const SEL_NARASI_HAFALAN = ['M55', 'M56'] as const
 const SEL_RATA_KELANCARAN = 'P51'
 const SEL_RATA_TAJWID = 'Q51'
 
+// Baris 53 pada template asli berisi HANYA footnote "*K : Kelancaran, T : Tajwid" di kolom M
+// (sel tunggal, tidak di-merge -- N53:Q53 kosong, teks meluber visual ke kanan seperti kebiasaan
+// Excel). Baris 54 kolom M:Q sepenuhnya kosong pada template (bukan bagian tabel juz blok manapun --
+// blok A/G masih berisi data juz sampai baris 65, tapi blok M/N/O/P/Q berhenti di baris 53).
+// "Peringkat Kelas" HARUS muncul tepat di bawah "Nilai Rata-rata" (51-52) dan SEBELUM footnote --
+// karena insert row baru akan merusak tabel juz blok A/G yang masih berlanjut melewati baris 53/54,
+// footnote DIPINDAH TURUN satu baris (SEL_PERINGKAT_KELAS -> SEL_CATATAN_KT_BARU) dan
+// SEL_PERINGKAT_KELAS ditulis ulang dengan teks Peringkat Kelas, keduanya memakai style ASLI
+// footnote (dibaca sebelum ditimpa) supaya tetap menyatu dengan desain template.
+const SEL_PERINGKAT_KELAS = 'M53'
+const SEL_CATATAN_KT_BARU = 'M54'
+
 // Highlight merah pada beberapa sheet template (2-11, dipakai ulang apa adanya utk kelas <=11
 // santri) ternyata peninggalan cetak santri SUNGGUHAN sebelumnya (fill FFFF0000 statis pada kolom
 // nama surat, dan font merah pada kolom nilai di sheet 7) -- bukan conditional formatting maupun
@@ -65,6 +77,11 @@ export type SantriRaport = {
   jenisKelas: string | null
   juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-100) jika juz sudah selesai, null jika belum
   juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (skala sama, via nilaiRapor()) jika Tajwid sudah diisi, null jika belum -- TIDAK pernah diisi 0
+  // Peringkat Kelas: rumus/tie-breaker ranking DIHITUNG DI CALLER (hitungRankingUjianHafalanKelas,
+  // app/lib/ranking.ts) -- workbook hanya menulis hasilnya, tidak pernah menghitung ranking sendiri.
+  peringkatKelas: number | null // posisi santri ini di kelas (1-based); null jika belum final ATAU santri ini sendiri belum eligible
+  jumlahSantriKelas: number // "Y" pada "Peringkat Kelas: X dari Y" -- jumlah SELURUH santri aktif di kelas (bukan hanya yang eligible)
+  peringkatKelasFinal: boolean // false jika ADA santri aktif di kelas yang belum py juz ujian selesai (Tajwid tidak memengaruhi ini)
 }
 
 export type BuildRaportParams = {
@@ -73,6 +90,14 @@ export type BuildRaportParams = {
   semesterLabel: string
   waliKelasNama: string
   tanggalIndonesia: string
+}
+
+// Perakitan teks TAMPILAN saja (bukan perhitungan ranking) -- rumus/eligibility sepenuhnya berasal
+// dari field yang sudah dihitung caller (peringkatKelas/jumlahSantriKelas/peringkatKelasFinal).
+// Tidak pernah menampilkan angka Nilai Peringkat/Nilai Hafalan, hanya posisi "X dari Y".
+function labelPeringkatKelas(santri: SantriRaport): string {
+  if (!santri.peringkatKelasFinal || santri.peringkatKelas === null) return 'Peringkat Kelas: Belum Final'
+  return `Peringkat Kelas: ${santri.peringkatKelas} dari ${santri.jumlahSantriKelas}`
 }
 
 function labelJenjangTemplate(jenjang: string | null) {
@@ -285,6 +310,21 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
       ? Math.round((tajwidJuzFinal.reduce((sum, n) => sum + n, 0) / tajwidJuzFinal.length) * 10) / 10
       : null
     ws.getCell(SEL_RATA_TAJWID).value = rataTajwid
+
+    // Pindahkan footnote asli (dibaca SEBELUM ditimpa) satu baris ke bawah, lalu tulis "Peringkat
+    // Kelas" di baris yang ditinggalkannya -- lihat catatan SEL_PERINGKAT_KELAS di atas.
+    const catatanKtCell = ws.getCell(SEL_PERINGKAT_KELAS)
+    const catatanKtValue = catatanKtCell.value
+    const catatanKtFont = catatanKtCell.font
+    const catatanKtAlignment = catatanKtCell.alignment
+    const catatanKtBaruCell = ws.getCell(SEL_CATATAN_KT_BARU)
+    catatanKtBaruCell.value = catatanKtValue
+    catatanKtBaruCell.font = catatanKtFont
+    catatanKtBaruCell.alignment = catatanKtAlignment
+
+    catatanKtCell.value = labelPeringkatKelas(santri)
+    catatanKtCell.font = catatanKtFont
+    catatanKtCell.alignment = catatanKtAlignment
   })
 
   // Hapus sheet template individu yang tidak terpakai (santri lebih sedikit dari kapasitas template).

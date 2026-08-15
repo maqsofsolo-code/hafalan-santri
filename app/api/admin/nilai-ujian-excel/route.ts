@@ -3,11 +3,13 @@ import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
 import {
   getCakupanSegment,
   hitungRingkasanJuz,
+  hitungNilaiUjianKeseluruhan,
   compareNilaiTerbaru,
   nilaiRapor,
   type MasterSegment,
   type SantriScope,
 } from '../../../lib/adminNilaiUjian'
+import { hitungRankingUjianHafalanKelas, type SantriUjianRankingInput } from '../../../lib/ranking'
 import { buildRaportHifzhWorkbook, type SantriRaport } from '../../../lib/raportHifzhExcel'
 import { getWIBDate } from '../../../lib/dateWib'
 
@@ -209,7 +211,11 @@ export async function GET(request: Request) {
   const waliKelasNama = await cariNamaWaliKelas(adminClient, kelas, kelompokFinal)
   const tanggalIndonesia = getWIBDate().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
-  const santriRaportList: SantriRaport[] = santriList.map(santri => {
+  // Tahap 1: hitung Kelancaran/Tajwid per juz + Nilai Ujian Keseluruhan (skala 0-10, dipakai HANYA
+  // untuk ranking, tidak pernah ditulis sebagai angka di raport -- Rule I) untuk SETIAP santri di
+  // kelas ini. Satu-satunya tempat nilaiUjianKeseluruhan dihitung -- reuse hitungNilaiUjianKeseluruhan
+  // (app/lib/adminNilaiUjian.ts), formula TIDAK diubah/diduplikasi.
+  const santriKomputasi = santriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
     const nilaiPerSegmen = nilaiTerbaruPerSantri.get(santri.id) || new Map<string, number>()
     const juzList = cakupan.lengkap ? hitungRingkasanJuz(cakupan, masterSegments, nilaiPerSegmen) : []
@@ -230,16 +236,46 @@ export async function GET(request: Request) {
     })
 
     return {
-      id: santri.id,
-      nama: santri.nama,
-      nisn: santri.nisn,
-      kelasNum: santri.kelas_num,
-      jenjang: santri.jenjang,
-      jenisKelas: santri.jenis_kelas,
+      santri,
       juzNilai,
       juzTajwid,
+      nilaiUjianKeseluruhan: hitungNilaiUjianKeseluruhan(juzList),
     }
   })
+
+  // Tahap 2: Peringkat Kelas dihitung SEKALI untuk seluruh kelas (Rule G -- hindari N+1), reuse
+  // hitungRankingUjianHafalanKelas() dari app/lib/ranking.ts apa adanya (rumus & tie-breaker TIDAK
+  // diubah/diduplikasi di sini). Class scope = jenjang+kelas_num+jenis_kelas (santriQuery di atas)
+  // + kalender_id (periode, sudah discope sejak nilaiQuery/tajwidPerSantri) -- identik dengan scope
+  // /api/ranking-ujian-hafalan. santriList di sini SUDAH seluruh santri aktif kelas ini (bukan
+  // subset), jadi MAX(total_hafalan_juz) dan status FINAL otomatis benar (Rule C/D/E).
+  const santriRankingInput: SantriUjianRankingInput[] = santriKomputasi.map(({ santri, nilaiUjianKeseluruhan }) => ({
+    id: santri.id,
+    nama: santri.nama,
+    total_hafalan_juz: santri.total_hafalan_juz,
+    nilaiUjianKeseluruhan,
+  }))
+  const { peringkat, belumAdaHasil } = hitungRankingUjianHafalanKelas(santriRankingInput)
+  // FINAL hanya jika SELURUH santri aktif kelas ini sudah py minimal satu juz ujian selesai pada
+  // periode ini (Rule D/E) -- Tajwid TIDAK pernah memengaruhi status final ini (Rule C: Tajwid
+  // kosong tidak membuat ranking belum final).
+  const peringkatKelasFinal = belumAdaHasil.length === 0
+  const jumlahSantriKelas = santriList.length
+  const peringkatMap = new Map<string, number>(peringkat.map(s => [s.id, s.peringkat]))
+
+  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid }) => ({
+    id: santri.id,
+    nama: santri.nama,
+    nisn: santri.nisn,
+    kelasNum: santri.kelas_num,
+    jenjang: santri.jenjang,
+    jenisKelas: santri.jenis_kelas,
+    juzNilai,
+    juzTajwid,
+    peringkatKelas: peringkatKelasFinal ? (peringkatMap.get(santri.id) ?? null) : null,
+    jumlahSantriKelas,
+    peringkatKelasFinal,
+  }))
 
   let buffer: Buffer
   try {
