@@ -256,11 +256,13 @@ export async function GET(request: Request) {
     nilaiUjianKeseluruhan,
   }))
   const { peringkat, belumAdaHasil } = hitungRankingUjianHafalanKelas(santriRankingInput)
-  // FINAL hanya jika SELURUH santri aktif kelas ini sudah py minimal satu juz ujian selesai pada
-  // periode ini (Rule D/E) -- Tajwid TIDAK pernah memengaruhi status final ini (Rule C: Tajwid
-  // kosong tidak membuat ranking belum final).
-  const peringkatKelasFinal = belumAdaHasil.length === 0
-  const jumlahSantriKelas = santriList.length
+  // Denominator Raport Hifzh ("Y") SELALU jumlah santri yang SUDAH eligible (peringkat.length),
+  // BUKAN total santri kelas -- santri belumAdaHasil tidak pernah masuk penyebut, baik saat
+  // ranking masih sementara maupun sudah final (Rule B "PENTING"). Saat seluruh santri sudah
+  // eligible, peringkat.length otomatis sama dengan jumlah santri kelas -- tidak perlu field
+  // terpisah untuk itu. Status Sementara/Final murni derivasi dari jumlahBelumAdaHasil > 0.
+  const jumlahSantriEligible = peringkat.length
+  const jumlahBelumAdaHasilKelas = belumAdaHasil.length
   const peringkatMap = new Map<string, number>(peringkat.map(s => [s.id, s.peringkat]))
 
   const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid }) => ({
@@ -272,9 +274,9 @@ export async function GET(request: Request) {
     jenisKelas: santri.jenis_kelas,
     juzNilai,
     juzTajwid,
-    peringkatKelas: peringkatKelasFinal ? (peringkatMap.get(santri.id) ?? null) : null,
-    jumlahSantriKelas,
-    peringkatKelasFinal,
+    peringkatKelas: peringkatMap.get(santri.id) ?? null,
+    jumlahSantriEligible,
+    jumlahBelumAdaHasil: jumlahBelumAdaHasilKelas,
   }))
 
   let buffer: Buffer

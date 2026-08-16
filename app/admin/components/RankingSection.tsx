@@ -2,6 +2,7 @@
 import { getKelasOptions, jenjangLabel, kelasLabel } from '../utils'
 import type { SantriRanking } from '../types'
 import type { useAdminFilters } from '../hooks/useAdminFilters'
+import { RankingUjianHafalanSection } from '../../components/RankingUjianHafalanSection'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 
@@ -47,6 +48,11 @@ export function RankingSection(props: {
         </div>
       </div>
 
+      {/* Level/Filter/Download PDF hanya relevan untuk 3 ranking lama (Total/Konsistensi/Semangat)
+          -- "Peringkat Ujian Hafalan" punya filter sendiri (periode/jenjang/kelas/kelompok, lihat
+          RankingUjianHafalanSection) yang tidak berbagi state dengan blok ini sama sekali. */}
+      {activeRanking !== 'ujian' && (
+      <>
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {[
           { id: 'kelas', label: '📚 Per Kelas', sub: 'Dalam 1 kelas' },
@@ -144,12 +150,15 @@ export function RankingSection(props: {
           </p>
         </div>
       )}
+      </>
+      )}
 
       <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
         {[
           { id: 'total', label: 'Total Hafalan', sub: 'Keseluruhan', color: 'border-green-500 bg-green-50 text-green-700' },
           { id: 'konsistensi', label: 'Konsistensi Setor', sub: 'Pekan tertutup', color: 'border-blue-500 bg-blue-50 text-blue-700' },
           { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir', color: 'border-purple-500 bg-purple-50 text-purple-700' },
+          { id: 'ujian', label: 'Peringkat Ujian Hafalan', sub: 'Per periode ujian', color: 'border-indigo-500 bg-indigo-50 text-indigo-700' },
         ].map((tab) => (
           <button key={tab.id} onClick={() => setActiveRanking(tab.id)}
             className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${activeRanking === tab.id ? tab.color : 'border-gray-200 bg-white text-gray-500'}`}>
@@ -258,6 +267,8 @@ export function RankingSection(props: {
           </div>
         </div>
       )}
+
+      {activeRanking === 'ujian' && <RankingUjianHafalanSection />}
     </div>
   )
 }

@@ -202,5 +202,45 @@ const tieHafalanSungguhan = [
 const hasilHafalanSungguhan = hitungRankingUjianHafalanKelas(tieHafalanSungguhan)
 cek('Nilai Ujian Keseluruhan sama -> hafalan lebih banyak (hs-tinggi) mendapat peringkat lebih baik', hasilHafalanSungguhan.peringkat.map(s => s.id), ['hs-tinggi', 'hs-rendah'])
 
+// ============================================================
+// 9. KOREKSI ELIGIBILITY/DISPLAY (audit lanjutan) -- ranking TIDAK boleh menunggu seluruh kelas
+// selesai ujian. Skenario persis dari laporan: kelas 3 santri, A & B minimal 1 juz selesai, C belum
+// sama sekali -> A & B tetap tampil di `peringkat` (dengan status tampilan "Peringkat Sementara"
+// di sisi konsumen -- BELUM ada UI yang mengonsumsi ranking ini di codebase, lihat laporan audit),
+// C masuk `belumAdaHasil` TANPA skor 0 palsu. Ini murni re-konfirmasi: hitungRankingUjianHafalanKelas
+// TIDAK PERNAH punya gate "semua santri kelas harus selesai" -- perilaku ini sudah benar sejak
+// awal (lihat juga bagian 7 di atas), test ini hanya mengunci skenario PERSIS sesuai kata-kata
+// laporan supaya regresi di masa depan langsung ketahuan.
+// ============================================================
+console.log('\n=== 9. Koreksi eligibility/display -- ranking tidak menunggu seluruh kelas selesai ===\n')
+
+const kelasABC_eligibility = [
+  { id: 'A', nama: 'A', total_hafalan_juz: 10, nilaiUjianKeseluruhan: 8.5 }, // minimal 1 juz selesai
+  { id: 'B', nama: 'B', total_hafalan_juz: 6, nilaiUjianKeseluruhan: 9.0 },  // minimal 1 juz selesai
+  { id: 'C', nama: 'C', total_hafalan_juz: 4, nilaiUjianKeseluruhan: null }, // belum py juz selesai
+]
+const hasilEligibility = hitungRankingUjianHafalanKelas(kelasABC_eligibility)
+
+cek('A & B masuk peringkat (urutan tidak menunggu C)', hasilEligibility.peringkat.map(s => s.id).sort(), ['A', 'B'])
+cek('C TIDAK masuk peringkat', hasilEligibility.peringkat.some(s => s.id === 'C'), false)
+cek('C masuk belumAdaHasil', hasilEligibility.belumAdaHasil.map(s => s.id), ['C'])
+cek('C tidak diberi skor/peringkat apa pun (bukan objek {peringkat, nilaiPeringkat, ...})', 'nilaiPeringkat' in hasilEligibility.belumAdaHasil[0], false)
+
+// Status tampilan yang direplikasi di sini HANYA untuk verifikasi semantik teks (Rule "STATUS
+// RANKING") -- bukan fungsi produksi, karena belum ada UI yang mengonsumsi endpoint ranking ini.
+function statusPeringkatKelas(belumAdaHasilCount) {
+  return belumAdaHasilCount > 0 ? 'Peringkat Sementara' : 'Peringkat Ujian Hafalan'
+}
+cek('Status = "Peringkat Sementara" selama belumAdaHasil.length > 0', statusPeringkatKelas(hasilEligibility.belumAdaHasil.length), 'Peringkat Sementara')
+
+// Jika seluruh santri sudah eligible (belumAdaHasil kosong) -> status berubah, TANPA warning.
+const kelasSemuaEligible = [
+  { id: 'A', nama: 'A', total_hafalan_juz: 10, nilaiUjianKeseluruhan: 8.5 },
+  { id: 'B', nama: 'B', total_hafalan_juz: 6, nilaiUjianKeseluruhan: 9.0 },
+]
+const hasilSemuaEligible = hitungRankingUjianHafalanKelas(kelasSemuaEligible)
+cek('Seluruh santri eligible -> belumAdaHasil kosong', hasilSemuaEligible.belumAdaHasil, [])
+cek('Status = "Peringkat Ujian Hafalan" (tanpa warning) saat belumAdaHasil kosong', statusPeringkatKelas(hasilSemuaEligible.belumAdaHasil.length), 'Peringkat Ujian Hafalan')
+
 console.log(`\n${gagal === 0 ? 'SEMUA COCOK (0 kegagalan)' : `${gagal} PENGECEKAN GAGAL`}`)
 process.exit(gagal === 0 ? 0 : 1)

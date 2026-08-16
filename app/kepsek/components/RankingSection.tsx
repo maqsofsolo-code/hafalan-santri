@@ -3,6 +3,7 @@ import { getKelasOptions, jenjangLabel } from '../utils'
 import type { useKepsekRanking } from '../hooks/useKepsekRanking'
 import type { Santri } from '../types'
 import type { SantriKonsistensiHasil, SantriSemangatHasil } from '../../lib/ranking'
+import { RankingUjianHafalanSection } from '../../components/RankingUjianHafalanSection'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 
@@ -48,6 +49,11 @@ export function RankingSection(props: {
         </div>
       </div>
 
+      {/* Level/Filter hanya relevan untuk 3 ranking lama (Konsistensi/Semangat/Total) --
+          "Peringkat Ujian Hafalan" punya filter sendiri (periode/jenjang/kelas/kelompok, lihat
+          RankingUjianHafalanSection) yang tidak berbagi state dengan blok ini sama sekali. */}
+      {activeRanking !== 'ujian' && (
+      <>
       {/* Level Peringkat */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {[
@@ -112,6 +118,8 @@ export function RankingSection(props: {
           <span className="font-semibold text-blue-600">{listHafalan.length} santri</span>
         </div>
       </div>
+      </>
+      )}
 
       {/* Tab Jenis Ranking */}
       <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
@@ -119,6 +127,7 @@ export function RankingSection(props: {
           { id: 'konsistensi', label: 'Konsistensi Setor', sub: 'Pekan tertutup', color: 'border-blue-500 bg-blue-50 text-blue-700' },
           { id: 'semangat', label: 'Semangat Hafalan', sub: '7 hari terakhir', color: 'border-purple-500 bg-purple-50 text-purple-700' },
           { id: 'total', label: 'Total Hafalan', sub: 'Keseluruhan', color: 'border-green-500 bg-green-50 text-green-700' },
+          { id: 'ujian', label: 'Peringkat Ujian Hafalan', sub: 'Per periode ujian', color: 'border-indigo-500 bg-indigo-50 text-indigo-700' },
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveRanking(tab.id)}
             className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition border-2 ${activeRanking === tab.id ? tab.color : 'border-gray-200 bg-white text-gray-500'}`}>
@@ -227,6 +236,8 @@ export function RankingSection(props: {
           </div>
         </div>
       )}
+
+      {activeRanking === 'ujian' && <RankingUjianHafalanSection />}
     </div>
   )
 }

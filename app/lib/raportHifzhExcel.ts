@@ -46,6 +46,11 @@ const SEL_RATA_TAJWID = 'Q51'
 // footnote (dibaca sebelum ditimpa) supaya tetap menyatu dengan desain template.
 const SEL_PERINGKAT_KELAS = 'M53'
 const SEL_CATATAN_KT_BARU = 'M54'
+// Baris 57 kolom M:Q juga kosong pada template (blok A masih berisi data juz di baris ini, tapi
+// blok M/N/O/P/Q sudah lama berhenti di baris 53) -- dipakai untuk keterangan singkat "Masih ada N
+// santri..." saat ranking berstatus Sementara. Hanya ditulis kalau keterangan-nya ada (lihat
+// infoPeringkatKelas) -- kalau tidak, sel ini tetap kosong seperti bawaan template.
+const SEL_KETERANGAN_PERINGKAT = 'M57'
 
 // Highlight merah pada beberapa sheet template (2-11, dipakai ulang apa adanya utk kelas <=11
 // santri) ternyata peninggalan cetak santri SUNGGUHAN sebelumnya (fill FFFF0000 statis pada kolom
@@ -79,9 +84,12 @@ export type SantriRaport = {
   juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (skala sama, via nilaiRapor()) jika Tajwid sudah diisi, null jika belum -- TIDAK pernah diisi 0
   // Peringkat Kelas: rumus/tie-breaker ranking DIHITUNG DI CALLER (hitungRankingUjianHafalanKelas,
   // app/lib/ranking.ts) -- workbook hanya menulis hasilnya, tidak pernah menghitung ranking sendiri.
-  peringkatKelas: number | null // posisi santri ini di kelas (1-based); null jika belum final ATAU santri ini sendiri belum eligible
-  jumlahSantriKelas: number // "Y" pada "Peringkat Kelas: X dari Y" -- jumlah SELURUH santri aktif di kelas (bukan hanya yang eligible)
-  peringkatKelasFinal: boolean // false jika ADA santri aktif di kelas yang belum py juz ujian selesai (Tajwid tidak memengaruhi ini)
+  // Denominator SELALU jumlah santri yang SUDAH eligible (bukan total santri kelas) -- baik saat
+  // ranking sementara maupun sudah final, supaya santri yang belum py hasil TIDAK PERNAH masuk
+  // penyebut (Rule B: "jangan masukkan santri belumAdaHasil ke denominator ranking sementara").
+  peringkatKelas: number | null // posisi santri ini di antara santri ELIGIBLE (1-based); null jika santri ini sendiri belum eligible
+  jumlahSantriEligible: number // "Y" pada "Peringkat Sementara/Kelas: X dari Y" -- HANYA santri yang sudah eligible ranking
+  jumlahBelumAdaHasil: number // jumlah santri aktif kelas yang belum py satu juz pun selesai; >0 = ranking berstatus Sementara (Tajwid tidak memengaruhi ini)
 }
 
 export type BuildRaportParams = {
@@ -93,11 +101,23 @@ export type BuildRaportParams = {
 }
 
 // Perakitan teks TAMPILAN saja (bukan perhitungan ranking) -- rumus/eligibility sepenuhnya berasal
-// dari field yang sudah dihitung caller (peringkatKelas/jumlahSantriKelas/peringkatKelasFinal).
-// Tidak pernah menampilkan angka Nilai Peringkat/Nilai Hafalan, hanya posisi "X dari Y".
-function labelPeringkatKelas(santri: SantriRaport): string {
-  if (!santri.peringkatKelasFinal || santri.peringkatKelas === null) return 'Peringkat Kelas: Belum Final'
-  return `Peringkat Kelas: ${santri.peringkatKelas} dari ${santri.jumlahSantriKelas}`
+// dari field yang sudah dihitung caller (peringkatKelas/jumlahSantriEligible/jumlahBelumAdaHasil).
+// Tidak pernah menampilkan angka Nilai Peringkat/Nilai Hafalan, hanya posisi "X dari Y". Tiga kasus:
+// (1) santri ini sendiri belum eligible -- tidak ada ranking palsu untuk ditampilkan;
+// (2) santri eligible tapi masih ada santri lain di kelas belum eligible -- "Peringkat Sementara",
+//     X dan Y HANYA dari santri yang sudah eligible (belumAdaHasil TIDAK pernah masuk Y);
+// (3) seluruh santri kelas sudah eligible -- "Peringkat Kelas" final, tanpa keterangan tambahan.
+function infoPeringkatKelas(santri: SantriRaport): { label: string, keterangan: string | null } {
+  if (santri.peringkatKelas === null) {
+    return { label: 'Peringkat Kelas: Belum Ada Hasil', keterangan: null }
+  }
+  if (santri.jumlahBelumAdaHasil > 0) {
+    return {
+      label: `Peringkat Sementara: ${santri.peringkatKelas} dari ${santri.jumlahSantriEligible}`,
+      keterangan: `Masih ada ${santri.jumlahBelumAdaHasil} santri yang belum menyelesaikan ujian.`,
+    }
+  }
+  return { label: `Peringkat Kelas: ${santri.peringkatKelas} dari ${santri.jumlahSantriEligible}`, keterangan: null }
 }
 
 function labelJenjangTemplate(jenjang: string | null) {
@@ -312,7 +332,9 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     ws.getCell(SEL_RATA_TAJWID).value = rataTajwid
 
     // Pindahkan footnote asli (dibaca SEBELUM ditimpa) satu baris ke bawah, lalu tulis "Peringkat
-    // Kelas" di baris yang ditinggalkannya -- lihat catatan SEL_PERINGKAT_KELAS di atas.
+    // Kelas"/"Peringkat Sementara" di baris yang ditinggalkannya -- lihat catatan SEL_PERINGKAT_KELAS
+    // di atas. Keterangan singkat (hanya muncul saat status Sementara) ditulis ke SEL_KETERANGAN_PERINGKAT
+    // memakai style yang sama, dan dibiarkan kosong (bawaan template) saat tidak ada keterangan.
     const catatanKtCell = ws.getCell(SEL_PERINGKAT_KELAS)
     const catatanKtValue = catatanKtCell.value
     const catatanKtFont = catatanKtCell.font
@@ -322,9 +344,17 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     catatanKtBaruCell.font = catatanKtFont
     catatanKtBaruCell.alignment = catatanKtAlignment
 
-    catatanKtCell.value = labelPeringkatKelas(santri)
+    const { label, keterangan } = infoPeringkatKelas(santri)
+    catatanKtCell.value = label
     catatanKtCell.font = catatanKtFont
     catatanKtCell.alignment = catatanKtAlignment
+
+    if (keterangan) {
+      const keteranganCell = ws.getCell(SEL_KETERANGAN_PERINGKAT)
+      keteranganCell.value = keterangan
+      keteranganCell.font = catatanKtFont
+      keteranganCell.alignment = catatanKtAlignment
+    }
   })
 
   // Hapus sheet template individu yang tidak terpakai (santri lebih sedikit dari kapasitas template).
