@@ -4,10 +4,12 @@ import {
   getKelasOptions, jenjangLabel, cocokKelompokMonitoring,
   cocokGuruUntukJenisKelasSantri, jenjangDariKelasNumLama,
   labelJenisKelasWaliLama, labelJenisKelasSantriUntukAssignment,
+  cariDefaultPeriodeSumber,
 } from '../utils'
 import type { Guru, Santri, PeriodeAkademik, PenugasanHafalanRow, WaliKelasAssignmentRow } from '../types'
 import type { useAdminPeriodeAkademik } from '../hooks/useAdminPeriodeAkademik'
 import type { useAdminPenugasanGuru } from '../hooks/useAdminPenugasanGuru'
+import { useAdminSalinPenugasan } from '../hooks/useAdminSalinPenugasan'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-300"
 const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
@@ -38,6 +40,7 @@ export function PenugasanGuruSection(props: {
 }) {
   const { periodeAkademik: pa, penugasan: pg, guruList, santriList } = props
   const [activeTab, setActiveTab] = useState<'periode' | 'guru-hafalan' | 'wali-kelas'>('periode')
+  const [showSalinModal, setShowSalinModal] = useState(false)
   const { fetchPenugasanHafalan, fetchWaliKelasAssignment } = pg
 
   // Histori per periode (Tahap 9D bagian M): setiap kali selector periode
@@ -84,7 +87,24 @@ export function PenugasanGuruSection(props: {
             ⚠️ Terdapat lebih dari satu periode aktif. Guru Hafalan dan Wali Kelas di bawah mengikuti periode yang DIPILIH pada selector ini, bukan otomatis periode aktif.
           </p>
         )}
+        {pa.periodeIdTerpilih && pa.periodeList.length > 1 && (
+          <button onClick={() => setShowSalinModal(true)}
+            className="mt-3 text-sm font-semibold px-4 py-2 rounded-xl border-2 border-purple-300 text-purple-700 hover:bg-purple-50 transition">
+            Salin dari Periode Sebelumnya
+          </button>
+        )}
       </div>
+
+      {showSalinModal && pa.periodeIdTerpilih && (
+        <SalinPenugasanModal
+          pa={pa}
+          onClose={() => setShowSalinModal(false)}
+          onSelesai={() => {
+            fetchPenugasanHafalan(pa.periodeIdTerpilih)
+            fetchWaliKelasAssignment(pa.periodeIdTerpilih)
+          }}
+        />
+      )}
 
       <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
         {[
@@ -106,6 +126,148 @@ export function PenugasanGuruSection(props: {
       {activeTab === 'wali-kelas' && (
         <TabWaliKelas pa={pa} pg={pg} guruList={guruList} periodeTerpilih={periodeTerpilih} />
       )}
+    </div>
+  )
+}
+
+// ============================================================
+// MODAL -- SALIN PENUGASAN DARI PERIODE SEBELUMNYA (Tahap 9H)
+// ============================================================
+// Preview & eksekusi SELALU lewat API server (useAdminSalinPenugasan ->
+// /api/admin/salin-penugasan) -- rule "apa yang disalin/dilewati" TIDAK
+// pernah dihitung ulang di sini, murni menampilkan angka yang sudah
+// dihitung server (app/lib/salinPenugasan.ts).
+function SalinPenugasanModal(props: {
+  pa: PeriodeAkademikHook
+  onClose: () => void
+  onSelesai: () => void
+}) {
+  const { pa, onClose, onSelesai } = props
+  const targetId = pa.periodeIdTerpilih
+  const salin = useAdminSalinPenugasan()
+  const sumberOptions = pa.periodeList.filter(p => p.id !== targetId)
+  const [sourceId, setSourceId] = useState(() => cariDefaultPeriodeSumber(pa.periodeList, targetId))
+  const [selesai, setSelesai] = useState(false)
+
+  useEffect(() => {
+    if (sourceId && targetId) salin.muatPreview(sourceId, targetId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, targetId])
+
+  const targetPeriode = pa.periodeList.find(p => p.id === targetId) || null
+  const sourcePeriode = pa.periodeList.find(p => p.id === sourceId) || null
+
+  const labelPeriode = (p: PeriodeAkademik | null) => p ? `${p.tahun_ajaran} — Semester ${p.semester}` : '-'
+
+  const handlePilihSumber = (id: string) => {
+    setSourceId(id)
+    setSelesai(false)
+    salin.resetHasil()
+  }
+
+  const handleSalinSekarang = async () => {
+    if (!sourceId || !targetId) return
+    if (!confirm(`Salin seluruh Guru Hafalan & Wali Kelas AKTIF dari ${labelPeriode(sourcePeriode)} ke ${labelPeriode(targetPeriode)}?\n\nAssignment yang sudah diatur manual di periode target TIDAK akan ditimpa.`)) return
+    const ok = await salin.jalankanSalin(sourceId, targetId)
+    if (ok) setSelesai(true)
+  }
+
+  const handleTutup = () => {
+    if (selesai) onSelesai()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5">
+        <div className="flex justify-between items-start mb-3">
+          <h3 className="font-bold text-gray-800 text-lg">Salin Penugasan dari Periode Sebelumnya</h3>
+          <button onClick={handleTutup} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">&times;</button>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs text-gray-500 mb-1">Periode Target</label>
+          <div className="px-3 py-2.5 rounded-xl bg-gray-100 text-sm text-gray-700 font-semibold">{labelPeriode(targetPeriode)}</div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs text-gray-500 mb-1">Periode Sumber</label>
+          {sumberOptions.length === 0 ? (
+            <p className="text-sm text-gray-400">Tidak ada periode lain untuk disalin.</p>
+          ) : (
+            <select value={sourceId} onChange={e => handlePilihSumber(e.target.value)} className={inputClass}>
+              <option value="">-- Pilih Periode Sumber --</option>
+              {sumberOptions.map(p => (
+                <option key={p.id} value={p.id}>{p.tahun_ajaran} — Semester {p.semester}{p.is_aktif ? ' (Aktif)' : ''}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {!selesai && sourceId && (
+          <>
+            {salin.loadingPreview && <p className="text-sm text-gray-400 text-center py-4">Memuat preview...</p>}
+            {salin.previewError && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mb-3">{salin.previewError}</div>}
+            {!salin.loadingPreview && salin.previewGuruHafalan && salin.previewWaliKelas && (
+              <div className="space-y-3 mb-4">
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                  <div className="text-xs font-bold text-gray-600 mb-1.5">Guru Hafalan</div>
+                  <ul className="text-xs text-gray-600 space-y-0.5">
+                    <li>Aktif di sumber: <b>{salin.previewGuruHafalan.aktifSumber}</b></li>
+                    <li className="text-green-700">Bisa disalin: <b>{salin.previewGuruHafalan.akanDisalin}</b></li>
+                    <li>Sudah ada sama di target: {salin.previewGuruHafalan.sudahAdaSama}</li>
+                    <li>Target sudah memiliki assignment manual: {salin.previewGuruHafalan.targetSudahDiatur}</li>
+                    {salin.previewGuruHafalan.konflikMaxDua > 0 && (
+                      <li className="text-amber-700">Konflik maks-2 (dilewati): {salin.previewGuruHafalan.konflikMaxDua}</li>
+                    )}
+                  </ul>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                  <div className="text-xs font-bold text-gray-600 mb-1.5">Wali Kelas</div>
+                  <ul className="text-xs text-gray-600 space-y-0.5">
+                    <li>Aktif di sumber: <b>{salin.previewWaliKelas.aktifSumber}</b></li>
+                    <li className="text-green-700">Bisa disalin: <b>{salin.previewWaliKelas.akanDisalin}</b></li>
+                    <li>Sudah ada sama di target: {salin.previewWaliKelas.sudahAdaSama}</li>
+                    <li>Kelas target sudah terisi: {salin.previewWaliKelas.targetSudahTerisi}</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+            {salin.applyError && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mb-3">{salin.applyError}</div>}
+            <button onClick={handleSalinSekarang} disabled={salin.applying || salin.loadingPreview}
+              className="w-full text-white text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-50" style={{ background: GRADIENT }}>
+              {salin.applying ? 'Menyalin...' : 'Salin Sekarang'}
+            </button>
+          </>
+        )}
+
+        {selesai && salin.hasilGuruHafalan && salin.hasilWaliKelas && (
+          <div className="space-y-3">
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+              <div className="text-xs font-bold text-green-800 mb-1.5">Guru Hafalan</div>
+              <ul className="text-xs text-green-800 space-y-0.5">
+                <li>{salin.hasilGuruHafalan.berhasil} berhasil disalin</li>
+                <li>{salin.hasilGuruHafalan.sudahAdaSama} sudah ada</li>
+                <li>{salin.hasilGuruHafalan.targetSudahDiatur} dilewati karena target sudah diatur</li>
+                {salin.hasilGuruHafalan.konflikMaxDua > 0 && <li>{salin.hasilGuruHafalan.konflikMaxDua} dilewati karena konflik maks-2</li>}
+                {salin.hasilGuruHafalan.gagalLain > 0 && <li>{salin.hasilGuruHafalan.gagalLain} gagal (error lain)</li>}
+              </ul>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+              <div className="text-xs font-bold text-green-800 mb-1.5">Wali Kelas</div>
+              <ul className="text-xs text-green-800 space-y-0.5">
+                <li>{salin.hasilWaliKelas.berhasil} berhasil disalin</li>
+                <li>{salin.hasilWaliKelas.sudahAdaSama} sudah ada</li>
+                <li>{salin.hasilWaliKelas.targetSudahTerisi} dilewati karena kelas target sudah diatur</li>
+                {salin.hasilWaliKelas.gagalLain > 0 && <li>{salin.hasilWaliKelas.gagalLain} gagal (error lain)</li>}
+              </ul>
+            </div>
+            <button onClick={handleTutup} className="w-full text-white text-sm font-semibold px-4 py-2.5 rounded-xl" style={{ background: GRADIENT }}>
+              Selesai
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

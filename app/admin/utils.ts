@@ -161,3 +161,49 @@ export function labelJenisKelasSantriUntukAssignment(jenisKelas: string | null |
   if (jenisKelas === 'tn_b') return 'TN B'
   return '-'
 }
+
+/**
+ * Angka tahun awal dari tahun_ajaran (mis. "2026/2027" -> 2026), dipakai
+ * murni untuk membandingkan urutan kronologis periode_akademik (Tahap 9H,
+ * default periode sumber pada fitur Salin Penugasan). null kalau format
+ * tidak dikenali (tidak diawali 4 digit) -- SENGAJA tidak ditebak, supaya
+ * periode dengan format tidak standar tidak pernah jadi default sumber
+ * yang salah secara diam-diam.
+ */
+function tahunAjaranKeAngka(tahunAjaran: string): number | null {
+  const cocok = tahunAjaran.match(/^(\d{4})/)
+  return cocok ? parseInt(cocok[1], 10) : null
+}
+
+/**
+ * Kandidat default periode SUMBER untuk fitur "Salin Penugasan dari Periode
+ * Sebelumnya" (Tahap 9H): periode lain (bukan target) dengan urutan
+ * kronologis (tahun_ajaran, semester) PALING DEKAT SEBELUM target. Admin
+ * tetap bisa mengganti pilihan ini secara eksplisit -- ini murni default.
+ * Mengembalikan '' (tidak ada default aman) kalau target tidak ditemukan,
+ * tahun_ajaran target tidak bisa diparse, atau tidak ada kandidat periode
+ * lain yang urutannya pasti sebelum target -- TIDAK PERNAH menebak.
+ */
+export function cariDefaultPeriodeSumber(
+  periodeList: { id: string, tahun_ajaran: string, semester: number }[],
+  targetId: string,
+): string {
+  const target = periodeList.find(p => p.id === targetId)
+  if (!target) return ''
+  const tahunTarget = tahunAjaranKeAngka(target.tahun_ajaran)
+  if (tahunTarget === null) return ''
+
+  let terbaik: { id: string, tahun: number, semester: number } | null = null
+  for (const p of periodeList) {
+    if (p.id === targetId) continue
+    const tahun = tahunAjaranKeAngka(p.tahun_ajaran)
+    if (tahun === null) continue
+    const lebihAwalDariTarget = tahun < tahunTarget || (tahun === tahunTarget && p.semester < target.semester)
+    if (!lebihAwalDariTarget) continue
+    const lebihBaruDariTerbaikSaatIni = !terbaik
+      || tahun > terbaik.tahun
+      || (tahun === terbaik.tahun && p.semester > terbaik.semester)
+    if (lebihBaruDariTerbaikSaatIni) terbaik = { id: p.id, tahun, semester: p.semester }
+  }
+  return terbaik?.id || ''
+}
