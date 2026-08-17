@@ -117,6 +117,7 @@ export default function AdminDashboard() {
               handleDownloadAllData={() => data.handleDownloadAllData(form.setErrorMsg)}
               downloadLoading={data.downloadLoading}
               importMsg={data.importMsg}
+              periodeAkademikList={periodeAkademik.periodeList}
             />
           )}
 

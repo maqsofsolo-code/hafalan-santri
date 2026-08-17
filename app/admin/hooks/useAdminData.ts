@@ -223,7 +223,12 @@ export function useAdminData() {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
   }
 
-  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // periodeId (Tahap 9L Bagian G): eksplisit dari selector UI di
+  // DashboardSection.tsx, TIDAK PERNAH ditebak di sini -- kalau kosong,
+  // server tetap boleh memproses sheet Guru/Santri/Wali TAPI tidak akan
+  // membuat assignment Guru Hafalan resmi apa pun (lihat komentar
+  // app/api/import-excel/route.ts).
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>, periodeId: string) => {
     const file = e.target.files?.[0]; if (!file) return
     setImportLoading(true); setImportMsg('')
     const { data: { session } } = await supabase.auth.getSession()
@@ -231,6 +236,7 @@ export function useAdminData() {
       setImportMsg('Sesi login sudah berakhir. Silakan login kembali.'); setImportLoading(false); return
     }
     const formData = new FormData(); formData.append('file', file)
+    if (periodeId) formData.append('periode_id', periodeId)
     const res = await fetchWithAuth('/api/import-excel', session.access_token, { method: 'POST', body: formData })
     const result = await res.json()
     setImportMsg(result.message || result.error); setImportLoading(false); fetchData()

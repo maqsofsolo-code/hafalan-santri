@@ -133,15 +133,35 @@ export function SantriSection(props: {
               ) : <div className={inputClass + ' text-gray-400 flex items-center'}>Pilih jenjang dulu</div>}
             </div>
 
+            {/* KOREKSI Tahap 9L: Guru Hafalan hanya boleh DIPILIH saat Tambah
+                Santri (santri baru pasti belum punya assignment apa pun untuk
+                ditimpa). Saat Edit, ditampilkan read-only -- perubahan Guru
+                Hafalan HANYA lewat menu Penugasan Guru (Tahap 9K Bagian D
+                Opsi A), supaya assignment manual di sana tidak pernah
+                tertimpa tanpa sadar dari layar ini. */}
+            {!form.editSantriId ? (
+              <div className="grid grid-cols-2 gap-3">
+                <select value={form.formGuruId} onChange={e => form.setFormGuruId(e.target.value)} className={inputClass}>
+                  <option value="">-- Pilih Guru Hafalan 1</option>
+                  {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
+                </select>
+                <select value={form.formGuruId2} onChange={e => form.setFormGuruId2(e.target.value)} className={inputClass}>
+                  <option value="">-- Guru Hafalan 2 (Opsional)</option>
+                  {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <p className="text-xs text-gray-500">
+                  Guru Hafalan saat ini: <span className="font-semibold text-gray-700">
+                    {guruList.find(g => g.id === form.formGuruId)?.nama || '-'}
+                    {form.formGuruId2 && `, ${guruList.find(g => g.id === form.formGuruId2)?.nama || '-'}`}
+                  </span>
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Guru Hafalan dikelola melalui menu Penugasan Guru.</p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
-              <select value={form.formGuruId} onChange={e => form.setFormGuruId(e.target.value)} className={inputClass}>
-                <option value="">-- Pilih Guru Utama</option>
-                {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
-              </select>
-              <select value={form.formGuruId2} onChange={e => form.setFormGuruId2(e.target.value)} className={inputClass}>
-                <option value="">-- Guru Kedua (Opsional)</option>
-                {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
-              </select>
               <select value={form.formWaliId} onChange={e => form.setFormWaliId(e.target.value)} className={inputClass}>
                 <option value="">-- Pilih Wali</option>
                 {waliList.map(w => <option key={w.id} value={w.id}>{w.nama}</option>)}

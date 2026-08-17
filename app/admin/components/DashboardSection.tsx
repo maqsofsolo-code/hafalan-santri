@@ -1,9 +1,14 @@
 'use client'
+import { useState } from 'react'
 import Image from 'next/image'
 import type { Guru, KalenderAkademik, Santri, SetoranHariIni, Wali } from '../types'
+import type { PeriodeAkademik } from '../../lib/assignmentTypes'
 
 // Tab "Dashboard" -- dipindah dari app/admin/page.tsx (Modularisasi Tahap
-// 6A). JSX/className identik dengan sebelumnya.
+// 6A). JSX/className identik dengan sebelumnya, KECUALI selector Periode
+// Akademik pada blok "Upload File Excel" (Tahap 9L Bagian G) -- periode
+// target assignment Guru Hafalan resmi dari import HARUS eksplisit dipilih
+// Admin di sini, bukan ditebak dari is_aktif tanpa konfirmasi.
 export function DashboardSection(props: {
   guruList: Guru[]
   santriList: Santri[]
@@ -17,16 +22,28 @@ export function DashboardSection(props: {
   isUjian: boolean | undefined
   handleDownloadTemplate: () => void
   importLoading: boolean
-  handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void
+  handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>, periodeId: string) => void
   handleDownloadAllData: () => void
   downloadLoading: boolean
   importMsg: string
+  periodeAkademikList: PeriodeAkademik[]
 }) {
   const {
     guruList, santriList, waliList, setoranHariIni, tanggal,
     isLiburAkademik, isLiburMingguan, hariMinggu, kalenderAktif, isUjian,
     handleDownloadTemplate, importLoading, handleImportExcel, handleDownloadAllData, downloadLoading, importMsg,
+    periodeAkademikList,
   } = props
+
+  // Default: pre-select HANYA kalau tepat satu periode is_aktif=true --
+  // sekadar kenyamanan, Admin tetap bisa mengganti eksplisit lewat
+  // selector (setImportPeriodeId). 0 atau >1 aktif -> default kosong,
+  // memaksa pilihan sadar (tidak pernah menebak). Dihitung saat render
+  // (bukan lewat setState di useEffect) supaya tidak memicu cascading
+  // render yang tidak perlu.
+  const [importPeriodeId, setImportPeriodeId] = useState('')
+  const periodeAktifTunggal = periodeAkademikList.filter(p => p.is_aktif)
+  const importPeriodeEfektif = importPeriodeId || (periodeAktifTunggal.length === 1 ? periodeAktifTunggal[0].id : '')
 
   return (
     <div>
@@ -130,10 +147,23 @@ export function DashboardSection(props: {
               style={{ background: 'linear-gradient(135deg, #1a3a5c, #2563a8)' }}>
               ⬇ Download Template Import
             </button>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Periode Akademik target (untuk assignment Guru Hafalan)</label>
+              <select value={importPeriodeEfektif} onChange={e => setImportPeriodeId(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50">
+                <option value="">-- Pilih Periode --</option>
+                {periodeAkademikList.map(p => (
+                  <option key={p.id} value={p.id}>{p.tahun_ajaran} — Semester {p.semester}{p.is_aktif ? ' (Aktif)' : ''}</option>
+                ))}
+              </select>
+              {!importPeriodeEfektif && (
+                <p className="text-xs text-amber-600 mt-1">Tanpa periode, santri tetap bisa diimport tapi Guru Hafalan TIDAK akan ditugaskan otomatis.</p>
+              )}
+            </div>
             <label className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm text-center cursor-pointer shadow flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #166534, #16a34a)' }}>
               {importLoading ? 'Mengimport...' : '⬆ Upload File Excel'}
-              <input type="file" accept=".xlsx,.xls" onChange={handleImportExcel} className="hidden" disabled={importLoading} />
+              <input type="file" accept=".xlsx,.xls" onChange={e => handleImportExcel(e, importPeriodeEfektif)} className="hidden" disabled={importLoading} />
             </label>
             <button onClick={handleDownloadAllData} disabled={downloadLoading}
               className="w-full text-white px-4 py-3 rounded-xl font-semibold text-sm shadow"
