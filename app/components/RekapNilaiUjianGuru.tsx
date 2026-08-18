@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatTanggalPendekID as formatTanggal } from '../lib/dateWib'
+import { formatTanggalPendekID as formatTanggal, formatWaktuWIB as formatWaktu } from '../lib/dateWib'
 import { hitungNilaiUjianKeseluruhan } from '../lib/adminNilaiUjian'
 
 export type TajwidRow = {
@@ -133,20 +133,12 @@ function labelKelasSantri(santri: SantriRingkas) {
 // formatTanggal dipindah ke app/lib/dateWib.ts sebagai formatTanggalPendekID
 // (Modularisasi Tahap 2, diimpor di atas dengan alias supaya call site tidak
 // berubah) -- hasilnya diverifikasi identik dengan implementasi lama.
-
-function formatWaktu(value: string | null | undefined) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }) + ' WIB'
-}
+//
+// formatWaktu dipindah ke app/lib/dateWib.ts sebagai formatWaktuWIB (Tahap
+// 9N -- perbaikan bug produksi "jam input tampil UTC bukan WIB": versi
+// lokal lama ini rentan salah kalau timestamp dari DB tidak menyertakan
+// penanda zona eksplisit, lihat komentar formatWaktuWIB/pastikanUtc di
+// dateWib.ts untuk detail akar masalahnya).
 
 function labelTipe(value: string | null | undefined) {
   if (value === 'mid_semester') return 'Mid Semester'

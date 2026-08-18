@@ -140,3 +140,41 @@ export function formatTanggalPendekID(value: string | null | undefined): string 
   if (!tanggal) return value
   return tanggal.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 }
+
+/**
+ * Paksa string timestamp DB dibaca sebagai instant UTC sebelum di-parse
+ * `new Date()`. KENAPA INI PERLU (Tahap 9N, bug produksi "input 08:00 WIB
+ * tampil 01:xx"): kalau string timestamp dari DB TIDAK menyertakan
+ * penanda zona eksplisit (tanpa akhiran `Z` atau offset `+HH:MM`/`-HH:MM`
+ * -- bisa terjadi kalau kolom sumbernya `timestamp` tanpa `timestamptz`,
+ * atau serialisasi lain yang melucuti info zona), `new Date(value)` di
+ * JavaScript MENAFSIRKANNYA SEBAGAI WAKTU LOKAL runtime yang menjalankannya
+ * (aturan ECMAScript Date Time String Format), BUKAN UTC -- padahal
+ * prinsip project (app/lib/dateWib.ts) adalah instant DB selalu UTC.
+ * Kalau string SUDAH punya penanda zona eksplisit, dibiarkan apa adanya
+ * (tidak pernah menimpa/merusak nilai yang sudah benar).
+ */
+function pastikanUtc(value: string): string {
+  const sudahPunyaZona = /Z$|[+-]\d{2}:?\d{2}$/.test(value)
+  if (sudahPunyaZona) return value
+  return `${value.replace(' ', 'T')}Z`
+}
+
+/**
+ * Format timestamp DB (instant, format bebas -- boleh dengan atau tanpa
+ * penanda zona) jadi tampilan waktu WIB Indonesia, mis.
+ * "19 Agu 2026, 08:30 WIB". Dipakai untuk kolom "jam input" (created_at)
+ * pada Rekap Nilai Ujian Admin & Guru -- SATU implementasi, menggantikan
+ * dua `formatWaktu()` lokal yang sebelumnya diduplikasi identik (dan
+ * sama-sama rentan terhadap timestamp tanpa penanda zona, lihat
+ * `pastikanUtc` di atas) di AdminRekapNilaiUjian.tsx dan
+ * RekapNilaiUjianGuru.tsx.
+ */
+export function formatWaktuWIB(value: string | null | undefined): string {
+  if (!value) return '-'
+  const date = new Date(pastikanUtc(value))
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('id-ID', {
+    timeZone: ZONA_WIB, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }) + ' WIB'
+}
