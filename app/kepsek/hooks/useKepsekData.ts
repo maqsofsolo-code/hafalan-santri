@@ -45,7 +45,12 @@ export function useKepsekData() {
     if (!profile) return
 
     const today = getTanggalWIB()
-    const tujuhHariLalu = new Date()
+    // KOREKSI Tahap 9O: mulai dari `today` (WIB) alih-alih `new Date()`
+    // mentah -- `new Date()` lalu `.toISOString()` menghasilkan tanggal
+    // UTC, yang mundur satu hari dari tanggal WIB selama pukul 00:00-06:59
+    // WIB setiap hari (WIB = UTC+7). Pola sama persis dengan
+    // app/api/wali/ranking-data/route.ts yang sudah benar sejak awal.
+    const tujuhHariLalu = new Date(today)
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
 

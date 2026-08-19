@@ -51,8 +51,14 @@ export function useAdminData() {
     const sortedHafalan = hitungRankingTotalHafalan(santri || [])
     setRankingHafalan(sortedHafalan)
 
-    // Ranking semangat tetap memakai rentang 7 hari yang berjalan
-    const tujuhHariLalu = new Date()
+    // Ranking semangat tetap memakai rentang 7 hari yang berjalan.
+    // KOREKSI Tahap 9O: mulai dari `today` (getTanggalWIB(), sudah dihitung
+    // di atas) alih-alih `new Date()` mentah -- `new Date()` lalu
+    // `.toISOString()` menghasilkan tanggal UTC, yang mundur satu hari dari
+    // tanggal WIB selama pukul 00:00-06:59 WIB setiap hari (WIB = UTC+7).
+    // Pola sama persis dengan app/api/wali/ranking-data/route.ts yang sudah
+    // benar sejak awal.
+    const tujuhHariLalu = new Date(today)
     tujuhHariLalu.setDate(tujuhHariLalu.getDate() - 7)
     const tujuhHariLaluStr = tujuhHariLalu.toISOString().split('T')[0]
     const { data: setoran7Hari } = await supabase
