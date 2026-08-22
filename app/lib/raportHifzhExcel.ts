@@ -73,6 +73,20 @@ const SEL_LABEL_PENANDATANGAN = 'M59'
 const SEL_NAMA_WALI_KELAS = 'M62'
 const LABEL_WALI_KELAS = 'Wali Kelas,'
 
+// Tahap 9P -- posisi gambar tanda tangan digital: baris 60-61 (M:Q) adalah ruang KOSONG di antara
+// label "Wali Kelas," (baris 59) dan nama (baris 62) -- persis slot yang dulu diisi tangan basah di
+// dokumen cetak. Anchor ExcelJS 0-indexed (baris 60 cetak = row 59 di sini, lihat README addImage:
+// "top-left of A1 will be { col: 0, row: 0 }"). Ukuran dijaga proporsional (bukan memenuhi seluruh
+// merge M:Q selebar ~274px) supaya terlihat seperti tanda tangan dokumen resmi, bukan elemen besar
+// yang dominan -- lebar ~130px tinggi ~42px, muat penuh dalam tinggi 2 baris (~45.6px @17.1pt/baris)
+// dan diposisikan mendekati tengah lebar merge M:Q (kolom N, tempat teks "Wali Kelas," juga berada).
+const TANDA_TANGAN_ANCHOR_COL = 13.4
+const TANDA_TANGAN_ANCHOR_ROW = 59.3
+const TANDA_TANGAN_LEBAR_PX = 130
+const TANDA_TANGAN_TINGGI_PX = 42
+
+export type TandaTanganGambar = { buffer: Buffer, extension: 'png' | 'jpeg' }
+
 export type SantriRaport = {
   id: string
   nama: string
@@ -90,13 +104,18 @@ export type SantriRaport = {
   peringkatKelas: number | null // posisi santri ini di antara santri ELIGIBLE (1-based); null jika santri ini sendiri belum eligible
   jumlahSantriEligible: number // "Y" pada "Peringkat Sementara/Kelas: X dari Y" -- HANYA santri yang sudah eligible ranking
   jumlahBelumAdaHasil: number // jumlah santri aktif kelas yang belum py satu juz pun selesai; >0 = ranking berstatus Sementara (Tajwid tidak memengaruhi ini)
+  // Wali Kelas (Tahap 9P) -- DIHITUNG PER SANTRI oleh caller (bukan sekali untuk seluruh dokumen),
+  // karena kelompok "TN" pada Raport Hifzh membundel dua kelas fisik berbeda (jenis_kelas tn_a/tn_b)
+  // yang menurut wali_kelas_assignment (Tahap 9B, domain SANTRI) bisa punya Wali Kelas BERBEDA.
+  // Untuk banin/banat, nilai ini identik untuk semua santri dalam satu dokumen (satu kelas fisik).
+  waliKelasNama: string // "Belum ditentukan" jika wali_kelas_assignment aktif untuk kelas+periode ini tidak ditemukan
+  tandaTangan: TandaTanganGambar | null // null jika guru belum upload tanda tangan -- sheet tetap ditulis, area tanda tangan dikosongkan (Rule H, tidak pernah gagal generate)
 }
 
 export type BuildRaportParams = {
   santriList: SantriRaport[]
   periodeLabel: string
   semesterLabel: string
-  waliKelasNama: string
   tanggalIndonesia: string
 }
 
@@ -256,7 +275,13 @@ function tulisBarisRekap(ws: Worksheet, row: number, sheetName: string, nomor: n
 }
 
 export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promise<Buffer> {
-  const { santriList, periodeLabel, semesterLabel, waliKelasNama, tanggalIndonesia } = params
+  const { santriList, periodeLabel, semesterLabel, tanggalIndonesia } = params
+  // Cache imageId per Buffer tanda tangan (bukan per santri) -- guru yang menjadi Wali Kelas di
+  // >1 kelas dalam dokumen yang sama (kasus TN tn_a+tn_b dengan guru yang sama) memakai instance
+  // gambar yang SAMA persis, bukan di-embed ulang tiap sheet (wb.addImage tiap kali dipanggil akan
+  // menambah entry media baru di file meski isinya identik -- cache ini murni optimisasi ukuran file,
+  // bukan perubahan perilaku).
+  const imageIdCache = new Map<Buffer, number>()
   const ExcelJS = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.readFile(TEMPLATE_PATH)
@@ -306,7 +331,33 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     // "Ust. Abu Aufa Amin S.") terbawa ke file hasil.
     ws.getCell(SEL_TANGGAL_CETAK).value = `Sukoharjo, ${tanggalIndonesia}`
     ws.getCell(SEL_LABEL_PENANDATANGAN).value = LABEL_WALI_KELAS
-    ws.getCell(SEL_NAMA_WALI_KELAS).value = waliKelasNama
+    ws.getCell(SEL_NAMA_WALI_KELAS).value = santri.waliKelasNama
+
+    // Gambar tanda tangan contoh template SUDAH dihapus di atas (hapusGambarTandaTanganContoh) --
+    // di sini HANYA menambahkan gambar sungguhan kalau guru Wali Kelas santri ini punya file tanda
+    // tangan. Tidak ada -> area dibiarkan kosong (bukan broken image), raport tetap tergenerate
+    // (Rule H). imageId di-cache per Buffer supaya guru yang sama tidak di-embed berulang.
+    if (santri.tandaTangan) {
+      let imageId = imageIdCache.get(santri.tandaTangan.buffer)
+      if (imageId === undefined) {
+        // exceljs membawa ambient declaration `interface Buffer extends ArrayBuffer {}` sendiri
+        // (node_modules/exceljs/index.d.ts) yang, saat digabung TypeScript dengan Buffer asli dari
+        // @types/node versi lebih baru (resizable ArrayBuffer), menghasilkan interface gabungan yang
+        // TIDAK BISA dipenuhi Buffer runtime manapun -- dikonfirmasi bahkan double-assertion
+        // `as unknown as Buffer` tetap gagal (structural check terhadap Image dievaluasi ulang saat
+        // object literal dioper sebagai argumen). `any` di sini murni jalan keluar gesekan definisi
+        // tipe pihak ketiga yang rusak, bukan longgar tipe internal kode ini -- Buffer yang dikirim
+        // tetap valid & dipakai apa adanya saat runtime.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        imageId = wb.addImage({ buffer: santri.tandaTangan.buffer, extension: santri.tandaTangan.extension } as any)
+        imageIdCache.set(santri.tandaTangan.buffer, imageId)
+      }
+      ws.addImage(imageId, {
+        tl: { col: TANDA_TANGAN_ANCHOR_COL, row: TANDA_TANGAN_ANCHOR_ROW },
+        ext: { width: TANDA_TANGAN_LEBAR_PX, height: TANDA_TANGAN_TINGGI_PX },
+        editAs: 'oneCell',
+      })
+    }
 
     juzMap.forEach((lokasi, juz) => {
       const nilai = santri.juzNilai.get(juz)

@@ -14,6 +14,7 @@ export interface Guru extends ProfileRow {
   is_wali_kelas?: boolean | null
   wali_kelas_num?: number | null
   wali_kelas_jenis?: string | null
+  tanda_tangan_path?: string | null
 }
 
 /** Baris profil wali (tabel profiles, role='wali'). */

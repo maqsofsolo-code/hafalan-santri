@@ -1,16 +1,78 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FormEmailPassword } from './FormEmailPassword'
 import { getKelompokGuru, labelJenisKelasGuru } from '../utils'
 import type { Guru, Santri } from '../types'
 import type { useAdminEntityForm } from '../hooks/useAdminEntityForm'
 import type { useAdminGuruWali } from '../hooks/useAdminGuruWali'
+import type { useAdminTandaTanganGuru } from '../hooks/useAdminTandaTanganGuru'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
 
 type EntityForm = ReturnType<typeof useAdminEntityForm>
 type GuruWaliHandlers = ReturnType<typeof useAdminGuruWali>
+type TandaTanganGuruHandlers = ReturnType<typeof useAdminTandaTanganGuru>
+
+// Blok "Tanda Tangan Digital" (Tahap 9P) -- HANYA mengelola FILE tanda tangan milik guru, tidak
+// pernah menyentuh penentuan Wali Kelas (yang tetap sepenuhnya di menu Penugasan Guru, lihat
+// instruksi Tahap 9P Bagian E: "Jangan mencampurkan penentuan Wali Kelas di Data Guru"). Sengaja
+// jadi komponen terpisah (bukan disisipkan di blok toggle Wali Kelas legacy di atasnya) supaya
+// pemisahan itu terlihat jelas juga secara visual, bukan cuma di kode.
+//
+// Status "ada tanda tangan atau tidak" SENGAJA dibaca dari hasil fetch preview (tt.signedUrlByGuruId),
+// BUKAN dari guru.tanda_tangan_path (prop dari guruList milik useAdminData) -- guruList hanya
+// di-refresh lewat fetchData() penuh, yang tidak dipanggil oleh hook ini, sehingga prop itu akan
+// basi persis setelah upload/hapus pertama sampai Admin membuka ulang form. Fetch selalu dijalankan
+// begitu form edit dibuka (murah -- endpoint GET hanya SELECT profiles kalau belum ada path, tidak
+// pernah menyentuh Storage saat tanda tangan belum ada).
+function BlokTandaTanganGuru({ guruId, tt }: { guruId: string, tt: TandaTanganGuruHandlers }) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const signedUrl = tt.signedUrlByGuruId[guruId] // undefined = belum di-fetch, null = fetched tanpa tanda tangan, string = URL preview
+
+  useEffect(() => {
+    tt.fetchPreview(guruId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guruId])
+
+  const handlePilihFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await tt.handleUpload(guruId, file)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  return (
+    <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+      <p className="text-xs font-semibold text-gray-700">✍️ Tanda Tangan Digital</p>
+      <p className="text-xs text-gray-400">Dipakai otomatis saat guru ini menjadi Wali Kelas di Raport Hifzh. Satu tanda tangan berlaku untuk semua kelas yang diwalinya.</p>
+
+      {signedUrl === undefined ? (
+        <div className="h-16 w-40 bg-white border border-gray-200 rounded-lg flex items-center justify-center text-xs text-gray-400">
+          {tt.loadingPreview ? 'Memuat preview...' : '-'}
+        </div>
+      ) : signedUrl ? (
+        <img src={signedUrl} alt="Tanda tangan" className="h-16 bg-white border border-gray-200 rounded-lg px-3 object-contain" />
+      ) : (
+        <div className="h-16 w-40 bg-white border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400">
+          Belum ada tanda tangan
+        </div>
+      )}
+
+      <div className="flex gap-2 items-center flex-wrap">
+        <input ref={fileInputRef} type="file" accept="image/png,image/jpeg" onChange={handlePilihFile} disabled={tt.uploading} className="text-xs" />
+        {Boolean(signedUrl) && (
+          <button type="button" onClick={() => tt.handleHapus(guruId)} disabled={tt.uploading}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-600 disabled:opacity-50">
+            Hapus
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-gray-400">PNG atau JPEG, maksimal 1 MB.</p>
+      {tt.errorMsg && <p className="text-xs text-red-600">{tt.errorMsg}</p>}
+    </div>
+  )
+}
 
 function badgeKelasClass(jenisKelas: string | null | undefined): string {
   const kelompok = getKelompokGuru(jenisKelas)
@@ -34,8 +96,9 @@ export function GuruSection(props: {
   setSearchGuru: (v: string) => void
   filterKelompokGuru: 'semua' | 'putra' | 'putri' | 'belum_terklasifikasi'
   setFilterKelompokGuru: (v: 'semua' | 'putra' | 'putri' | 'belum_terklasifikasi') => void
+  tandaTanganGuru: TandaTanganGuruHandlers
 }) {
-  const { form, guruWali, guruList, guruFiltered, santriList, searchGuru, setSearchGuru, filterKelompokGuru, setFilterKelompokGuru } = props
+  const { form, guruWali, guruList, guruFiltered, santriList, searchGuru, setSearchGuru, filterKelompokGuru, setFilterKelompokGuru, tandaTanganGuru } = props
 
   const [selectedGuruIds, setSelectedGuruIds] = useState<Set<string>>(new Set())
   const [bulkTarget, setBulkTarget] = useState<'' | 'banin' | 'banat' | 'tn'>('')
@@ -207,6 +270,10 @@ export function GuruSection(props: {
                   </div>
                 )}
               </div>
+            )}
+
+            {form.editGuruId && (
+              <BlokTandaTanganGuru guruId={form.editGuruId} tt={tandaTanganGuru} />
             )}
 
             <FormEmailPassword

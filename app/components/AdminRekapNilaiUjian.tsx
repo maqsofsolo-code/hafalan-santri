@@ -24,6 +24,11 @@ type TajwidInfo = { nilai: number, guru_id: string, updated_at: string }
 
 type PeriodeOption = { id: string, nama: string, tipe: string | null }
 
+// Tahap 9P -- periode_akademik TERPISAH dari kalender_akademik (`periode` di atas): keduanya entitas
+// independen tanpa mapping (lihat laporan Tahap 9P Bagian G), jadi Wali Kelas untuk Raport Hifzh
+// butuh selector periode SENDIRI, dipilih eksplisit oleh admin -- tidak pernah ditebak dari `periode`.
+type PeriodeAkademikOption = { id: string, tahun_ajaran: string, semester: 1 | 2, is_aktif: boolean }
+
 type NilaiUjianRow = {
   id: string
   santri_id: string | null
@@ -217,6 +222,10 @@ export default function AdminRekapNilaiUjian() {
   const [santriList, setSantriList] = useState<SantriRingkas[]>([])
   const [total, setTotal] = useState(0)
   const [periodeOptions, setPeriodeOptions] = useState<PeriodeOption[]>([])
+  // Tahap 9P: periode_akademik untuk Wali Kelas -- terpisah dari filterPeriode (kalender_akademik) di
+  // atas, hanya dipakai saat download Raport Hifzh, tidak memengaruhi filter rekap/daftar santri.
+  const [periodeAkademikOptions, setPeriodeAkademikOptions] = useState<PeriodeAkademikOption[]>([])
+  const [filterPeriodeAkademik, setFilterPeriodeAkademik] = useState('')
   const [loadingList, setLoadingList] = useState(false)
   const [errorList, setErrorList] = useState('')
 
@@ -269,6 +278,27 @@ export default function AdminRekapNilaiUjian() {
       if (!dibatalkan) setPeriodeOptions(data || [])
     }
     muatPeriode()
+    return () => { dibatalkan = true }
+  }, [])
+
+  // Tahap 9P: daftar periode_akademik untuk selector Wali Kelas. Pre-select HANYA kalau tepat satu
+  // is_aktif=true (hint, boleh diganti) -- pola sama seperti useAdminPeriodeAkademik.ts, tidak pernah
+  // diam-diam memilih periode kalau 0 atau >1 aktif.
+  useEffect(() => {
+    let dibatalkan = false
+    async function muatPeriodeAkademik() {
+      const { data } = await supabase
+        .from('periode_akademik')
+        .select('id, tahun_ajaran, semester, is_aktif')
+        .order('tahun_ajaran', { ascending: false })
+        .order('semester', { ascending: false })
+      if (dibatalkan) return
+      const list = (data || []) as PeriodeAkademikOption[]
+      setPeriodeAkademikOptions(list)
+      const aktif = list.filter(p => p.is_aktif)
+      if (aktif.length === 1) setFilterPeriodeAkademik(aktif[0].id)
+    }
+    muatPeriodeAkademik()
     return () => { dibatalkan = true }
   }, [])
 
@@ -549,13 +579,13 @@ export default function AdminRekapNilaiUjian() {
   }
 
   const downloadRaport = async () => {
-    if (!filterLengkap || periodeTanpaKalender || downloading) return
+    if (!filterLengkap || periodeTanpaKalender || !filterPeriodeAkademik || downloading) return
     setDownloading(true)
     setErrorDownload('')
     try {
       const accessToken = await getAccessToken()
       if (!accessToken) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-      const params = new URLSearchParams({ periode: filterPeriode, jenjang: filterJenjang, kelas: filterKelas, kelompok: filterKelompok })
+      const params = new URLSearchParams({ periode: filterPeriode, jenjang: filterJenjang, kelas: filterKelas, kelompok: filterKelompok, periode_akademik: filterPeriodeAkademik })
       const response = await fetch(`/api/admin/nilai-ujian-excel?${params.toString()}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
@@ -652,9 +682,25 @@ export default function AdminRekapNilaiUjian() {
           </div>
         )}
 
+        {filterLengkap && !periodeTanpaKalender && (
+          <div className="mt-3">
+            <label className="block text-xs text-gray-500 mb-1">Periode Akademik (untuk Wali Kelas &amp; Tanda Tangan)</label>
+            <select value={filterPeriodeAkademik} onChange={e => setFilterPeriodeAkademik(e.target.value)} className={inputClass}>
+              <option value="">-- Pilih --</option>
+              {periodeAkademikOptions.map(p => (
+                <option key={p.id} value={p.id}>{p.tahun_ajaran} Semester {p.semester === 1 ? 'Gasal' : 'Genap'}{p.is_aktif ? ' (Aktif)' : ''}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">Menentukan Wali Kelas &amp; tanda tangan yang tercetak di raport (dari menu Penugasan Guru), terpisah dari Periode ujian di atas.</p>
+            {periodeAkademikOptions.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">Belum ada Periode Akademik. Buat dulu di menu Penugasan Guru sebelum mengunduh Raport Hifzh.</p>
+            )}
+          </div>
+        )}
+
         {errorDownload && <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm">{errorDownload}</div>}
         {filterLengkap && !periodeTanpaKalender && (
-          <button type="button" onClick={downloadRaport} disabled={downloading}
+          <button type="button" onClick={downloadRaport} disabled={downloading || !filterPeriodeAkademik}
             className="w-full mt-4 py-3.5 rounded-xl text-white font-bold disabled:opacity-40 shadow"
             style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
             {downloading ? 'Menyiapkan file...' : '📥 Download Raport Hifzh'}

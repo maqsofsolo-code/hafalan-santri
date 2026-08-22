@@ -10,8 +10,9 @@ import {
   type SantriScope,
 } from '../../../lib/adminNilaiUjian'
 import { hitungRankingUjianHafalanKelas, type SantriUjianRankingInput } from '../../../lib/ranking'
-import { buildRaportHifzhWorkbook, type SantriRaport } from '../../../lib/raportHifzhExcel'
+import { buildRaportHifzhWorkbook, type SantriRaport, type TandaTanganGambar } from '../../../lib/raportHifzhExcel'
 import { getWIBDate } from '../../../lib/dateWib'
+import { BUCKET_TANDA_TANGAN_GURU } from '../../../lib/tandaTanganGuru'
 
 type Jenjang = 'ula' | 'wustha' | 'ulya'
 type Kelompok = 'banin' | 'banat' | 'tn'
@@ -48,44 +49,72 @@ function slugify(value: string) {
 // di atas) -- hasilnya diverifikasi identik dengan implementasi lama via
 // scripts/verify-date-wib.mts.
 
-type JenisKelasWali = 'banin' | 'banat' | 'tn'
+// Tahap 9P -- Wali Kelas SEKARANG dicari dari wali_kelas_assignment (source of truth resmi, Tahap
+// 9B) berdasarkan periode_akademik yang dipilih Admin secara EKSPLISIT (parameter periode_akademik,
+// lihat Bagian G laporan Tahap 9P -- kalender_akademik yang menentukan periode UJIAN tidak punya
+// mapping ke periode_akademik, jadi TIDAK bisa dipakai untuk menebak periode assignment). Legacy
+// profiles.is_wali_kelas/wali_kelas_num/wali_kelas_jenis TIDAK disentuh lagi di sini.
+//
+// DIHITUNG PER JENIS_KELAS SANTRI (bukan sekali untuk seluruh dokumen) karena kelompok "TN" pada
+// layar ini membundel dua kelas fisik (jenis_kelas tn_a & tn_b) yang menurut wali_kelas_assignment
+// (domain SANTRI) bisa punya Wali Kelas BERBEDA -- lihat SantriRaport.waliKelasNama.
+type WaliKelasInfo = { nama: string, tandaTanganPath: string | null }
 
-function jenisKelasUntukWaliKelas(jenisKelas: string | null | undefined): JenisKelasWali | null {
-  if (jenisKelas === 'banin') return 'banin'
-  if (jenisKelas === 'banat') return 'banat'
-  if (jenisKelas === 'tn_a' || jenisKelas === 'tn_b' || jenisKelas === 'tn') return 'tn'
-  return null
+async function muatPetaWaliKelas(
+  adminClient: ReturnType<typeof createServiceRoleClient>,
+  periodeAkademikId: string,
+  jenjang: Jenjang,
+  kelasNum: number,
+  jenisKelasRelevan: string[],
+): Promise<Map<string, WaliKelasInfo>> {
+  const { data, error } = await adminClient
+    .from('wali_kelas_assignment')
+    .select('jenis_kelas, guru:guru_id(nama, tanda_tangan_path)')
+    .eq('periode_id', periodeAkademikId)
+    .eq('jenjang', jenjang)
+    .eq('kelas_num', kelasNum)
+    .eq('is_aktif', true)
+    .in('jenis_kelas', jenisKelasRelevan)
+
+  const peta = new Map<string, WaliKelasInfo>()
+  if (error) {
+    console.error(`[nilai-ujian-excel] Gagal memuat wali_kelas_assignment untuk periode ${periodeAkademikId} kelas ${kelasNum}:`, error.message)
+    return peta
+  }
+  // Partial unique index wali_kelas_assignment_satu_aktif_per_kelas (periode_id, jenjang, kelas_num,
+  // jenis_kelas WHERE is_aktif=true) menjamin maksimal 1 baris per jenis_kelas di sini -- tidak ada
+  // kasus "lebih dari satu" yang perlu ditangani, beda dari lookup legacy sebelumnya.
+  type BarisWaliKelas = { jenis_kelas: string, guru: { nama: string | null, tanda_tangan_path: string | null } | null }
+  ;((data as unknown as BarisWaliKelas[]) || []).forEach(row => {
+    const guru = row.guru
+    if (!guru) return
+    peta.set(row.jenis_kelas, { nama: guru.nama?.trim() || 'Belum ditentukan', tandaTanganPath: guru.tanda_tangan_path || null })
+  })
+  return peta
 }
 
-// Wali kelas dicari dari profiles.is_wali_kelas + wali_kelas_num + wali_kelas_jenis -- BUKAN dari
-// santri.guru_id/guru_id_2 (Pentasmi'/Guru Musami', peran berbeda). Tidak ada dimensi periode pada
-// is_wali_kelas saat ini, jadi ini selalu assignment TERKINI -- keterbatasan model data yang ada.
-async function cariNamaWaliKelas(
+// Download 1x per path unik (guru yang menjadi wali >1 kelas dalam dokumen yang sama -- kasus TN
+// dengan guru sama di tn_a & tn_b -- tidak men-download file yang sama berulang). Kegagalan download
+// (mis. file storage hilang) TIDAK menggagalkan generate raport (Rule H) -- diperlakukan sama seperti
+// guru tanpa tanda tangan sama sekali.
+async function muatBufferTandaTangan(
   adminClient: ReturnType<typeof createServiceRoleClient>,
-  kelasNum: number | null | undefined,
-  jenisKelasSantri: string | null | undefined,
-): Promise<string> {
-  const jenisWali = jenisKelasUntukWaliKelas(jenisKelasSantri)
-  if (!kelasNum || !jenisWali) return 'Belum ditentukan'
-
-  const { data, error } = await adminClient
-    .from('profiles')
-    .select('nama')
-    .eq('role', 'guru')
-    .eq('is_wali_kelas', true)
-    .eq('wali_kelas_num', kelasNum)
-    .eq('wali_kelas_jenis', jenisWali)
-
-  if (error) {
-    console.error(`[nilai-ujian-excel] Gagal memuat wali kelas untuk kelas ${kelasNum} ${jenisWali}:`, error.message)
-    return 'Belum ditentukan'
-  }
-  if (!data || data.length === 0) return 'Belum ditentukan'
-  if (data.length > 1) {
-    console.warn(`[nilai-ujian-excel] Data wali kelas ganda untuk kelas ${kelasNum} ${jenisWali}: ${data.map(g => g.nama).join(', ')}`)
-    return 'Data wali kelas ganda'
-  }
-  return data[0].nama?.trim() || 'Belum ditentukan'
+  pathList: string[],
+): Promise<Map<string, TandaTanganGambar>> {
+  const hasil = new Map<string, TandaTanganGambar>()
+  const pathUnik = [...new Set(pathList)]
+  await Promise.all(pathUnik.map(async path => {
+    const extension = path.toLowerCase().endsWith('.png') ? 'png' : path.toLowerCase().endsWith('.jpeg') || path.toLowerCase().endsWith('.jpg') ? 'jpeg' : null
+    if (!extension) return
+    const { data, error } = await adminClient.storage.from(BUCKET_TANDA_TANGAN_GURU).download(path)
+    if (error || !data) {
+      console.error(`[nilai-ujian-excel] Gagal memuat file tanda tangan ${path}:`, error?.message)
+      return
+    }
+    const buffer = Buffer.from(await data.arrayBuffer())
+    hasil.set(path, { buffer, extension })
+  }))
+  return hasil
 }
 
 export async function GET(request: Request) {
@@ -98,6 +127,7 @@ export async function GET(request: Request) {
   const jenjang = url.searchParams.get('jenjang') || ''
   const kelasText = url.searchParams.get('kelas') || ''
   const kelompok = url.searchParams.get('kelompok') || ''
+  const periodeAkademik = url.searchParams.get('periode_akademik') || ''
   const kelas = Number(kelasText)
 
   if (!periode) return responseError('Periode wajib dipilih', 400)
@@ -108,6 +138,11 @@ export async function GET(request: Request) {
   if (!JENJANG_VALID.has(jenjang as Jenjang)) return responseError('Jenjang wajib dipilih', 400)
   if (!Number.isInteger(kelas) || kelas < 1) return responseError('Kelas wajib dipilih', 400)
   if (!KELOMPOK_VALID.has(kelompok as Kelompok)) return responseError('Kelompok wajib dipilih', 400)
+  // Tahap 9P -- Periode Akademik WAJIB dipilih eksplisit oleh Admin (selector terpisah dari Periode
+  // ujian di atas), dipakai HANYA untuk menentukan Wali Kelas dari wali_kelas_assignment. TIDAK
+  // diturunkan/ditebak dari `periode` (kalender_akademik) -- kedua entitas itu independen, lihat
+  // Bagian G laporan Tahap 9P.
+  if (!periodeAkademik) return responseError('Periode Akademik (untuk Wali Kelas) wajib dipilih', 400)
 
   const jenjangFinal = jenjang as Jenjang
   const kelompokFinal = kelompok as Kelompok
@@ -206,9 +241,16 @@ export async function GET(request: Request) {
   const periodeLabel = periodeInfo?.nama?.trim() || tahunAjaranFallback
   const semesterLabel = periodeInfo?.semester === 1 ? 'GASAL' : periodeInfo?.semester === 2 ? 'GENAP' : '-'
 
-  // Wali kelas: satu nama untuk seluruh dokumen kelas ini (kelas+kelompok yang dipilih admin),
-  // dicari sekali saja -- bukan per santri, dan bukan dari santri.guru_id/guru_id_2 (Pentasmi').
-  const waliKelasNama = await cariNamaWaliKelas(adminClient, kelas, kelompokFinal)
+  // Wali Kelas (Tahap 9P): satu query untuk seluruh jenis_kelas relevan pada kelompok yang dipilih
+  // admin -- 1 baris untuk banin/banat, sampai 2 baris (tn_a + tn_b, berpotensi guru BERBEDA) untuk
+  // kelompok TN. Diambil dari wali_kelas_assignment + periode_akademik eksplisit (BUKAN
+  // is_wali_kelas/wali_kelas_num/wali_kelas_jenis legacy, BUKAN ditebak dari `periode` kalender_akademik).
+  const jenisKelasRelevan = kelompokFinal === 'tn' ? ['tn_a', 'tn_b'] : [kelompokFinal]
+  const petaWaliKelas = await muatPetaWaliKelas(adminClient, periodeAkademik, jenjangFinal, kelas, jenisKelasRelevan)
+  const bufferTandaTanganPerPath = await muatBufferTandaTangan(
+    adminClient,
+    [...petaWaliKelas.values()].map(info => info.tandaTanganPath).filter((p): p is string => Boolean(p))
+  )
   const tanggalIndonesia = getWIBDate().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
   // Tahap 1: hitung Kelancaran/Tajwid per juz + Nilai Ujian Keseluruhan (skala 0-10, dipakai HANYA
@@ -265,19 +307,27 @@ export async function GET(request: Request) {
   const jumlahBelumAdaHasilKelas = belumAdaHasil.length
   const peringkatMap = new Map<string, number>(peringkat.map(s => [s.id, s.peringkat]))
 
-  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid }) => ({
-    id: santri.id,
-    nama: santri.nama,
-    nisn: santri.nisn,
-    kelasNum: santri.kelas_num,
-    jenjang: santri.jenjang,
-    jenisKelas: santri.jenis_kelas,
-    juzNilai,
-    juzTajwid,
-    peringkatKelas: peringkatMap.get(santri.id) ?? null,
-    jumlahSantriEligible,
-    jumlahBelumAdaHasil: jumlahBelumAdaHasilKelas,
-  }))
+  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid }) => {
+    // Per-santri (bukan per-dokumen): jenis_kelas SANTRI ('banin'/'banat'/'tn_a'/'tn_b') dicocokkan
+    // langsung ke jenis_kelas wali_kelas_assignment -- lihat catatan SantriRaport.waliKelasNama.
+    const waliInfo = petaWaliKelas.get(santri.jenis_kelas || '')
+    const tandaTangan = waliInfo?.tandaTanganPath ? bufferTandaTanganPerPath.get(waliInfo.tandaTanganPath) ?? null : null
+    return {
+      id: santri.id,
+      nama: santri.nama,
+      nisn: santri.nisn,
+      kelasNum: santri.kelas_num,
+      jenjang: santri.jenjang,
+      jenisKelas: santri.jenis_kelas,
+      juzNilai,
+      juzTajwid,
+      peringkatKelas: peringkatMap.get(santri.id) ?? null,
+      jumlahSantriEligible,
+      jumlahBelumAdaHasil: jumlahBelumAdaHasilKelas,
+      waliKelasNama: waliInfo?.nama || 'Belum ditentukan',
+      tandaTangan,
+    }
+  })
 
   let buffer: Buffer
   try {
@@ -285,7 +335,6 @@ export async function GET(request: Request) {
       santriList: santriRaportList,
       periodeLabel,
       semesterLabel,
-      waliKelasNama,
       tanggalIndonesia,
     })
   } catch {

@@ -16,6 +16,7 @@ import { useAdminRapot } from './hooks/useAdminRapot'
 import { useAdminLaporan } from './hooks/useAdminLaporan'
 import { useAdminPeriodeAkademik } from './hooks/useAdminPeriodeAkademik'
 import { useAdminPenugasanGuru } from './hooks/useAdminPenugasanGuru'
+import { useAdminTandaTanganGuru } from './hooks/useAdminTandaTanganGuru'
 
 import { AdminMobileHeader, AdminSidebarNav } from './components/AdminSidebar'
 import { DashboardSection } from './components/DashboardSection'
@@ -54,6 +55,7 @@ export default function AdminDashboard() {
   const laporan = useAdminLaporan(data.bukaLaporanHTML)
   const periodeAkademik = useAdminPeriodeAkademik()
   const penugasanGuru = useAdminPenugasanGuru()
+  const tandaTanganGuru = useAdminTandaTanganGuru()
 
   const { fetchData } = data
   useEffect(() => { fetchData() }, [fetchData])
@@ -154,6 +156,7 @@ export default function AdminDashboard() {
               setSearchGuru={filters.setSearchGuru}
               filterKelompokGuru={filters.filterKelompokGuru}
               setFilterKelompokGuru={filters.setFilterKelompokGuru}
+              tandaTanganGuru={tandaTanganGuru}
             />
           )}
 
