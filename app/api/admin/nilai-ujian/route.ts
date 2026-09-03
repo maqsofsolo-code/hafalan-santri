@@ -298,7 +298,8 @@ export async function PATCH(request: Request) {
   if (!existing) return responseError('Nilai ujian tidak ditemukan', 404)
 
   const nilaiSebelumBatas = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
-  const nilaiAkhir = Math.min(10, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
+  // Phase B: nilai resmi maksimum 9.5
+  const nilaiAkhir = Math.min(9.5, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
 
   const { data: updated, error: updateError } = await adminClient
     .from('nilai_ujian')

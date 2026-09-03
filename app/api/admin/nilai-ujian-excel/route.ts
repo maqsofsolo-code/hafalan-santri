@@ -267,7 +267,7 @@ export async function GET(request: Request) {
       juzNilai.set(j.juz, j.status === 'selesai' ? nilaiRapor(j.rata) : null)
     })
 
-    // Tajwid: skala 0.0-10.0 dikonversi ke skala rapor (50-100) memakai nilaiRapor() yang SAMA
+    // Tajwid: skala 0.0-9.5 dikonversi ke skala rapor (50-95) memakai nilaiRapor() yang SAMA
     // dengan Kelancaran (Rule L -- tidak boleh ada skala kedua). Juz yang Tajwid-nya belum diisi
     // TETAP null (bukan 0) -- kolom T pada Excel dibiarkan kosong untuk juz tsb.
     const tajwidSantri = tajwidPerSantri.get(santri.id) || new Map<number, number>()

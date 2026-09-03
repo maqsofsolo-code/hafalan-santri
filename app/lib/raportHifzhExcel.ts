@@ -94,8 +94,8 @@ export type SantriRaport = {
   kelasNum: number | null
   jenjang: string | null
   jenisKelas: string | null
-  juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-100) jika juz sudah selesai, null jika belum
-  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (skala sama, via nilaiRapor()) jika Tajwid sudah diisi, null jika belum -- TIDAK pernah diisi 0
+  juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-95, Phase B maks 95) jika juz sudah selesai, null jika belum
+  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (skala sama 50-95, via nilaiRapor()) jika Tajwid sudah diisi, null jika belum -- TIDAK pernah diisi 0
   // Peringkat Kelas: rumus/tie-breaker ranking DIHITUNG DI CALLER (hitungRankingUjianHafalanKelas,
   // app/lib/ranking.ts) -- workbook hanya menulis hasilnya, tidak pernah menghitung ranking sendiri.
   // Denominator SELALU jumlah santri yang SUDAH eligible (bukan total santri kelas) -- baik saat

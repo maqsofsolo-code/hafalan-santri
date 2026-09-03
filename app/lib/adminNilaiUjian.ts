@@ -106,11 +106,24 @@ export function getCakupanSegment(santri: SantriScope, masterSegments: MasterSeg
   }
 }
 
-// nilai_akhir aplikasi berskala 5,0-10,0. Nilai rapor berskala 50-100 (nilai_akhir x 10).
-export function nilaiRapor(nilaiAkhir: number | null | undefined): number | null {
-  const nilai = Number(nilaiAkhir)
+/**
+ * Phase B (RAPORT_HIFZH_FINAL_EXAM_POLICY.md):
+ * Nilai resmi ujian hafalan maksimum 9.5 (skala 10) atau 95 (skala 100).
+ * Data mentah historis di DB tidak diubah, tetapi seluruh perhitungan resmi
+ * mengonsumsi nilai efektif: effectiveExamScore = min(raw, 9.5).
+ */
+export function effectiveExamScore(raw: number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null
+  const nilai = typeof raw === 'number' ? raw : Number(raw)
   if (!Number.isFinite(nilai)) return null
-  return Math.min(100, Math.max(50, Math.round(nilai * 10)))
+  return Math.min(9.5, nilai)
+}
+
+// nilai_akhir aplikasi berskala 5,0-9,5 (resmi). Nilai rapor berskala 50-95 (effective x 10).
+export function nilaiRapor(nilaiAkhir: number | null | undefined): number | null {
+  const effective = effectiveExamScore(nilaiAkhir)
+  if (effective === null) return null
+  return Math.min(95, Math.max(50, Math.round(effective * 10)))
 }
 
 export function compareNilaiTerbaru<T extends { tanggal: string | null, created_at: string | null, id: string }>(a: T, b: T) {
@@ -133,12 +146,15 @@ export type RingkasanJuz = {
 }
 
 // Menghitung ringkasan per juz dari nilai terbaru per segmen (Map keyed by segmentId -> nilai_akhir terbaru).
+// Segmen dinormalisasi ke effectiveExamScore SEBELUM dirata-ratakan (Phase B).
 export function hitungRingkasanJuz(cakupan: CakupanSegment, masterSegments: MasterSegment[], nilaiTerbaruPerSegmen: Map<string, number>): RingkasanJuz[] {
   return Object.entries(cakupan.jumlahSegmenPerJuz).map(([juzText, target]) => {
     const juz = Number(juzText)
     const segmentIds = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
     const nilaiJuz = segmentIds
       .map(id => nilaiTerbaruPerSegmen.get(id))
+      .filter((nilai): nilai is number => typeof nilai === 'number')
+      .map(nilai => effectiveExamScore(nilai))
       .filter((nilai): nilai is number => typeof nilai === 'number')
     const rata = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, nilai) => sum + nilai, 0) / nilaiJuz.length : null
     const status: StatusJuz = nilaiJuz.length === 0 ? 'belum_dimulai' : nilaiJuz.length >= target ? 'selesai' : 'belum_selesai'
@@ -158,10 +174,10 @@ export function hitungNilaiUjianKeseluruhan(ringkasanJuz: RingkasanJuz[]): numbe
   return Math.round((total / juzSelesai.length) * 10) / 10
 }
 
-// Validasi input Nilai Tajwid: skala 0.0-10.0, dibulatkan ke maksimal 1 angka desimal (sama seperti
+// Validasi input Nilai Tajwid: skala 0.0-9.5, dibulatkan ke maksimal 1 angka desimal (sama seperti
 // pembulatan nilai_akhir segmen). Return null jika tidak valid (bukan angka, di luar rentang, dsb).
 export function validasiNilaiTajwid(value: unknown): number | null {
   const nilai = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(nilai) || nilai < 0 || nilai > 10) return null
+  if (!Number.isFinite(nilai) || nilai < 0 || nilai > 9.5) return null
   return Math.round(nilai * 10) / 10
 }

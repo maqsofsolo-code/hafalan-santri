@@ -150,7 +150,8 @@ function formatNilai(value: number | null | undefined) {
 
 function nilaiRapor(value: number | null | undefined) {
   const nilai = nilaiAman(value)
-  return Math.min(100, Math.max(50, Math.round(nilai * 10)))
+  const effective = Math.min(9.5, nilai)
+  return Math.min(95, Math.max(50, Math.round(effective * 10)))
 }
 
 function compareNilaiTerbaru(a: NilaiUjianRow, b: NilaiUjianRow) {
@@ -477,7 +478,7 @@ export default function AdminRekapNilaiUjian() {
   const simpanTajwidAdmin = async () => {
     if (!selectedSantriId || selectedJuz === null || filterPeriode === 'tanpa-periode') return
     const nilai = validasiNilaiTajwid(editTajwidValue.replace(',', '.'))
-    if (nilai === null) { setErrorTajwid('Nilai Tajwid harus berupa angka 0,0-10,0.'); return }
+    if (nilai === null) { setErrorTajwid('Nilai Tajwid harus berupa angka 0,0-9,5.'); return }
     setSavingTajwid(true)
     setErrorTajwid('')
     setSuccessTajwid('')
@@ -543,7 +544,8 @@ export default function AdminRekapNilaiUjian() {
     const tahuAyat = Number.parseInt(editTahuAyat, 10) || 0
     const lupa = Number.parseInt(editLupa, 10) || 0
     const nilai = 10 - (tegur * 0.1) - (tahuAyat * 0.1) - lupa
-    return Math.min(10, Math.max(5, Math.round(nilai * 10) / 10))
+    // Phase B: nilai resmi maksimum 9.5
+    return Math.min(9.5, Math.max(5, Math.round(nilai * 10) / 10))
   }, [editTegur, editTahuAyat, editLupa])
 
   const simpanEdit = async () => {

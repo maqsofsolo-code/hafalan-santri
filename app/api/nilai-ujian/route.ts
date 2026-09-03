@@ -527,7 +527,8 @@ export async function POST(request: Request) {
   const ayatSelesai = segmenInfo?.parsial ? segmenInfo.akhirAyat : segment.ayat_akhir
 
   const nilaiSebelumBatas = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
-  const nilaiAkhir = Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10)
+  // Phase B: nilai resmi maksimum 9.5
+  const nilaiAkhir = Math.min(9.5, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
   const tanggal = getTanggalWIB()
   const kalenderResult = await getKalenderUjianAktif(serviceClient, tanggal)
   if ('error' in kalenderResult) return responseError('Gagal memverifikasi periode ujian', 500)

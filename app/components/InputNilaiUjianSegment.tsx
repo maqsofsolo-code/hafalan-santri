@@ -64,7 +64,8 @@ function nilaiSementara(tegur: string, tahuAyat: string, lupa: string) {
   const jumlahTahuAyat = Number.parseInt(tahuAyat, 10) || 0
   const jumlahLupa = Number.parseInt(lupa, 10) || 0
   const nilai = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
-  return Math.max(5, Math.round(nilai * 10) / 10)
+  // Phase B: nilai maksimum resmi 9.5
+  return Math.min(9.5, Math.max(5, Math.round(nilai * 10) / 10))
 }
 
 function namaSurah(segment: SegmentUjian, posisi: 'awal' | 'akhir') {
@@ -320,7 +321,7 @@ export default function InputNilaiUjianSegment({ santriSaya, santriLain }: Props
 
     const nilai = validasiNilaiTajwid(nilaiInput.replace(',', '.'))
     if (nilai === null) {
-      setErr('Nilai Tajwid harus berupa angka 0,0-10,0.')
+      setErr('Nilai Tajwid harus berupa angka 0,0-9,5.')
       return
     }
 
