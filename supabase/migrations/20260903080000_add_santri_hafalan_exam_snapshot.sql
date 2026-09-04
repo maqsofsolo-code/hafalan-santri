@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.santri_hafalan_exam_snapshot (
   CONSTRAINT santri_hafalan_exam_snapshot_santri_kalender_key UNIQUE (santri_id, kalender_id),
   CONSTRAINT santri_hafalan_exam_snapshot_surah_check CHECK (surah_terakhir_nomor IS NULL OR (surah_terakhir_nomor BETWEEN 1 AND 114)),
   CONSTRAINT santri_hafalan_exam_snapshot_ayat_check CHECK (ayat_terakhir IS NULL OR ayat_terakhir >= 1),
-  CONSTRAINT santri_hafalan_exam_snapshot_juz_check CHECK (total_hafalan_juz IS NULL OR (total_hafalan_juz >= 0 AND total_hafalan_juz <= 30))
+  CONSTRAINT santri_hafalan_exam_snapshot_juz_check CHECK (total_hafalan_juz IS NULL OR total_hafalan_juz >= 0)
 );
 
 CREATE INDEX IF NOT EXISTS santri_hafalan_exam_snapshot_kalender_santri_idx

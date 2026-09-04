@@ -2,7 +2,7 @@
 -- MIGRASI SNAPSHOT POSISI HAFALAN UJIAN — SEMESTER GASAL 2026/2027 (PREVIEW)
 -- Periode Kalender ID: 1c9739bc-7924-4d8c-9b2b-75020eb914ea
 -- Cutoff Awal Ujian: 2026-08-01
--- Total Santri Terdampak: 135 Santri Banin Aktif
+-- Total Santri Terdampak: 132 Santri Banin Aktif
 -- File ini HANYA PREVIEW / DRAFT. JANGAN DIJALANKAN TANPA PERSETUJUAN.
 -- ==============================================================================
 
@@ -13,7 +13,6 @@ INSERT INTO public.santri_hafalan_exam_snapshot (
   ayat_terakhir,
   total_hafalan_juz
 ) VALUES
-  ('1e81c796-bb3d-4b52-b1aa-ded7b700f8fa', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', NULL, 1, 0.00), -- Abdillah Faqih                 [Kelas 7 Banin]  Reconstructed (-0.00 juz from 0 to 0)
   ('c43d492d-3cb4-4d5d-af22-f3e1d15286d5', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 46, 35, 5.15), -- Abdul Akrom A Atsary           [Kelas 10]       Unchanged (no Aug new memorization)
   ('fc97516b-922c-4ba0-9bba-fc6a1f5b4c41', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 25, 43, 12.30), -- Abdul Malik Harits             [Kelas 7 Banin]  Unchanged (no Aug new memorization)
   ('1db8e3fa-7b4d-4c16-8453-539aedba92df', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 50, 1, 4.49), -- Abdullah Abbas                 [Kelas 6 Banin]  Reconstructed (-0.09 juz from 4.58 to 4.49)
@@ -22,7 +21,6 @@ INSERT INTO public.santri_hafalan_exam_snapshot (
   ('cc1c9ef4-c07f-414c-919b-3baaf9b603ff', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 10, 62, 21.05), -- Abdullah Dlingo                [Kelas 9 Banin]  Reconstructed (-0.00 juz from 21.05 to 21.05)
   ('c6901c09-a340-467f-a7e0-819d61b87d91', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 43, 1, 5.95), -- Abdullah Khoirul 'Alim         [Kelas 7 Banin]  Reconstructed (-0.10 juz from 6.05 to 5.95)
   ('a3d427ad-a746-48f7-a79b-801c958f3799', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 74, 1, 1.59), -- Abdullah Nafi'                 [Kelas 3 Banin]  Reconstructed (-0.01 juz from 1.6 to 1.59)
-  ('470f3dfc-10aa-4ba3-a94a-f376700b076c', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', NULL, 1, 0.00), -- Abdullah Najib al-Fawwas       [Kelas 3 Banin]  Unchanged (no Aug new memorization)
   ('f043a201-0d2e-4bf2-9b9e-558135715298', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 54, 1, 3.84), -- Abdullah Zainu Zain            [Kelas 4 Banin]  Reconstructed (-0.04 juz from 3.88 to 3.84)
   ('ec77b7cc-8685-43f9-8d38-cae56ad1bf2a', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 46, 35, 5.15), -- Abdulloh bin Hari              [Kelas 11]       Reconstructed (-0.00 juz from 5.15 to 5.15)
   ('e9e444e3-ba2c-46c5-9bf6-57b5ef2b9514', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 73, 1, 1.57), -- Abdur Razzaq                   [Kelas 3 Banin]  Reconstructed (-0.01 juz from 1.58 to 1.57)
@@ -53,7 +51,6 @@ INSERT INTO public.santri_hafalan_exam_snapshot (
   ('fc4e65cf-aba4-4760-99f5-8b35265839fa', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 46, 35, 5.15), -- Ayyub                          [Kelas 11]       Reconstructed (-0.00 juz from 5.15 to 5.15)
   ('ebfc8a57-e0bd-423e-8336-2089e67df881', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 20, 70, 14.52), -- Dennis Arkan Adithya           [Kelas 9 Banin]  Unchanged (no Aug new memorization)
   ('b3a3da36-70ae-4f25-9940-1698b65e3645', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 53, 26, 3.95), -- Dzaky al-Ghazy                 [Kelas 7 Banin]  Unchanged (no Aug new memorization)
-  ('659cc1c8-825b-4819-9a22-7bafa6e159a8', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', NULL, 1, 0.00), -- Faariz Hissi                   [Kelas 7 Banin]  Reconstructed (-0.00 juz from 0 to 0)
   ('44f5f8e4-0285-4f93-b876-02455be533d5', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 60, 1, 2.80), -- Falah                          [Kelas 6 Banin]  Reconstructed (-0.02 juz from 2.82 to 2.8)
   ('92f92771-cc9f-49e6-938e-b91c2005f35a', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 51, 27, 4.25), -- Falih Al-Baky                  [Kelas 4 Banin]  Reconstructed (-0.04 juz from 4.29 to 4.25)
   ('b42e7789-ffe4-48b9-9bc0-ea44a0cc5c92', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 46, 35, 5.15), -- Faqih                          [Kelas 10]       Unchanged (no Aug new memorization)
