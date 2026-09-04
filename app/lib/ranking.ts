@@ -324,11 +324,13 @@ export function hitungRankingSemangat<T extends SantriRankingInput>(
 //   soal jumlah hafalan kelas, terlepas dari kesiapan ujian.
 // - Nilai Peringkat = (Nilai Ujian Keseluruhan x 4 + Nilai Hafalan) / 5 (ujian 80%, hafalan 20%).
 // - Tajwid TIDAK ikut formula ini sama sekali, dan tidak pernah jadi bagian tipe input di sini.
-// - Eligibility: santri hanya masuk hasil `peringkat` (dan diberi nomor peringkat) jika sudah
-//   punya Nilai Ujian Keseluruhan (artinya minimal satu juz berstatus 'selesai' pada periode ujian
-//   yang dipilih -- lihat hitungNilaiUjianKeseluruhan di app/lib/adminNilaiUjian.ts). Santri tanpa
-//   itu TIDAK diberi skor 0 palsu -- dikembalikan terpisah lewat `belumAdaHasil`, caller wajib
-//   menampilkannya sebagai "Belum memiliki juz ujian selesai", bukan dicampur ke urutan ranking.
+// - Eligibility (Phase C - RAPORT_HIFZH_FINAL_EXAM_POLICY.md): santri masuk hasil `peringkat`
+//   (dan diberi nomor peringkat) jika memiliki Nilai Ujian Keseluruhan (nilaiUjianKeseluruhan !== null).
+//   Santri yang tidak menyelesaikan seluruh ujian wajib (status TIDAK_SELESAI) tetap masuk ranking,
+//   dengan nilaiUjianKeseluruhan yang membagi seluruh required juz (missing juz = 0).
+//   Untuk hasil final/Raport, santri dengan required scope > 0 dan 0 juz selesai memiliki nilai resmi 0
+//   dan TETAP masuk peringkat (bukan permanen di belumAdaHasil). Hanya santri dengan nilai null (provisional
+//   atau tanpa kewajiban ujian) yang masuk belumAdaHasil.
 // - Tie-breaker (urutan wajib, jangan diubah tanpa keputusan baru): nilai_peringkat desc ->
 //   nilai_ujian_keseluruhan desc -> total_hafalan_juz desc -> nama asc -> id asc.
 //

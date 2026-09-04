@@ -4,6 +4,7 @@ import {
   getCakupanSegment,
   hitungRingkasanJuz,
   hitungNilaiUjianKeseluruhan,
+  resolveSantriExamScopes,
   compareNilaiTerbaru,
   validasiNilaiTajwid,
   type MasterSegment,
@@ -107,7 +108,24 @@ export async function GET(request: Request) {
       segment: row.segment_ujian_id ? masterSegmentMap.get(row.segment_ujian_id) || null : null,
     }))
 
-    const cakupan = getCakupanSegment(santriData as SantriScope, masterSegments)
+    // Phase C: Resolusi cakupan awal ujian santri untuk periode ujian ini
+    let effectiveSantriScope = santriData as SantriScope
+    if (periodeDetail && periodeDetail !== 'tanpa-periode') {
+      const { data: calRow } = await adminClient
+        .from('kalender_akademik')
+        .select('id, nama, tipe, tanggal_mulai')
+        .eq('id', periodeDetail)
+        .maybeSingle()
+
+      const scopeRes = await resolveSantriExamScopes(adminClient, [santriData as SantriScope], periodeDetail, calRow?.tanggal_mulai)
+      if (scopeRes.status === 'CAKUPAN_BELUM_DIKUNCI') {
+        return responseError('Cakupan ujian untuk periode ini belum dikunci oleh Admin.', 422)
+      }
+      if (scopeRes.scopes.length > 0) {
+        effectiveSantriScope = scopeRes.scopes[0]
+      }
+    }
+    const cakupan = getCakupanSegment(effectiveSantriScope, masterSegments)
 
     // Nilai Tajwid santri ini, discope ke periode yang sama dengan nilai Kelancaran di atas (Rule D)
     // -- hanya diambil saat periodeDetail adalah kalender_id sungguhan (bukan 'tanpa-periode', yang
@@ -224,15 +242,35 @@ export async function GET(request: Request) {
     ;(formatLamaRows || []).forEach(row => santriDenganFormatLama.add(row.santri_id))
   }
 
-  const data = santriList.map(santri => {
+  // Phase C: Resolusi cakupan awal ujian santri jika periode kalender dipilih
+  let resolvedSantriList = santriList
+  let cakupanStatus: 'LOCKED' | 'TRANSISI_GASAL' | 'CAKUPAN_BELUM_DIKUNCI' = 'LOCKED'
+
+  if (periode !== 'semua' && periode !== 'tanpa-periode') {
+    const { data: calRow } = await adminClient
+      .from('kalender_akademik')
+      .select('id, nama, tipe, tanggal_mulai')
+      .eq('id', periode)
+      .maybeSingle()
+
+    const scopeResult = await resolveSantriExamScopes(adminClient, santriList, periode, calRow?.tanggal_mulai)
+    cakupanStatus = scopeResult.status
+    if (scopeResult.status === 'CAKUPAN_BELUM_DIKUNCI') {
+      return responseError('Cakupan ujian untuk periode ini belum dikunci oleh Admin.', 422)
+    }
+    resolvedSantriList = scopeResult.scopes
+  }
+
+  const data = resolvedSantriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
     const nilaiPerSegmen = nilaiTerbaruPerSantriSegmen.get(santri.id) || new Map<string, number>()
     const juzList = cakupan.lengkap ? hitungRingkasanJuz(cakupan, masterSegments, nilaiPerSegmen) : []
     const juzDimulai = juzList.filter(j => j.status !== 'belum_dimulai').length
     const juzSelesai = juzList.filter(j => j.status === 'selesai').length
-    // Nilai Ujian Keseluruhan = rata-rata Nilai Kelancaran HANYA juz 'selesai' (Rule F) -- helper
-    // canonical, sama persis dipakai di app/api/nilai-ujian (guru) dan raport hifzh.
-    const nilaiUjianKeseluruhan = hitungNilaiUjianKeseluruhan(juzList)
+    const isFinal = url.searchParams.get('final') === 'true'
+    // Nilai Ujian Keseluruhan membagi seluruh required juz santri (Phase C).
+    // Pada hasil final, santri dengan required > 0 dan completed = 0 mendapat nilai 0.
+    const nilaiUjianKeseluruhan = hitungNilaiUjianKeseluruhan(juzList, { isFinal })
 
     return {
       id: santri.id,
@@ -256,6 +294,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     success: true,
+    cakupanStatus,
     data,
     total: count || 0,
     page,
@@ -298,8 +337,8 @@ export async function PATCH(request: Request) {
   if (!existing) return responseError('Nilai ujian tidak ditemukan', 404)
 
   const nilaiSebelumBatas = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
-  // Phase B: nilai resmi maksimum 9.5
-  const nilaiAkhir = Math.min(9.5, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
+  // Phase C: nilai ujian raw maksimum 10.0
+  const nilaiAkhir = Math.min(10, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
 
   const { data: updated, error: updateError } = await adminClient
     .from('nilai_ujian')

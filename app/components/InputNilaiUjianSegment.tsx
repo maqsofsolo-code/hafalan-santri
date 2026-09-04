@@ -64,8 +64,8 @@ function nilaiSementara(tegur: string, tahuAyat: string, lupa: string) {
   const jumlahTahuAyat = Number.parseInt(tahuAyat, 10) || 0
   const jumlahLupa = Number.parseInt(lupa, 10) || 0
   const nilai = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
-  // Phase B: nilai maksimum resmi 9.5
-  return Math.min(9.5, Math.max(5, Math.round(nilai * 10) / 10))
+  // Phase C: nilai maksimum resmi 10.0
+  return Math.min(10, Math.max(5, Math.round(nilai * 10) / 10))
 }
 
 function namaSurah(segment: SegmentUjian, posisi: 'awal' | 'akhir') {

@@ -1,4 +1,6 @@
 'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 import { tipeKalenderColor, tipeKalenderLabel } from '../utils'
 import type { KalenderAkademik } from '../types'
 import type { useAdminEntityForm } from '../hooks/useAdminEntityForm'
@@ -23,6 +25,72 @@ export function KalenderSection(props: {
   isUjian: boolean | undefined
 }) {
   const { form, kalender, kalenderList, today, hariMinggu, isLiburMingguan, kalenderAktif, isUjian } = props
+
+  const [snapshotCounts, setSnapshotCounts] = useState<Record<string, number>>({})
+  const [lockingId, setLockingId] = useState<string | null>(null)
+  const [lockMsg, setLockMsg] = useState<string | null>(null)
+  const [lockError, setLockError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadSnapshotCounts() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch('/api/admin/kunci-cakupan-ujian', {
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        })
+        const json = await res.json()
+        if (!cancelled && json.success && json.counts) {
+          setSnapshotCounts(json.counts)
+        }
+      } catch {
+        // ignore network errors
+      }
+    }
+    loadSnapshotCounts()
+    return () => { cancelled = true }
+  }, [kalenderList])
+
+  const handleKunciCakupan = async (kal: KalenderAkademik) => {
+    const isGasal = kal.id === '1c9739bc-7924-4d8c-9b2b-75020eb914ea' || kal.tanggal_mulai === '2026-08-01'
+    const confirmMsg = isGasal
+      ? `Kunci cakupan ujian untuk "${kal.nama}"?\n\nSistem akan mengunci batas ujian seluruh santri aktif berdasarkan rekonstruksi posisi awal 1 Agustus 2026. Snapshot yang terkunci bersifat permanen dan tidak akan di-overwrite.`
+      : `Kunci cakupan ujian untuk "${kal.nama}"?\n\nSistem akan mengunci batas wajib ujian seluruh santri aktif berdasarkan posisi hafalan live saat ini. Snapshot yang terkunci bersifat permanen dan tidak akan di-overwrite.`
+
+    if (!window.confirm(confirmMsg)) return
+
+    setLockingId(kal.id)
+    setLockMsg(null)
+    setLockError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/admin/kunci-cakupan-ujian', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ kalender_id: kal.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        throw new Error(json.error || 'Gagal mengunci cakupan ujian')
+      }
+      const resCount = await fetch('/api/admin/kunci-cakupan-ujian', {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      })
+      const jsonCount = await resCount.json()
+      if (jsonCount.success && jsonCount.counts) {
+        setSnapshotCounts(jsonCount.counts)
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan saat mengunci cakupan ujian.'
+      setLockError(msg)
+    } finally {
+      setLockingId(null)
+    }
+  }
 
   return (
     <div>
@@ -52,6 +120,8 @@ export function KalenderSection(props: {
           className={btnPrimary} style={{ background: 'linear-gradient(135deg, #0f766e, #14b8a6)' }}>+ Tambah Jadwal</button>
       </div>
       {form.successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {form.successMsg}</div>}
+      {lockMsg && <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {lockMsg}</div>}
+      {lockError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm">✕ {lockError}</div>}
       {form.showForm && form.formType === 'kalender' && (
         <div className="bg-white p-5 rounded-2xl shadow-md mb-5 border border-gray-100">
           <h3 className="font-bold text-base mb-4">{form.editKalenderId ? 'Edit Jadwal' : 'Tambah Jadwal Baru'}</h3>
@@ -96,6 +166,11 @@ export function KalenderSection(props: {
         {kalenderList.map((kal) => {
           const isAktif = today >= kal.tanggal_mulai && today <= kal.tanggal_selesai
           const isLewat = today > kal.tanggal_selesai
+          const isExam = kal.tipe === 'mid_semester' || kal.tipe === 'semester'
+          const count = snapshotCounts[kal.id] ?? 0
+          const isLocked = count > 0
+          const isGasal = kal.id === '1c9739bc-7924-4d8c-9b2b-75020eb914ea' || kal.tanggal_mulai === '2026-08-01'
+
           return (
             <div key={kal.id} className={`bg-white rounded-xl shadow p-4 border-2 ${isAktif ? 'border-teal-400 bg-teal-50' : isLewat ? 'border-gray-100 opacity-60' : 'border-gray-100'}`}>
               <div className="flex justify-between items-start">
@@ -122,6 +197,38 @@ export function KalenderSection(props: {
                   <button onClick={() => kalender.handleHapusKalender(kal.id)} className="text-red-400 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50">Hapus</button>
                 </div>
               </div>
+
+              {isExam && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-gray-700">Cakupan Ujian:</span>
+                    {isLocked ? (
+                      <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-0.5 rounded-full">
+                        ✓ Sudah Dikunci — {count} santri
+                      </span>
+                    ) : (
+                      <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-0.5 rounded-full">
+                        Belum Dikunci
+                      </span>
+                    )}
+                    {isGasal && (
+                      <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                        Transisi Gasal
+                      </span>
+                    )}
+                  </div>
+                  {!isLocked && (
+                    <button
+                      onClick={() => handleKunciCakupan(kal)}
+                      disabled={lockingId === kal.id}
+                      className="text-xs font-semibold text-white px-3 py-1.5 rounded-xl shadow-sm transition disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)' }}
+                    >
+                      {lockingId === kal.id ? 'Mengunci...' : 'Kunci Cakupan Ujian'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}

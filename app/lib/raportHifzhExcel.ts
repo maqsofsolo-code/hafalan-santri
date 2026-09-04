@@ -87,6 +87,8 @@ const TANDA_TANGAN_TINGGI_PX = 42
 
 export type TandaTanganGambar = { buffer: Buffer, extension: 'png' | 'jpeg' }
 
+import type { StatusUjianSantri } from './adminNilaiUjian'
+
 export type SantriRaport = {
   id: string
   nama: string
@@ -94,8 +96,10 @@ export type SantriRaport = {
   kelasNum: number | null
   jenjang: string | null
   jenisKelas: string | null
-  juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-95, Phase B maks 95) jika juz sudah selesai, null jika belum
-  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (skala sama 50-95, via nilaiRapor()) jika Tajwid sudah diisi, null jika belum -- TIDAK pernah diisi 0
+  juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-95, Phase B maks 95, atau 0 merah jika incomplete required)
+  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (50-95, atau 0 merah jika incomplete required, null jika belum diisi)
+  juzIncomplete?: Set<number> // juz wajib yang belum selesai diuji (Phase C)
+  statusUjian?: StatusUjianSantri // SELESAI | TIDAK_SELESAI
   // Peringkat Kelas: rumus/tie-breaker ranking DIHITUNG DI CALLER (hitungRankingUjianHafalanKelas,
   // app/lib/ranking.ts) -- workbook hanya menulis hasilnya, tidak pernah menghitung ranking sendiri.
   // Denominator SELALU jumlah santri yang SUDAH eligible (bukan total santri kelas) -- baik saat
@@ -282,7 +286,9 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
   // menambah entry media baru di file meski isinya identik -- cache ini murni optimisasi ukuran file,
   // bukan perubahan perilaku).
   const imageIdCache = new Map<Buffer, number>()
-  const ExcelJS = await import('exceljs')
+  const ExcelJSModule = await import('exceljs')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ExcelJS: any = (ExcelJSModule as any).default || ExcelJSModule
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.readFile(TEMPLATE_PATH)
 
@@ -361,15 +367,24 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
 
     juzMap.forEach((lokasi, juz) => {
       const nilai = santri.juzNilai.get(juz)
-      ws.getCell(`${lokasi.kolomNilai}${lokasi.row}`).value = (typeof nilai === 'number') ? nilai : null
+      const nilaiCell = ws.getCell(`${lokasi.kolomNilai}${lokasi.row}`)
+      nilaiCell.value = (typeof nilai === 'number') ? nilai : null
+      if (nilai === 0 || santri.juzIncomplete?.has(juz)) {
+        nilaiCell.font = { ...(nilaiCell.font || {}), color: { argb: 'FFFF0000' }, bold: true }
+      }
+
       const tajwid = santri.juzTajwid.get(juz)
-      ws.getCell(`${lokasi.kolomTajwid}${lokasi.row}`).value = (typeof tajwid === 'number') ? tajwid : null
+      const tajwidCell = ws.getCell(`${lokasi.kolomTajwid}${lokasi.row}`)
+      tajwidCell.value = (typeof tajwid === 'number') ? tajwid : null
+      if (tajwid === 0 || santri.juzIncomplete?.has(juz)) {
+        tajwidCell.font = { ...(tajwidCell.font || {}), color: { argb: 'FFFF0000' }, bold: true }
+      }
     })
 
     // "Nilai Rata-rata" dihitung langsung dari nilai juz yang benar-benar final (bukan lewat formula
-    // template AZ14/AZ15 yang cache-nya bisa basi -- lihat catatan SEL_RATA_KELANCARAN). Tajwid
-    // rata-rata dihitung HANYA dari juz yang Tajwid-nya sudah diisi (kosong tidak ikut dihitung
-    // sebagai 0) -- kosong total jika belum ada satupun Tajwid terisi.
+    // template AZ14/AZ15 yang cache-nya bisa basi -- lihat catatan SEL_RATA_KELANCARAN).
+    // Phase C: santri.juzNilai memuat nilai seluruh juz wajib (termasuk 0 untuk incomplete),
+    // sehingga rata-rata dan penyebut mencakup seluruh juz wajib santri.
     const nilaiJuzFinal = [...santri.juzNilai.values()].filter((n): n is number => typeof n === 'number')
     const rataKelancaran = nilaiJuzFinal.length > 0
       ? Math.round((nilaiJuzFinal.reduce((sum, n) => sum + n, 0) / nilaiJuzFinal.length) * 10) / 10
@@ -384,7 +399,7 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
 
     // Pindahkan footnote asli (dibaca SEBELUM ditimpa) satu baris ke bawah, lalu tulis "Peringkat
     // Kelas"/"Peringkat Sementara" di baris yang ditinggalkannya -- lihat catatan SEL_PERINGKAT_KELAS
-    // di atas. Keterangan singkat (hanya muncul saat status Sementara) ditulis ke SEL_KETERANGAN_PERINGKAT
+    // di atas. Keterangan singkat (hanya muncul saat status Sementara atau Ujian Tidak Selesai) ditulis ke SEL_KETERANGAN_PERINGKAT
     // memakai style yang sama, dan dibiarkan kosong (bawaan template) saat tidak ada keterangan.
     const catatanKtCell = ws.getCell(SEL_PERINGKAT_KELAS)
     const catatanKtValue = catatanKtCell.value
@@ -400,9 +415,17 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     catatanKtCell.font = catatanKtFont
     catatanKtCell.alignment = catatanKtAlignment
 
+    const teksKeterangan: string[] = []
+    if (santri.statusUjian === 'TIDAK_SELESAI') {
+      teksKeterangan.push('Status: Belum Menyelesaikan Ujian.')
+    }
     if (keterangan) {
+      teksKeterangan.push(keterangan)
+    }
+
+    if (teksKeterangan.length > 0) {
       const keteranganCell = ws.getCell(SEL_KETERANGAN_PERINGKAT)
-      keteranganCell.value = keterangan
+      keteranganCell.value = teksKeterangan.join(' ')
       keteranganCell.font = catatanKtFont
       keteranganCell.alignment = catatanKtAlignment
     }

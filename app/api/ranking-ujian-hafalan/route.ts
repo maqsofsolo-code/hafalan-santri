@@ -4,6 +4,7 @@ import {
   getCakupanSegment,
   hitungRingkasanJuz,
   hitungNilaiUjianKeseluruhan,
+  resolveSantriExamScopes,
   type MasterSegment,
   type SantriScope,
 } from '../../lib/adminNilaiUjian'
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
 
   const { data: kalender, error: kalenderError } = await serviceClient
     .from('kalender_akademik')
-    .select('id, nama, tipe')
+    .select('id, nama, tipe, tanggal_mulai')
     .eq('id', periode)
     .maybeSingle()
   if (kalenderError) return responseError('Gagal memuat data periode', 500)
@@ -125,7 +126,14 @@ export async function GET(request: Request) {
 
   // Nilai Ujian Keseluruhan per santri, SUDAH discope ke satu kalender_id (periode) di atas --
   // Tajwid TIDAK ikut sama sekali (Rule G/H).
-  const santriRanking: SantriUjianRankingInput[] = santriList.map(santri => {
+  // Phase C: Resolusi cakupan awal ujian santri (snapshot / rekonstruksi Gasal).
+  const isFinal = url.searchParams.get('final') === 'true'
+  const scopeResult = await resolveSantriExamScopes(serviceClient, santriList, periode, kalender.tanggal_mulai)
+  if (scopeResult.status === 'CAKUPAN_BELUM_DIKUNCI') {
+    return responseError('Cakupan ujian untuk periode ini belum dikunci oleh Admin.', 422)
+  }
+  const resolvedSantriList = scopeResult.scopes
+  const santriRanking: SantriUjianRankingInput[] = resolvedSantriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
     const nilaiPerSegmen = nilaiTerbaruPerSantri.get(santri.id) || new Map<string, number>()
     const ringkasanJuz = cakupan.lengkap ? hitungRingkasanJuz(cakupan, masterSegments, nilaiPerSegmen) : []
@@ -133,7 +141,7 @@ export async function GET(request: Request) {
       id: santri.id,
       nama: santri.nama,
       total_hafalan_juz: santri.total_hafalan_juz,
-      nilaiUjianKeseluruhan: hitungNilaiUjianKeseluruhan(ringkasanJuz),
+      nilaiUjianKeseluruhan: hitungNilaiUjianKeseluruhan(ringkasanJuz, { isFinal }),
     }
   })
 

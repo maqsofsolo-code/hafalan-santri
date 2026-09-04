@@ -4,8 +4,11 @@ import {
   getCakupanSegment,
   hitungRingkasanJuz,
   hitungNilaiUjianKeseluruhan,
+  hitungStatusUjian,
+  resolveSantriExamScopes,
   compareNilaiTerbaru,
   nilaiRapor,
+  isFullJuzMaster,
   type MasterSegment,
   type SantriScope,
 } from '../../../lib/adminNilaiUjian'
@@ -253,35 +256,53 @@ export async function GET(request: Request) {
   )
   const tanggalIndonesia = getWIBDate().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
-  // Tahap 1: hitung Kelancaran/Tajwid per juz + Nilai Ujian Keseluruhan (skala 0-10, dipakai HANYA
-  // untuk ranking, tidak pernah ditulis sebagai angka di raport -- Rule I) untuk SETIAP santri di
-  // kelas ini. Satu-satunya tempat nilaiUjianKeseluruhan dihitung -- reuse hitungNilaiUjianKeseluruhan
-  // (app/lib/adminNilaiUjian.ts), formula TIDAK diubah/diduplikasi.
-  const santriKomputasi = santriList.map(santri => {
+  // Tahap 1: Resolusi cakupan awal ujian santri (Phase C: snapshot / rekonstruksi Gasal / fallback).
+  // Hitung Kelancaran/Tajwid per juz + Nilai Ujian Keseluruhan (skala 0-10, denominator seluruh required juz).
+  // Juz incomplete bernilai 0 (khusus, tidak difloor ke 50).
+  const scopeResult = await resolveSantriExamScopes(adminClient, santriList, periode, periodeInfo?.tanggal_mulai)
+  if (scopeResult.status === 'CAKUPAN_BELUM_DIKUNCI') {
+    return responseError('Cakupan ujian untuk periode ini belum dikunci oleh Admin.', 422)
+  }
+  const resolvedSantriList = scopeResult.scopes
+  const santriKomputasi = resolvedSantriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
     const nilaiPerSegmen = nilaiTerbaruPerSantri.get(santri.id) || new Map<string, number>()
     const juzList = cakupan.lengkap ? hitungRingkasanJuz(cakupan, masterSegments, nilaiPerSegmen) : []
+    const statusUjian = hitungStatusUjian(juzList)
 
     const juzNilai = new Map<number, number | null>()
-    juzList.forEach(j => {
-      juzNilai.set(j.juz, j.status === 'selesai' ? nilaiRapor(j.rata) : null)
-    })
-
-    // Tajwid: skala 0.0-9.5 dikonversi ke skala rapor (50-95) memakai nilaiRapor() yang SAMA
-    // dengan Kelancaran (Rule L -- tidak boleh ada skala kedua). Juz yang Tajwid-nya belum diisi
-    // TETAP null (bukan 0) -- kolom T pada Excel dibiarkan kosong untuk juz tsb.
-    const tajwidSantri = tajwidPerSantri.get(santri.id) || new Map<number, number>()
     const juzTajwid = new Map<number, number | null>()
+    const juzIncomplete = new Set<number>()
+
+    const tajwidSantri = tajwidPerSantri.get(santri.id) || new Map<number, number>()
+
     juzList.forEach(j => {
-      const nilaiTajwid = tajwidSantri.get(j.juz)
-      juzTajwid.set(j.juz, typeof nilaiTajwid === 'number' ? nilaiRapor(nilaiTajwid) : null)
+      const isFull = isFullJuzMaster(j.juz, j.target, masterSegments)
+      if (j.status === 'selesai') {
+        juzNilai.set(j.juz, nilaiRapor(j.rataRaport))
+        const nilaiTajwid = tajwidSantri.get(j.juz)
+        if (typeof nilaiTajwid === 'number') {
+          juzTajwid.set(j.juz, nilaiRapor(nilaiTajwid))
+        } else if (isFull) {
+          juzTajwid.set(j.juz, 0)
+        } else {
+          juzTajwid.set(j.juz, null)
+        }
+      } else {
+        // Phase C: Incomplete required juz = 0 (penalti penomoran khusus, TIDAK dinaikkan ke floor 50)
+        juzNilai.set(j.juz, 0)
+        juzTajwid.set(j.juz, isFull ? 0 : null)
+        juzIncomplete.add(j.juz)
+      }
     })
 
     return {
       santri,
       juzNilai,
       juzTajwid,
-      nilaiUjianKeseluruhan: hitungNilaiUjianKeseluruhan(juzList),
+      juzIncomplete,
+      statusUjian,
+      nilaiUjianKeseluruhan: hitungNilaiUjianKeseluruhan(juzList, { isFinal: true }),
     }
   })
 
@@ -307,7 +328,7 @@ export async function GET(request: Request) {
   const jumlahBelumAdaHasilKelas = belumAdaHasil.length
   const peringkatMap = new Map<string, number>(peringkat.map(s => [s.id, s.peringkat]))
 
-  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid }) => {
+  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid, juzIncomplete, statusUjian }) => {
     // Per-santri (bukan per-dokumen): jenis_kelas SANTRI ('banin'/'banat'/'tn_a'/'tn_b') dicocokkan
     // langsung ke jenis_kelas wali_kelas_assignment -- lihat catatan SantriRaport.waliKelasNama.
     const waliInfo = petaWaliKelas.get(santri.jenis_kelas || '')
@@ -321,6 +342,8 @@ export async function GET(request: Request) {
       jenisKelas: santri.jenis_kelas,
       juzNilai,
       juzTajwid,
+      juzIncomplete,
+      statusUjian,
       peringkatKelas: peringkatMap.get(santri.id) ?? null,
       jumlahSantriEligible,
       jumlahBelumAdaHasil: jumlahBelumAdaHasilKelas,

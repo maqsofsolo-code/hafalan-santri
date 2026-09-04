@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../lib/serverAuth'
 import { getTanggalWIB } from '../../lib/dateWib'
 import { bisaAksesJenisKelas, jenisKelasWingList } from '../../lib/wingAkses'
-import { hitungNilaiUjianKeseluruhan, hitungRingkasanJuz, validasiNilaiTajwid } from '../../lib/adminNilaiUjian'
+import { hitungNilaiUjianKeseluruhan, hitungRingkasanJuz, validasiNilaiTajwid, isFullJuzMaster } from '../../lib/adminNilaiUjian'
 
 type NilaiUjianBody = Record<string, unknown> & {
   santri_id?: unknown
@@ -309,10 +309,9 @@ export async function GET(request: Request) {
       tajwidMap[row.juz] = { nilai: Number(row.nilai), guru_id: row.guru_id, updated_at: row.updated_at }
     })
     // Juz yang seluruh segmennya sudah selesai dinilai pada periode aktif ini tapi belum punya
-    // Nilai Tajwid -- termasuk data lama (juz selesai sebelum fitur Tajwid ada). Dipakai UI untuk
-    // banner peringatan (Rule D/H) di bagian atas area input santri ini.
+    // Nilai Tajwid -- HANYA untuk FULL JUZ (Section 10). Partial juz tidak mewajibkan Tajwid.
     const juzBelumTajwid = ringkasanJuz
-      .filter(j => j.status === 'selesai' && !(j.juz in tajwidMap))
+      .filter(j => j.status === 'selesai' && isFullJuzMaster(j.juz, j.target, masterSegments) && !(j.juz in tajwidMap))
       .map(j => j.juz)
       .sort((a, b) => b - a)
 
@@ -527,8 +526,8 @@ export async function POST(request: Request) {
   const ayatSelesai = segmenInfo?.parsial ? segmenInfo.akhirAyat : segment.ayat_akhir
 
   const nilaiSebelumBatas = 10 - (jumlahTegur * 0.1) - (jumlahTahuAyat * 0.1) - jumlahLupa
-  // Phase B: nilai resmi maksimum 9.5
-  const nilaiAkhir = Math.min(9.5, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
+  // Phase C Final Spec: raw nilai guru maksimum 10.0 (Kelancaran normal min 5, max 10)
+  const nilaiAkhir = Math.min(10, Math.max(5, Math.round(nilaiSebelumBatas * 10) / 10))
   const tanggal = getTanggalWIB()
   const kalenderResult = await getKalenderUjianAktif(serviceClient, tanggal)
   if ('error' in kalenderResult) return responseError('Gagal memverifikasi periode ujian', 500)

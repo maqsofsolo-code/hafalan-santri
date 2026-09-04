@@ -150,8 +150,8 @@ function formatNilai(value: number | null | undefined) {
 
 function nilaiRapor(value: number | null | undefined) {
   const nilai = nilaiAman(value)
-  const effective = Math.min(9.5, nilai)
-  return Math.min(95, Math.max(50, Math.round(effective * 10)))
+  if (nilai <= 0) return 0
+  return Math.round(Math.min(9.0, nilai) * 10)
 }
 
 function compareNilaiTerbaru(a: NilaiUjianRow, b: NilaiUjianRow) {
@@ -453,9 +453,10 @@ export default function AdminRekapNilaiUjian() {
         .map(id => nilaiTerbaruPerSegmen.get(id))
         .filter((item): item is NilaiUjianRow => Boolean(item))
       const rata = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + nilaiAman(item.nilai_akhir), 0) / nilaiJuz.length : null
+      const rataRaport = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + Math.min(9.0, nilaiAman(item.nilai_akhir)), 0) / nilaiJuz.length : null
       const status: StatusJuz = nilaiJuz.length === 0 ? 'belum_dimulai' : nilaiJuz.length >= target ? 'selesai' : 'belum_selesai'
       const tajwid = detailTajwid[juz] ?? null
-      return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds, tajwid }
+      return { juz, target, dinilai: nilaiJuz.length, rata, rataRaport, status, segmentIds, tajwid }
     }).sort((a, b) => b.juz - a.juz)
   }, [detailCakupan, masterSegments, nilaiTerbaruPerSegmen, detailTajwid])
 
@@ -544,8 +545,8 @@ export default function AdminRekapNilaiUjian() {
     const tahuAyat = Number.parseInt(editTahuAyat, 10) || 0
     const lupa = Number.parseInt(editLupa, 10) || 0
     const nilai = 10 - (tegur * 0.1) - (tahuAyat * 0.1) - lupa
-    // Phase B: nilai resmi maksimum 9.5
-    return Math.min(9.5, Math.max(5, Math.round(nilai * 10) / 10))
+    // Phase C: nilai resmi maksimum 10.0
+    return Math.min(10, Math.max(5, Math.round(nilai * 10) / 10))
   }, [editTegur, editTahuAyat, editLupa])
 
   const simpanEdit = async () => {

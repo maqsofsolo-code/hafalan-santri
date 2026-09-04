@@ -74,6 +74,7 @@ export function RankingUjianHafalanSection() {
   const [kalenderInfo, setKalenderInfo] = useState<{ nama: string, tipe: string | null } | null>(null)
   const [peringkat, setPeringkat] = useState<PeringkatRow[]>([])
   const [belumAdaHasil, setBelumAdaHasil] = useState<BelumAdaHasilRow[]>([])
+  const [modeFinal, setModeFinal] = useState(false)
 
   // Ranking ujian WAJIB satu periode eksplisit -- TIDAK ada opsi "Semua Periode" di dropdown ini
   // sama sekali (Rule G), dan fetch baru terjadi setelah keempat filter terisi.
@@ -127,6 +128,7 @@ export function RankingUjianHafalanSection() {
         const params = new URLSearchParams({
           periode: filterPeriode, jenjang: filterJenjang, kelas: filterKelas, kelompok: filterKelompok,
         })
+        if (modeFinal) params.set('final', 'true')
         const response = await fetch(`/api/ranking-ujian-hafalan?${params.toString()}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: 'no-store',
@@ -152,7 +154,7 @@ export function RankingUjianHafalanSection() {
     }
     muatRanking()
     return () => { dibatalkan = true }
-  }, [filterLengkap, filterPeriode, filterJenjang, filterKelas, filterKelompok])
+  }, [filterLengkap, filterPeriode, filterJenjang, filterKelas, filterKelompok, modeFinal])
 
   // Sementara selama ADA santri aktif kelas yang belum punya juz ujian selesai -- tidak menunggu
   // Tajwid (Tajwid memang tidak pernah masuk respons endpoint ini sama sekali).
@@ -197,6 +199,17 @@ export function RankingUjianHafalanSection() {
             </select>
           </div>
         </div>
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 flex-wrap gap-2">
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={modeFinal}
+              onChange={e => setModeFinal(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Hitung Peringkat Final (santri yang belum menyelesaikan seluruh ujian wajib dikenakan nilai 0)
+          </label>
+        </div>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm">{error}</div>}
@@ -215,7 +228,14 @@ export function RankingUjianHafalanSection() {
             </div>
           )}
 
-          {statusSementara ? (
+          {modeFinal ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+              <div className="font-bold text-blue-800 text-sm">PERINGKAT FINAL (UJIAN SELESAI)</div>
+              <p className="text-xs text-blue-700 mt-1">
+                Hasil resmi ujian akhir. Seluruh santri dengan kewajiban ujian telah diperingkatkan secara definitif (juz yang belum selesai dihitung bernilai 0).
+              </p>
+            </div>
+          ) : statusSementara ? (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
               <div className="font-bold text-yellow-800 text-sm">PERINGKAT SEMENTARA</div>
               <p className="text-xs text-yellow-700 mt-1">
