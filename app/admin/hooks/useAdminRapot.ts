@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { NilaiRapotForm, PeriodeRapot, RapotNilaiApiRow, RapotRekapRow, Santri } from '../types'
 
@@ -34,6 +34,10 @@ export function useAdminRapot(params: {
   const { setLoading, setErrorMsg, setSuccessMsg } = params
 
   const [periodeList, setPeriodeList] = useState<PeriodeRapot[]>([])
+  const [periodeAktif, setPeriodeAktif] = useState<PeriodeRapot | null>(null)
+  const [periodeLoading, setPeriodeLoading] = useState(false)
+  const [periodeError, setPeriodeError] = useState<string | null>(null)
+
   const [showFormPeriode, setShowFormPeriode] = useState(false)
   const [editPeriodeId, setEditPeriodeId] = useState<string | null>(null)
   const [formPeriodeNama, setFormPeriodeNama] = useState('')
@@ -65,31 +69,79 @@ export function useAdminRapot(params: {
   const [rapotRekapData, setRapotRekapData] = useState<RapotRekapRow[]>([])
   const [rapotRekapLoading, setRapotRekapLoading] = useState(false)
 
-  const fetchPeriode = async () => {
-    const { data } = await supabase
-      .from('periode_akademik')
-      .select('*')
-      .order('created_at', { ascending: false })
-    const mapped: PeriodeRapot[] = (data || []).map(p => ({
-      ...p,
-      id: p.id,
-      nama: `${p.tahun_ajaran} Semester ${p.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'}`,
-      tahun_ajaran: p.tahun_ajaran,
-      semester: p.semester,
-      tanggal_rapot: p.tanggal_selesai || null,
-      tanggal_mulai: p.tanggal_mulai,
-      tanggal_selesai: p.tanggal_selesai,
-      is_aktif: p.is_aktif,
-      rapot_input_dibuka: p.rapot_input_dibuka,
-      created_at: p.created_at || '',
-      updated_at: p.updated_at || '',
-    }))
-    setPeriodeList(mapped)
-    const aktif = mapped.find(p => p.is_aktif)
-    if (aktif && !rapotInputPeriodeId) {
-      setRapotInputPeriodeId(aktif.id)
+  const fetchPeriode = useCallback(async () => {
+    setPeriodeLoading(true)
+    setPeriodeError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setPeriodeError('Sesi login tidak valid. Silakan login kembali.')
+        setPeriodeLoading(false)
+        return
+      }
+
+      // 1. Ambil context resmi via secure /api/rapot-digital/context (fail-closed, 1-active-period rule)
+      const contextRes = await fetchWithAuth('/api/rapot-digital/context', session.access_token)
+      const contextData = await contextRes.json()
+
+      if (!contextRes.ok) {
+        setPeriodeError(contextData.error || 'Gagal memuat periode akademik aktif')
+        setPeriodeAktif(null)
+      } else if (contextData.periode) {
+        const p = contextData.periode
+        const activeMapped: PeriodeRapot = {
+          ...p,
+          id: p.id,
+          nama: `${p.tahun_ajaran} Semester ${p.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'}`,
+          tahun_ajaran: p.tahun_ajaran,
+          semester: p.semester,
+          tanggal_rapot: p.tanggal_selesai || null,
+          tanggal_mulai: p.tanggal_mulai,
+          tanggal_selesai: p.tanggal_selesai,
+          is_aktif: p.is_aktif,
+          rapot_input_dibuka: p.rapot_input_dibuka,
+          created_at: p.created_at || '',
+          updated_at: p.updated_at || '',
+        }
+        setPeriodeAktif(activeMapped)
+        setRapotInputPeriodeId(prev => prev || activeMapped.id)
+      } else {
+        setPeriodeAktif(null)
+      }
+
+      // 2. Ambil seluruh periode akademik untuk opsi dropdown (input/rekap/download)
+      const { data: allData, error: allErr } = await supabase
+        .from('periode_akademik')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (allErr) {
+        console.error('[useAdminRapot] Gagal memuat daftar periode_akademik:', allErr.message)
+      } else if (allData) {
+        const mapped: PeriodeRapot[] = allData.map(p => ({
+          ...p,
+          id: p.id,
+          nama: `${p.tahun_ajaran} Semester ${p.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'}`,
+          tahun_ajaran: p.tahun_ajaran,
+          semester: p.semester,
+          tanggal_rapot: p.tanggal_selesai || null,
+          tanggal_mulai: p.tanggal_mulai,
+          tanggal_selesai: p.tanggal_selesai,
+          is_aktif: p.is_aktif,
+          rapot_input_dibuka: p.rapot_input_dibuka,
+          created_at: p.created_at || '',
+          updated_at: p.updated_at || '',
+        }))
+        setPeriodeList(mapped)
+      }
+    } catch (err: any) {
+      setPeriodeError(err.message || 'Terjadi kesalahan sistem saat memuat periode akademik')
+      setPeriodeAktif(null)
+    } finally {
+      setPeriodeLoading(false)
     }
-  }
+  }, [])
 
   const resetFormPeriode = () => {
     setFormPeriodeNama(''); setFormPeriodeTahunAjaran(''); setFormPeriodeSemester('genap')
@@ -365,7 +417,8 @@ export function useAdminRapot(params: {
   }
 
   return {
-    periodeList, showFormPeriode, setShowFormPeriode, editPeriodeId,
+    periodeList, periodeAktif, periodeLoading, periodeError,
+    showFormPeriode, setShowFormPeriode, editPeriodeId,
     formPeriodeNama, setFormPeriodeNama, formPeriodeTahunAjaran, setFormPeriodeTahunAjaran,
     formPeriodeSemester, setFormPeriodeSemester, formPeriodeTanggal, setFormPeriodeTanggal,
     formPeriodeAktif, setFormPeriodeAktif,

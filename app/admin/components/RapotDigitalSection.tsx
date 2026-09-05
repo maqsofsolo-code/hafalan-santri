@@ -1,4 +1,5 @@
 'use client'
+import { useEffect } from 'react'
 import { getKelasOptions, jenjangLabel } from '../utils'
 import type { useAdminRapot } from '../hooks/useAdminRapot'
 
@@ -19,6 +20,12 @@ export function RapotDigitalSection(props: {
   bukaLaporanHTML: (url: string) => void
 }) {
   const { rapot, loading, successMsg, errorMsg, bukaLaporanHTML } = props
+
+  useEffect(() => {
+    if (!rapot.periodeAktif && !rapot.periodeLoading) {
+      rapot.fetchPeriode()
+    }
+  }, [rapot])
 
   return (
     <div>
@@ -48,7 +55,7 @@ export function RapotDigitalSection(props: {
 
       {/* TAB: PERIODE */}
       {rapot.rapotActiveTab === 'periode' && (() => {
-        const periodeAktif = rapot.periodeList.find(p => p.is_aktif)
+        const periodeAktif = rapot.periodeAktif || rapot.periodeList.find(p => p.is_aktif)
         return (
           <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
             <h3 className="font-bold text-gray-800 text-lg mb-2">Periode Akademik & Jendela Input Nilai</h3>
@@ -59,21 +66,42 @@ export function RapotDigitalSection(props: {
             {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm font-medium">✓ {successMsg}</div>}
             {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm font-medium">{errorMsg}</div>}
 
-            {periodeAktif ? (
+            {rapot.periodeLoading ? (
+              <div className="p-8 text-center text-gray-500 text-sm">
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-2"></div>
+                <div>Memuat periode akademik aktif...</div>
+              </div>
+            ) : rapot.periodeError ? (
+              <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-sm space-y-3">
+                <div className="font-bold flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>Gagal Memuat Periode Akademik</span>
+                </div>
+                <div>{rapot.periodeError}</div>
+                <button
+                  onClick={() => rapot.fetchPeriode()}
+                  className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-semibold hover:bg-rose-700 transition shadow-sm"
+                >
+                  Coba Lagi
+                </button>
+              </div>
+            ) : periodeAktif ? (
               <div className="p-5 rounded-2xl border-2 border-blue-200 bg-blue-50/50 space-y-4">
                 <div className="flex justify-between items-start flex-wrap gap-3">
                   <div>
                     <div className="text-xs font-bold text-blue-600 uppercase tracking-wider">Periode Akademik Aktif</div>
                     <div className="text-xl font-bold text-gray-800 mt-0.5">
-                      Tahun Ajaran {periodeAktif.tahun_ajaran} — Semester {periodeAktif.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'}
+                      Tahun Ajaran {periodeAktif.tahun_ajaran} — Semester {typeof periodeAktif.semester === 'number' ? (periodeAktif.semester === 1 ? '1' : '2') : periodeAktif.semester}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Rentang: {periodeAktif.tanggal_mulai || '-'} s/d {periodeAktif.tanggal_selesai || '-'}
+                    <div className="text-xs text-gray-600 mt-1 flex items-center gap-3">
+                      <span>Status Semester: <strong className="text-emerald-700 font-semibold">Aktif</strong></span>
+                      <span>•</span>
+                      <span>Rentang: {periodeAktif.tanggal_mulai || '-'} s/d {periodeAktif.tanggal_selesai || '-'}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${periodeAktif.rapot_input_dibuka ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
-                      STATUS: {periodeAktif.rapot_input_dibuka ? 'DIBUKA' : 'DITUTUP'}
+                      Jendela Input Nilai: {periodeAktif.rapot_input_dibuka ? 'Dibuka' : 'Ditutup'}
                     </span>
                   </div>
                 </div>
