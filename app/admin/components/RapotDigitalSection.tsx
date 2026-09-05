@@ -47,89 +47,60 @@ export function RapotDigitalSection(props: {
       </div>
 
       {/* TAB: PERIODE */}
-      {rapot.rapotActiveTab === 'periode' && (
-        <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-gray-800">Daftar Periode Rapot</h3>
-            <button onClick={() => { rapot.resetFormPeriode(); rapot.setShowFormPeriode(true) }}
-              className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-              + Tambah
-            </button>
-          </div>
+      {rapot.rapotActiveTab === 'periode' && (() => {
+        const periodeAktif = rapot.periodeList.find(p => p.is_aktif)
+        return (
+          <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+            <h3 className="font-bold text-gray-800 text-lg mb-2">Periode Akademik & Jendela Input Nilai</h3>
+            <p className="text-gray-500 text-xs mb-5">
+              Semester resmi dikelola oleh sistem Periode Akademik. Di sini Admin mengontrol apakah Guru/Wali Kelas diizinkan menginput nilai rapot.
+            </p>
 
-          {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✓ {successMsg}</div>}
+            {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm font-medium">✓ {successMsg}</div>}
+            {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm font-medium">{errorMsg}</div>}
 
-          {rapot.showFormPeriode && (
-            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 mb-4">
-              <h4 className="font-bold text-gray-800 mb-3">{rapot.editPeriodeId ? 'Edit Periode' : 'Tambah Periode Baru'}</h4>
-              <div className="space-y-3">
-                <input placeholder="Nama Periode (misal: Semester Genap 2025/2026)"
-                  value={rapot.formPeriodeNama} onChange={e => rapot.setFormPeriodeNama(e.target.value)} className={inputClass} />
-                <input placeholder="Tahun Ajaran (misal: 1446-1447 H / 2025-2026 M)"
-                  value={rapot.formPeriodeTahunAjaran} onChange={e => rapot.setFormPeriodeTahunAjaran(e.target.value)} className={inputClass} />
-                <div className="grid grid-cols-2 gap-3">
+            {periodeAktif ? (
+              <div className="p-5 rounded-2xl border-2 border-blue-200 bg-blue-50/50 space-y-4">
+                <div className="flex justify-between items-start flex-wrap gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Semester</label>
-                    <select value={rapot.formPeriodeSemester} onChange={e => rapot.setFormPeriodeSemester(e.target.value)} className={inputClass}>
-                      <option value="ganjil">Ganjil</option>
-                      <option value="genap">Genap</option>
-                    </select>
+                    <div className="text-xs font-bold text-blue-600 uppercase tracking-wider">Periode Akademik Aktif</div>
+                    <div className="text-xl font-bold text-gray-800 mt-0.5">
+                      Tahun Ajaran {periodeAktif.tahun_ajaran} — Semester {periodeAktif.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Rentang: {periodeAktif.tanggal_mulai || '-'} s/d {periodeAktif.tanggal_selesai || '-'}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Tanggal Rapot</label>
-                    <input type="date" value={rapot.formPeriodeTanggal} onChange={e => rapot.setFormPeriodeTanggal(e.target.value)} className={inputClass} />
+                  <div className="flex items-center gap-2">
+                    <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${periodeAktif.rapot_input_dibuka ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                      STATUS: {periodeAktif.rapot_input_dibuka ? 'DIBUKA' : 'DITUTUP'}
+                    </span>
                   </div>
                 </div>
-                <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-xl border border-blue-200">
-                  <div onClick={() => rapot.setFormPeriodeAktif(!rapot.formPeriodeAktif)}
-                    className={`w-10 h-5 rounded-full transition-all flex-shrink-0 ${rapot.formPeriodeAktif ? 'bg-blue-600' : 'bg-gray-300'}`}>
-                    <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-all ${rapot.formPeriodeAktif ? 'ml-5' : 'ml-0.5'}`} />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700">Jadikan Periode Aktif</div>
-                    <div className="text-xs text-gray-400">Guru akan input nilai untuk periode ini</div>
-                  </div>
-                </label>
-              </div>
-              {errorMsg && <p className="text-red-500 mt-2 text-sm">{errorMsg}</p>}
-              <div className="flex gap-2 mt-4">
-                <button onClick={rapot.editPeriodeId ? rapot.handleUpdatePeriode : rapot.handleTambahPeriode} disabled={loading}
-                  className={btnPrimary} style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                  {loading ? 'Menyimpan...' : rapot.editPeriodeId ? 'Update' : 'Simpan'}
-                </button>
-                <button onClick={() => { rapot.setShowFormPeriode(false); rapot.resetFormPeriode() }}
-                  className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl text-sm">Batal</button>
-              </div>
-            </div>
-          )}
 
-          <div className="space-y-3">
-            {rapot.periodeList.length === 0 && (
-              <div className="text-center text-gray-400 py-8 text-sm">Belum ada periode — klik Tambah</div>
+                <div className="pt-3 border-t border-blue-100 flex items-center justify-between flex-wrap gap-3">
+                  <div className="text-xs text-gray-600 max-w-md">
+                    {periodeAktif.rapot_input_dibuka
+                      ? 'Wali Kelas saat ini DIIZINKAN menginput dan mengedit nilai rapot kelas masing-masing.'
+                      : 'Wali Kelas saat ini TIDAK DAPAT menginput nilai. Hanya Admin yang dapat menulis nilai saat jendela ditutup.'}
+                  </div>
+                  <button
+                    onClick={() => rapot.handleToggleWindow(periodeAktif.id, !!periodeAktif.rapot_input_dibuka)}
+                    disabled={loading}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow transition disabled:opacity-50 ${periodeAktif.rapot_input_dibuka ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                  >
+                    {loading ? 'Memproses...' : periodeAktif.rapot_input_dibuka ? 'Tutup Input Nilai' : 'Buka Input Nilai'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-center text-amber-800 text-sm">
+                Belum ada periode akademik yang diaktifkan. Silakan aktifkan semester pada modul Periode Akademik.
+              </div>
             )}
-            {rapot.periodeList.map(p => (
-              <div key={p.id} className={`p-4 rounded-xl border-2 ${p.is_aktif ? 'border-blue-400 bg-blue-50' : 'border-gray-100 bg-white'}`}>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
-                      {p.nama}
-                      {p.is_aktif && <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">Aktif</span>}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {p.tahun_ajaran} • Semester {p.semester.charAt(0).toUpperCase() + p.semester.slice(1)}
-                      {p.tanggal_rapot && ` • ${new Date(p.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => rapot.handleEditPeriode(p)} className="text-blue-500 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-50">Edit</button>
-                    <button onClick={() => rapot.handleHapusPeriode(p.id)} className="text-red-400 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50">Hapus</button>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* TAB: INPUT NILAI */}
       {rapot.rapotActiveTab === 'input' && (
@@ -235,32 +206,16 @@ export function RapotDigitalSection(props: {
 
               {rapot.rapotInputSantri && rapot.rapotKelasSnapshot && (
                 <>
-                  <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
-                    <p className="text-sm font-bold text-gray-700 mb-3">A. Hifzhul Qur&apos;an</p>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Kelancaran (60-95)</label>
-                        <input type="number" min="60" max="95" value={rapot.rapotNilai.kelancaran || ''}
-                          onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, kelancaran: e.target.value})}
-                          placeholder="misal: 85" className={inputClass} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Tajwid (60-95)</label>
-                        <input type="number" min="60" max="95" value={rapot.rapotNilai.tajwid || ''}
-                          onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, tajwid: e.target.value})}
-                          placeholder="misal: 80" className={inputClass} />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Keterangan Hafalan</label>
-                      <input type="text" value={rapot.rapotNilai.keterangan_hafalan || ''}
-                        onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, keterangan_hafalan: e.target.value})}
-                        placeholder="misal: 3,5 juz dari An-Nas hingga Al-Qomar" className={inputClass} />
+                  <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <p className="text-sm font-bold text-gray-700 mb-1">A. Hifzhul Qur&apos;an</p>
+                    <div className="p-3 bg-white rounded-lg border border-gray-200 text-xs text-gray-600 flex items-center gap-2">
+                      <span className="text-blue-500 font-bold text-base">ℹ️</span>
+                      <span>Nilai Hifzh akan diambil otomatis dari Raport Hifzh. Input manual dinonaktifkan pada Phase 1.</span>
                     </div>
                   </div>
 
                   <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah</p>
+                    <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah (Raw 0–100)</p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { key: 'aqidah', label: 'Aqidah' },
@@ -272,16 +227,16 @@ export function RapotDigitalSection(props: {
                       ].map(m => (
                         <div key={m.key}>
                           <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                          <input type="number" min="60" max="95" value={rapot.rapotNilai[m.key] || ''}
+                          <input type="number" min="0" max="100" value={rapot.rapotNilai[m.key] ?? ''}
                             onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, [m.key]: e.target.value})}
-                            placeholder="60-95" className={inputClass} />
+                            placeholder="0-100" className={inputClass} />
                         </div>
                       ))}
                     </div>
                   </div>
 
                   <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
-                    <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum</p>
+                    <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum (Raw 0–100)</p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { key: 'bhs_indonesia', label: 'Bahasa Indonesia' },
@@ -291,9 +246,9 @@ export function RapotDigitalSection(props: {
                       ].map(m => (
                         <div key={m.key}>
                           <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                          <input type="number" min="60" max="95" value={rapot.rapotNilai[m.key] || ''}
+                          <input type="number" min="0" max="100" value={rapot.rapotNilai[m.key] ?? ''}
                             onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, [m.key]: e.target.value})}
-                            placeholder="60-95" className={inputClass} />
+                            placeholder="0-100" className={inputClass} />
                         </div>
                       ))}
                     </div>

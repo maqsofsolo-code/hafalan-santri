@@ -78,12 +78,42 @@ export type SetoranRiwayat = {
   guru_pengganti?: boolean | null
 }
 
-/** Periode rapot aktif (tabel periode_rapot). */
-export type PeriodeRapot = {
+/** Periode akademik resmi (tabel periode_akademik). */
+export type PeriodeAkademik = {
+  id: string
+  tahun_ajaran: string
+  semester: number
+  tanggal_mulai?: string
+  tanggal_selesai?: string
+  is_aktif: boolean
+  rapot_input_dibuka: boolean
+}
+
+/** Legacy alias untuk kompatibilitas */
+export type PeriodeRapot = PeriodeAkademik & {
+  nama?: string
+}
+
+export type WaliKelasAssignmentItem = {
+  id: string
+  jenjang: string
+  kelas_num: number
+  jenis_kelas: string
+  is_aktif: boolean
+}
+
+export type SantriRapotItem = {
   id: string
   nama: string
-  tahun_ajaran?: string
-  is_aktif?: boolean
+  nisn?: string | null
+  kelas_num: number
+  jenjang: string
+  jenis_kelas: string
+  status: string
+  total_hafalan_juz?: number | null
+  has_nilai: boolean
+  nilai_id?: string | null
+  nilai?: any
 }
 
 /** Form input nilai rapot -- field dinamis (angka sebagai string dari <input>, huruf A/B/C dari <select>). */

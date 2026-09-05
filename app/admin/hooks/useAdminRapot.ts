@@ -24,6 +24,8 @@ import type { NilaiRapotForm, PeriodeRapot, RapotNilaiApiRow, RapotRekapRow, San
 // Field form Periode sendiri (formPeriodeNama dst) TIDAK dibagi dengan
 // Guru/Wali/Santri/Kalender di kode asli (nama field berbeda), jadi dipegang
 // langsung oleh hook ini, bukan oleh useAdminEntityForm.
+import { fetchWithAuth } from '../../lib/authClient'
+
 export function useAdminRapot(params: {
   setLoading: (v: boolean) => void
   setErrorMsg: (msg: string) => void
@@ -64,8 +66,29 @@ export function useAdminRapot(params: {
   const [rapotRekapLoading, setRapotRekapLoading] = useState(false)
 
   const fetchPeriode = async () => {
-    const { data } = await supabase.from('periode_rapot').select('*').order('created_at', { ascending: false })
-    setPeriodeList(data || [])
+    const { data } = await supabase
+      .from('periode_akademik')
+      .select('*')
+      .order('created_at', { ascending: false })
+    const mapped: PeriodeRapot[] = (data || []).map(p => ({
+      ...p,
+      id: p.id,
+      nama: `${p.tahun_ajaran} Semester ${p.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'}`,
+      tahun_ajaran: p.tahun_ajaran,
+      semester: p.semester,
+      tanggal_rapot: p.tanggal_selesai || null,
+      tanggal_mulai: p.tanggal_mulai,
+      tanggal_selesai: p.tanggal_selesai,
+      is_aktif: p.is_aktif,
+      rapot_input_dibuka: p.rapot_input_dibuka,
+      created_at: p.created_at || '',
+      updated_at: p.updated_at || '',
+    }))
+    setPeriodeList(mapped)
+    const aktif = mapped.find(p => p.is_aktif)
+    if (aktif && !rapotInputPeriodeId) {
+      setRapotInputPeriodeId(aktif.id)
+    }
   }
 
   const resetFormPeriode = () => {
@@ -73,48 +96,33 @@ export function useAdminRapot(params: {
     setFormPeriodeTanggal(''); setFormPeriodeAktif(false); setEditPeriodeId(null)
   }
 
-  // ===== PERIODE RAPOT =====
-  const handleTambahPeriode = async () => {
+  // ===== TOGGLE WINDOW INPUT RAPOT (ADMIN CONTROL) =====
+  const handleToggleWindow = async (targetPeriodeId: string, currentStatus: boolean) => {
     setLoading(true); setErrorMsg('')
-    if (!formPeriodeNama || !formPeriodeTahunAjaran) { setErrorMsg('Nama dan tahun ajaran wajib diisi!'); setLoading(false); return }
-    if (formPeriodeAktif) {
-      await supabase.from('periode_rapot').update({ is_aktif: false }).eq('is_aktif', true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setErrorMsg('Sesi login tidak valid')
+        setLoading(false)
+        return
+      }
+      const res = await fetchWithAuth('/api/rapot-digital/toggle-window', session.access_token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periode_id: targetPeriodeId, rapot_input_dibuka: !currentStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Gagal mengubah status jendela input')
+      } else {
+        setSuccessMsg(`Status input nilai berhasil ${!currentStatus ? 'dibuka' : 'ditutup'}!`)
+        fetchPeriode()
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message)
+    } finally {
+      setLoading(false)
     }
-    const { error } = await supabase.from('periode_rapot').insert({
-      nama: formPeriodeNama, tahun_ajaran: formPeriodeTahunAjaran,
-      semester: formPeriodeSemester, tanggal_rapot: formPeriodeTanggal || null,
-      is_aktif: formPeriodeAktif
-    })
-    if (error) { setErrorMsg(error.message); setLoading(false); return }
-    setSuccessMsg('Periode berhasil ditambahkan!')
-    setShowFormPeriode(false); resetFormPeriode(); fetchPeriode(); setLoading(false)
-  }
-
-  const handleUpdatePeriode = async () => {
-    setLoading(true); setErrorMsg('')
-    if (formPeriodeAktif) {
-      await supabase.from('periode_rapot').update({ is_aktif: false }).eq('is_aktif', true)
-    }
-    const { error } = await supabase.from('periode_rapot').update({
-      nama: formPeriodeNama, tahun_ajaran: formPeriodeTahunAjaran,
-      semester: formPeriodeSemester, tanggal_rapot: formPeriodeTanggal || null,
-      is_aktif: formPeriodeAktif
-    }).eq('id', editPeriodeId)
-    if (error) { setErrorMsg(error.message); setLoading(false); return }
-    setSuccessMsg('Periode berhasil diupdate!')
-    setShowFormPeriode(false); setEditPeriodeId(null); resetFormPeriode(); fetchPeriode(); setLoading(false)
-  }
-
-  const handleHapusPeriode = async (id: string) => {
-    if (!confirm('Yakin hapus periode ini?')) return
-    await supabase.from('periode_rapot').delete().eq('id', id); fetchPeriode()
-  }
-
-  const handleEditPeriode = (p: PeriodeRapot) => {
-    setEditPeriodeId(p.id); setFormPeriodeNama(p.nama)
-    setFormPeriodeTahunAjaran(p.tahun_ajaran); setFormPeriodeSemester(p.semester)
-    setFormPeriodeTanggal(p.tanggal_rapot || ''); setFormPeriodeAktif(p.is_aktif)
-    setShowFormPeriode(true)
   }
 
   // Klik tab utama Rapot Digital (Periode/Input/Rekap/Download) -- selalu
@@ -225,47 +233,42 @@ export function useAdminRapot(params: {
   const handleSimpanRapotAdmin = async () => {
     if (!rapotInputSantri || !rapotInputPeriodeId) return
     setRapotInputLoading(true); setRapotInputMsg('')
-    const dataRapot = {
-      santri_id: rapotInputSantri.id,
-      periode_id: rapotInputPeriodeId,
-      guru_id: rapotInputSantri.guru_id || null,
-      kelas_snapshot: rapotKelasSnapshot ? parseInt(rapotKelasSnapshot) : null,
-      jenjang_snapshot: rapotJenjangSnapshot || null,
-      kelancaran: parseInt(String(rapotNilai.kelancaran)) || null,
-      tajwid: parseInt(String(rapotNilai.tajwid)) || null,
-      keterangan_hafalan: rapotNilai.keterangan_hafalan || null,
-      aqidah: parseInt(String(rapotNilai.aqidah)) || null,
-      akhlak: parseInt(String(rapotNilai.akhlak)) || null,
-      fiqh: parseInt(String(rapotNilai.fiqh)) || null,
-      bhs_arab: parseInt(String(rapotNilai.bhs_arab)) || null,
-      siroh: parseInt(String(rapotNilai.siroh)) || null,
-      khoth: parseInt(String(rapotNilai.khoth)) || null,
-      bhs_indonesia: parseInt(String(rapotNilai.bhs_indonesia)) || null,
-      berhitung: parseInt(String(rapotNilai.berhitung)) || null,
-      ipa: parseInt(String(rapotNilai.ipa)) || null,
-      ips: parseInt(String(rapotNilai.ips)) || null,
-      akhlak_kepribadian: rapotNilai.akhlak_kepribadian,
-      kebersihan: rapotNilai.kebersihan,
-      ketertiban: rapotNilai.ketertiban,
-      ekskul_renang: parseInt(String(rapotNilai.ekskul_renang)) || null,
-      ekskul_beladiri: rapotNilai.ekskul_beladiri || null,
-      hadir_sakit: parseInt(String(rapotNilai.hadir_sakit)) || 0,
-      hadir_izin: parseInt(String(rapotNilai.hadir_izin)) || 0,
-      hadir_alpha: parseInt(String(rapotNilai.hadir_alpha)) || 0,
-      catatan: rapotNilai.catatan || null,
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setRapotInputMsg('Sesi login tidak valid')
+        setRapotInputLoading(false)
+        return
+      }
+
+      const payload = {
+        santri_id: rapotInputSantri.id,
+        periode_id: rapotInputPeriodeId,
+        nilai: rapotNilai,
+      }
+
+      const res = await fetchWithAuth('/api/rapot-digital/nilai', session.access_token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const resData = await res.json()
+      if (!res.ok) {
+        setRapotInputMsg('Gagal: ' + (resData.error || 'Gagal menyimpan nilai rapot'))
+        setRapotInputLoading(false)
+        return
+      }
+
+      setRapotInputMsg('✓ Nilai rapot berhasil disimpan!')
+      setRapotExistingId(resData.nilai?.id || null)
+      fetchNilaiRapotAdmin(rapotInputSantri.id, rapotInputPeriodeId, rapotKelasSnapshot)
+    } catch (err: any) {
+      setRapotInputMsg('Gagal: ' + err.message)
+    } finally {
+      setRapotInputLoading(false)
     }
-    let error
-    if (rapotExistingId) {
-      const res = await supabase.from('nilai_rapot').update(dataRapot).eq('id', rapotExistingId)
-      error = res.error
-    } else {
-      const res = await supabase.from('nilai_rapot').insert(dataRapot)
-      error = res.error
-    }
-    if (error) { setRapotInputMsg('Gagal: ' + error.message); setRapotInputLoading(false); return }
-    setRapotInputMsg('✓ Nilai rapot berhasil disimpan!')
-    setRapotInputLoading(false)
-    fetchNilaiRapotAdmin(rapotInputSantri.id, rapotInputPeriodeId, rapotKelasSnapshot)
   }
 
   // ===== REKAP KELAS =====
@@ -373,7 +376,7 @@ export function useAdminRapot(params: {
     rapotDownloadSearch, setRapotDownloadSearch, rapotDownloadSantri, rapotDownloadKelas, setRapotDownloadKelas, rapotDownloadJenjang,
     rapotRekapPeriodeId, rapotRekapJenjang, rapotRekapKelas, rapotRekapData, rapotRekapLoading,
     fetchPeriode, resetFormPeriode,
-    handleTambahPeriode, handleUpdatePeriode, handleHapusPeriode, handleEditPeriode,
+    handleToggleWindow,
     handleSelectRapotTab,
     handleSelectRapotInputPeriode, handlePilihRapotInputSantri, handleBatalkanRapotInputSantri,
     handleGantiRapotJenjangSnapshot, handleGantiRapotKelasSnapshot, handleSimpanRapotAdmin,

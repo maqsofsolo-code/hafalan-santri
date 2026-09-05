@@ -82,45 +82,39 @@ function jenisKelasUntukWaliKelas(jenisKelas: string | null | undefined): JenisK
   return null
 }
 
-// Wali kelas dicari dari profiles.is_wali_kelas + wali_kelas_num + wali_kelas_jenis -- BUKAN dari
-// santri.guru_id/guru_id_2 (itu Pentasmi'/Guru Musami', peran berbeda, lihat audit sebelumnya).
-// Tidak ada dimensi periode pada is_wali_kelas saat ini, jadi ini selalu assignment TERKINI --
-// keterbatasan model data yang ada, bukan bug di fungsi ini.
+// Wali kelas dicari dari wali_kelas_assignment + periode_id (BUKAN profiles.is_wali_kelas legacy)
 async function cariNamaWaliKelas(
   kelasNum: number | null | undefined,
   jenisKelasSantri: string | null | undefined,
+  periodeId?: string | null,
 ): Promise<string> {
-  const jenisWali = jenisKelasUntukWaliKelas(jenisKelasSantri)
-  if (!kelasNum || !jenisWali) return 'Belum ditentukan'
+  if (!kelasNum || !jenisKelasSantri || !periodeId) return 'Belum ditentukan'
 
   const { data, error } = await supabase
-    .from('profiles')
-    .select('nama')
-    .eq('role', 'guru')
-    .eq('is_wali_kelas', true)
-    .eq('wali_kelas_num', kelasNum)
-    .eq('wali_kelas_jenis', jenisWali)
+    .from('wali_kelas_assignment')
+    .select('guru:guru_id(nama)')
+    .eq('periode_id', periodeId)
+    .eq('kelas_num', kelasNum)
+    .eq('jenis_kelas', jenisKelasSantri)
+    .eq('is_aktif', true)
+    .maybeSingle()
 
   if (error) {
-    console.error(`[rapot-pdf] Gagal memuat wali kelas untuk kelas ${kelasNum} ${jenisWali}:`, error.message)
+    console.error(`[rapot-pdf] Gagal memuat wali kelas untuk kelas ${kelasNum} ${jenisKelasSantri}:`, error.message)
     return 'Belum ditentukan'
   }
-  if (!data || data.length === 0) return 'Belum ditentukan'
-  if (data.length > 1) {
-    console.warn(`[rapot-pdf] Data wali kelas ganda untuk kelas ${kelasNum} ${jenisWali}: ${data.map(g => g.nama).join(', ')}`)
-    return 'Data wali kelas ganda'
-  }
-  return data[0].nama?.trim() || 'Belum ditentukan'
+  if (!data || !data.guru) return 'Belum ditentukan'
+  const guruNama = (data.guru as any)?.nama?.trim()
+  return guruNama || 'Belum ditentukan'
 }
 
-// Cache per-request supaya santri dengan kombinasi kelas+jenis yang sama (umum pada mode per-kelas)
-// tidak query profiles berulang-ulang.
-function buatCacheWaliKelas() {
+// Cache per-request supaya santri dengan kombinasi kelas+jenis yang sama tidak query berkali-kali
+function buatCacheWaliKelas(periodeId?: string | null) {
   const cache = new Map<string, Promise<string>>()
-  return (kelasNum: number | null | undefined, jenisKelasSantri: string | null | undefined) => {
-    const jenisWali = jenisKelasUntukWaliKelas(jenisKelasSantri)
-    const key = `${kelasNum ?? 'null'}|${jenisWali ?? 'null'}`
-    if (!cache.has(key)) cache.set(key, cariNamaWaliKelas(kelasNum, jenisKelasSantri))
+  return (kelasNum: number | null | undefined, jenisKelasSantri: string | null | undefined, overridePeriodeId?: string | null) => {
+    const pid = overridePeriodeId || periodeId
+    const key = `${kelasNum ?? 'null'}|${jenisKelasSantri ?? 'null'}|${pid ?? 'null'}`
+    if (!cache.has(key)) cache.set(key, cariNamaWaliKelas(kelasNum, jenisKelasSantri, pid))
     return cache.get(key)!
   }
 }
@@ -140,7 +134,8 @@ function generateHalaman(
 
   const tanggalRapot = periode?.tanggal_rapot
     ? new Date(periode.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-    : '-'
+    : (periode?.tanggal_selesai ? new Date(periode.tanggal_selesai).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-')
+
 
   // Hitung rata-rata
   const dVals = [n?.aqidah, n?.akhlak, n?.fiqh, n?.bhs_arab, n?.siroh, n?.khoth].filter((v: any) => v != null && v > 0)
@@ -214,7 +209,7 @@ function generateHalaman(
               </tr>
               <tr>
                 <td style="padding:2px 0;">Semester</td>
-                <td style="padding:2px 0;">: ${periode?.semester?.toUpperCase() || '-'}</td>
+                <td style="padding:2px 0;">: ${typeof periode?.semester === 'number' ? (periode.semester === 1 ? '1 (Ganjil)' : '2 (Genap)') : (periode?.semester?.toUpperCase() || '-')}</td>
               </tr>
             </table>
           </td>
@@ -429,7 +424,7 @@ export async function GET(request: Request) {
     // Ambil semua nilai rapot santri ini, urutkan dari kelas terkecil
     const { data: semuaNilai } = await supabase
       .from('nilai_rapot')
-      .select('*, periode:periode_id(nama, tahun_ajaran, semester, tanggal_rapot)')
+      .select('*, periode:periode_id(id, tahun_ajaran, semester, tanggal_mulai, tanggal_selesai)')
       .eq('santri_id', santriId)
       .order('kelas_snapshot', { ascending: true })
 
@@ -443,12 +438,9 @@ export async function GET(request: Request) {
       `, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
 
-    // Generate halaman per nilai -- wali kelas dicari per kelas_snapshot (kelas historis rapot itu
-    // sendiri), bukan sekadar kelas santri sekarang, dan di-cache supaya kelas yang sama tidak
-    // query profiles berkali-kali.
-    const getWaliKelas = buatCacheWaliKelas()
+    // Generate halaman per nilai -- wali kelas dicari per kelas_snapshot dan periode_id
     const halaman = await Promise.all(semuaNilai.map((n: any, i: number) =>
-      getWaliKelas(n.kelas_snapshot ?? santri.kelas_num, santri.jenis_kelas)
+      cariNamaWaliKelas(n.kelas_snapshot ?? santri.kelas_num, santri.jenis_kelas, n.periode_id)
         .then(waliKelasNama => generateHalaman(santri, n, n.periode, 1, 1, logoBase64, i === semuaNilai.length - 1, waliKelasNama))
     ))
 
@@ -479,8 +471,10 @@ export async function GET(request: Request) {
   if (!periodeId) return new NextResponse('Parameter tidak lengkap', { status: 400 })
 
   const { data: periode } = await supabase
-    .from('periode_rapot').select('*').eq('id', periodeId).single()
+    .from('periode_akademik').select('*').eq('id', periodeId).single()
   if (!periode) return new NextResponse('Periode tidak ditemukan', { status: 404 })
+
+  const periodeNama = `${periode.tahun_ajaran} Semester ${typeof periode.semester === 'number' ? (periode.semester === 1 ? '1' : '2') : periode.semester}`
 
   // ===== MODE PER SANTRI =====
   if (santriId) {
@@ -496,14 +490,15 @@ export async function GET(request: Request) {
 
     const waliKelasNama = await cariNamaWaliKelas(
       kelasUntukQuery ? parseInt(kelasUntukQuery) : santri.kelas_num,
-      santri.jenis_kelas
+      santri.jenis_kelas,
+      periodeId
     )
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Rapot ${santri.nama} - ${periode.nama}</title>
+  <title>Rapot ${santri.nama} - ${periodeNama}</title>
   <style>
     body { font-family: 'Times New Roman', serif; margin: 0; background: white; }
     @media print { body { margin: 0; } @page { margin: 1cm; size: A4; } }
@@ -590,7 +585,7 @@ export async function GET(request: Request) {
   const peringkatMap: Record<string, number> = {}
   rataList.forEach((item: any, i: number) => { peringkatMap[item.id] = i + 1 })
 
-  const getWaliKelas = buatCacheWaliKelas()
+  const getWaliKelas = buatCacheWaliKelas(periodeId)
   const halaman = await Promise.all(santriList.map((s: any, i: number) =>
     getWaliKelas(parseInt(kelas), s.jenis_kelas)
       .then(waliKelasNama => generateHalaman(s, nilaiMap[s.id] || {}, periode, peringkatMap[s.id] || 1, santriList.length, logoBase64, i === santriList.length - 1, waliKelasNama))
@@ -600,7 +595,7 @@ export async function GET(request: Request) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Rapot Kelas ${kelas} - ${periode.nama}</title>
+  <title>Rapot Kelas ${kelas} - ${periodeNama}</title>
   <style>
     body { font-family: 'Times New Roman', serif; margin: 0; background: white; }
     @media print { body { margin: 0; } @page { margin: 1cm; size: A4; } }

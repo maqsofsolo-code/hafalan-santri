@@ -15,6 +15,7 @@ export type PeriodeAkademik = {
   tanggal_mulai: string
   tanggal_selesai: string
   is_aktif: boolean
+  rapot_input_dibuka?: boolean
   created_at: string
   updated_at: string
 }

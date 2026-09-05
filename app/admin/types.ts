@@ -4,7 +4,7 @@
 // untuk seluruh skema database. Field nullable ditulis nullable sesuai data
 // aslinya, tidak dipaksa non-null demi TypeScript.
 import type { ProfileRow } from '../lib/authClient'
-import type { PenugasanHafalan, WaliKelasAssignment } from '../lib/assignmentTypes'
+import type { PeriodeAkademik, PenugasanHafalan, WaliKelasAssignment } from '../lib/assignmentTypes'
 
 /** Baris profil guru (tabel profiles, role='guru') + kolom yang dipakai halaman Admin. */
 export interface Guru extends ProfileRow {
@@ -83,14 +83,10 @@ export type SetoranHariIni = {
   jenis?: string | null
 }
 
-/** Periode rapot (tabel periode_rapot). */
-export type PeriodeRapot = {
-  id: string
-  nama: string
-  tahun_ajaran: string
-  semester: string
+/** Legacy alias untuk kompatibilitas */
+export type PeriodeRapot = PeriodeAkademik & {
+  nama?: string
   tanggal_rapot?: string | null
-  is_aktif: boolean
 }
 
 /** Form input nilai rapot -- field dinamis (angka sebagai string dari <input>, huruf A/B/C dari <select>). */

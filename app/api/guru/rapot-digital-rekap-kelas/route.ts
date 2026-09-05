@@ -21,8 +21,8 @@ import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
 // peringkat tetap sepenuhnya di client (tidak dipindah), tidak diubah sama
 // sekali.
 export async function GET(request: Request) {
-  const auth = await authorize(request, ['guru'])
-  if (auth.response) return auth.response
+  const auth = await authorize(request, ['guru', 'admin'])
+  if ('response' in auth) return auth.response
 
   const { searchParams } = new URL(request.url)
   const periodeId = searchParams.get('periode_id')
@@ -33,6 +33,40 @@ export async function GET(request: Request) {
   }
 
   const serviceClient = createServiceRoleClient()
+
+  // 1. Verifikasi periode akademik valid
+  const { data: periode, error: periodeErr } = await serviceClient
+    .from('periode_akademik')
+    .select('id')
+    .eq('id', periodeId)
+    .single()
+
+  if (periodeErr || !periode) {
+    return NextResponse.json({ error: 'Periode akademik tidak ditemukan' }, { status: 404 })
+  }
+
+  // 2. Jika Guru, wajib verifikasi penugasan wali_kelas_assignment
+  if (auth.role === 'guru') {
+    const { data: assignment, error: assignErr } = await serviceClient
+      .from('wali_kelas_assignment')
+      .select('id')
+      .eq('guru_id', auth.userId)
+      .eq('periode_id', periodeId)
+      .eq('kelas_num', kelasNum)
+      .eq('is_aktif', true)
+      .maybeSingle()
+
+    if (assignErr) {
+      return NextResponse.json({ error: 'Gagal memverifikasi penugasan: ' + assignErr.message }, { status: 500 })
+    }
+
+    if (!assignment) {
+      return NextResponse.json({
+        error: 'Akses ditolak: Anda bukan Wali Kelas untuk kelas ini pada periode ini.'
+      }, { status: 403 })
+    }
+  }
+
   const KOLOM_NILAI_RAPOT = '*, santri:santri_id(nama, kelas_num, jenjang, status)'
 
   const { data: nilaiSnapshot, error: nilaiSnapshotError } = await serviceClient
