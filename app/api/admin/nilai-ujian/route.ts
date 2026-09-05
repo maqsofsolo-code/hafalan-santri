@@ -401,7 +401,7 @@ export async function PUT(request: Request) {
 
   const { data: kalenderData, error: kalenderError } = await adminClient
     .from('kalender_akademik')
-    .select('id')
+    .select('id, tanggal_mulai')
     .eq('id', kalenderId)
     .maybeSingle()
   if (kalenderError) return responseError('Gagal memverifikasi periode', 500)
@@ -412,12 +412,19 @@ export async function PUT(request: Request) {
   const masterSegments = (masterData || []) as unknown as MasterSegment[]
   if (masterSegments.length !== 151) return responseError('Master segmen ujian belum lengkap', 500)
 
-  const cakupan = getCakupanSegment(santriData as SantriScope, masterSegments)
-  if (!cakupan.lengkap) {
-    return responseError('Data posisi hafalan santri (surah/ayat terakhir) belum lengkap', 422)
+  // Phase C: Resolusi cakupan awal ujian santri untuk periode ujian ini
+  let effectiveSantriScope = santriData as SantriScope
+  const scopeRes = await resolveSantriExamScopes(adminClient, [santriData as SantriScope], kalenderId, kalenderData.tanggal_mulai)
+  if (scopeRes.status === 'CAKUPAN_BELUM_DIKUNCI') {
+    return responseError('Cakupan ujian untuk periode ini belum dikunci oleh Admin.', 422)
   }
-  if (!(String(juz) in cakupan.jumlahSegmenPerJuz)) {
-    return responseError('Juz ini belum dapat diujikan untuk santri ini', 400)
+  if (scopeRes.scopes.length > 0) {
+    effectiveSantriScope = scopeRes.scopes[0]
+  }
+
+  const cakupan = getCakupanSegment(effectiveSantriScope, masterSegments)
+  if (!cakupan.lengkap && cakupan.segmentIds.length > 0) {
+    return responseError('Data posisi hafalan santri (surah/ayat terakhir) belum lengkap', 422)
   }
 
   const segmentIdsJuz = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
@@ -431,7 +438,14 @@ export async function PUT(request: Request) {
         .order('tanggal', { ascending: false })
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
-    : { data: [], error: null }
+    : await adminClient
+        .from('nilai_ujian')
+        .select('segment_ujian_id, nilai_akhir, tanggal, created_at, id')
+        .eq('santri_id', santriId)
+        .eq('kalender_id', kalenderId)
+        .order('tanggal', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
 
   if (nilaiJuzError) return responseError('Gagal memverifikasi status segmen juz', 500)
 
@@ -445,7 +459,10 @@ export async function PUT(request: Request) {
 
   const ringkasanJuz = hitungRingkasanJuz(cakupan, masterSegments, nilaiTerbaruPerSegmenJuz)
   const ringkasanJuzTarget = ringkasanJuz.find(item => item.juz === juz)
-  if (!ringkasanJuzTarget || ringkasanJuzTarget.status !== 'selesai') {
+  if (!ringkasanJuzTarget) {
+    return responseError('Juz ini belum dapat diujikan untuk santri ini', 400)
+  }
+  if (ringkasanJuzTarget.status !== 'selesai') {
     return responseError('Nilai Tajwid hanya dapat diisi setelah seluruh segmen juz ini selesai dinilai', 422)
   }
 

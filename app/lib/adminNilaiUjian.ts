@@ -150,7 +150,42 @@ export function hitungRingkasanJuz(
   masterSegments: MasterSegment[],
   nilaiTerbaruPerSegmen: Map<string, number>
 ): RingkasanJuz[] {
-  return Object.entries(cakupan.jumlahSegmenPerJuz).map(([juzText, target]) => {
+  const entries = Object.entries(cakupan.jumlahSegmenPerJuz)
+
+  // Kasus Generik: Scope resmi checkpoint = 0 full required segment (e.g. santri baru / hafalan awal),
+  // tetapi santri memiliki actual tested partial exam score(s) yang valid pada periode ujian ini.
+  if (entries.length === 0 && nilaiTerbaruPerSegmen.size > 0) {
+    const juzMap = new Map<number, { count: number, sumRaw: number, sumRaport: number, segmentIds: string[] }>()
+    nilaiTerbaruPerSegmen.forEach((val, segId) => {
+      const seg = masterSegments.find(s => s.id === segId)
+      if (seg) {
+        if (!juzMap.has(seg.juz)) {
+          juzMap.set(seg.juz, { count: 0, sumRaw: 0, sumRaport: 0, segmentIds: [] })
+        }
+        const data = juzMap.get(seg.juz)!
+        data.count += 1
+        data.sumRaw += val
+        data.sumRaport += Math.min(9.0, val)
+        data.segmentIds.push(segId)
+      }
+    })
+
+    return Array.from(juzMap.entries()).map(([juz, data]) => {
+      const rata = data.count > 0 ? (data.sumRaw / data.count) : null
+      const rataRaport = data.count > 0 ? (data.sumRaport / data.count) : null
+      return {
+        juz,
+        target: data.count,
+        dinilai: data.count,
+        rata,
+        rataRaport,
+        status: 'selesai' as StatusJuz,
+        segmentIds: data.segmentIds,
+      }
+    }).sort((a, b) => b.juz - a.juz)
+  }
+
+  return entries.map(([juzText, target]) => {
     const juz = Number(juzText)
     const segmentIds = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
 

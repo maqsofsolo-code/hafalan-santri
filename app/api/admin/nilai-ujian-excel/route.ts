@@ -267,7 +267,7 @@ export async function GET(request: Request) {
   const santriKomputasi = resolvedSantriList.map(santri => {
     const cakupan = getCakupanSegment(santri, masterSegments)
     const nilaiPerSegmen = nilaiTerbaruPerSantri.get(santri.id) || new Map<string, number>()
-    const juzList = cakupan.lengkap ? hitungRingkasanJuz(cakupan, masterSegments, nilaiPerSegmen) : []
+    const juzList = (cakupan.lengkap || nilaiPerSegmen.size > 0) ? hitungRingkasanJuz(cakupan, masterSegments, nilaiPerSegmen) : []
     const statusUjian = hitungStatusUjian(juzList)
 
     const juzNilai = new Map<number, number | null>()

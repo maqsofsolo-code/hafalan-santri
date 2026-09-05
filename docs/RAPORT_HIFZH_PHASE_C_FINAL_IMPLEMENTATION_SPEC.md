@@ -250,6 +250,15 @@ Red block nama surat pada tabel Rapot ditentukan berdasarkan **NILAI PER SEGMEN*
 
 Required scope Semester Gasal ditentukan dari baseline **1 Agustus 2026**.
 
+Semua penentuan:
+- required segment
+- target per juz
+- completion status
+- izin input Tajwid
+
+pada seluruh jalur Guru dan Admin Nilai Ujian (`app/api/nilai-ujian/route.ts`, `app/api/admin/nilai-ujian/route.ts`, `app/api/admin/nilai-ujian-excel/route.ts`) **WAJIB** berasal dari resolver snapshot periode ujian:
+`resolveSantriExamScopes` / `santri_hafalan_exam_snapshot`, **BUKAN** posisi hafalan live santri setelah cutoff. Setoran santri setelah cutoff tidak boleh memperbesar scope ujian.
+
 Future exam:
 
 1. jika snapshot ada → pakai snapshot
@@ -332,32 +341,23 @@ Status juz ditentukan oleh **required segments santri**, bukan semua segmen stan
 
 # 10. TAJWID — RULE FINAL
 
-Tajwid wajib dinilai **hanya untuk FULL JUZ**.
+Perlakuan Tajwid membedakan secara tegas antara **FULL JUZ** dan **PARTIAL JUZ**:
 
-## Full Juz
+## A. Full Juz
+Jika seluruh segmen standar juz memang sudah menjadi hafalan penuh santri:
+- Seluruh required segment selesai dinilai $\rightarrow$ Tajwid **boleh diinput**.
+- Tajwid **WAJIB** diisi.
+- Missing Tajwid pada hasil final Raport $\rightarrow$ menjadi `0` merah sesuai rule existing.
+- Pada UI, reminder banner kuning (`juzBelumTajwid`) aktif mengingatkan guru untuk melengkapi.
 
-Jika seluruh segmen standar juz memang sudah menjadi hafalan penuh dan Kelancaran selesai:
-
-```text
-FULL JUZ + Tajwid kosong
-=> missing Tajwid
-=> wajib dilengkapi
-=> pada hasil final Raport dapat menjadi 0 merah jika tetap kosong
-```
-
-## Partial Juz
-
-Jika santri hanya memiliki sebagian juz:
-
-```text
-PARTIAL JUZ + semua required segment partial selesai
-=> nilai Kelancaran sah
-=> Tajwid BELUM WAJIB
-=> Tajwid kosong = normal
-=> blank pada bagian Tajwid
-=> bukan 0
-=> bukan missing
-```
+## B. Partial Juz
+Jika santri hanya memiliki sebagian segmen juz (misal Ali bin Hasan Juz 29 target 3, Ibrahim Juz 29 target 3, Muh. Fakih Juz 29 target 2):
+- Seluruh required partial segment selesai dinilai $\rightarrow$ Tajwid **BOLEH diinput** (tombol/form input Tajwid terbuka pada UI Guru dan API).
+- Tajwid **TIDAK WAJIB**:
+  - Jika belum diinput $\rightarrow$ Rapot Tajwid partial tetap **blank/null** (bukan 0, dan tidak dianggap missing wajib).
+  - Jika guru/admin menginput nilai Tajwid $\rightarrow$ nilai tersebut **ditampilkan di Rapot**.
+- Partial juz belum selesai $\rightarrow$ Tajwid **belum boleh diinput**.
+- Reminder `juzBelumTajwid` (banner kuning) **TIDAK** memunculkan partial juz.
 
 Audit terakhir menghasilkan referensi operasional:
 
@@ -447,21 +447,27 @@ Jangan mengandalkan count lama jika status santri berubah.
 
 # 14. KASUS KHUSUS
 
-## Salim Al Kautsar
+## Salim Al Kautsar (Scope Full = 0 + Actual Partial Exam)
 
-Fakta bisnis:
+Business Rule Final (Generik):
+Jika locked checkpoint santri belum mencapai satu full master segment (scope full = 0), tetapi terdapat nilai ujian partial riil yang valid dari guru pada periode ujian tersebut:
+- nilai tersebut **tetap diakui sebagai NILAI UJIAN KHUSUS santri**.
+- **JANGAN** mempromosikan seluruh master segment tersebut menjadi required segment penuh untuk santri.
+- actual tested range tetap menjadi batas: surat di luar tested range **tidak** menjadi required dan **tidak di-red-block**.
+- santri **eligible ranking** (menggunakan nilai ujian riil tersebut).
+- santri **tidak dianggap belum ada hasil / provisional** hanya karena full required scope = 0.
+- status ujian santri dianggap **SELESAI** jika ujian partialnya sudah tuntas dinilai.
+- Tajwid partial: jika belum diisi $\rightarrow$ blank/null; jika diisi guru $\rightarrow$ ditampilkan di Rapot.
 
-- hafalannya sangat sedikit, sekitar An-Nas sampai An-Nasr
-- belum mencapai satu required segment penuh pada baseline
-- required official scope = 0
-- ada nilai formatif Kelancaran/Tajwid yang pernah diinput guru
-
-Treatment:
-
-- raw history dipertahankan
-- jangan delete
-- jangan dianggap gagal ujian
-- jangan masukkan nilai outside official scope ke denominator resmi
+Contoh production:
+Salim Al Kautsar (Kelas 1 Banin)
+- locked snapshot: 0 required full segment
+- valid partial exam: 6.3 (diuji pada Juz 30 Segmen 1, rentang An-Nas 114:6 s.d. An-Nashr 110:1)
+- overall score = 6.3
+- Kelancaran Juz 30 = 6.3 $\rightarrow$ Rapot 63 (hitam eksplisit $\ge 60$)
+- Tajwid Juz 30: guru menginput 6.5 $\rightarrow$ Rapot 65
+- ranking eligible (peringkat 10 dari 10 santri Kelas 1 Banin)
+- jumlahBelumAdaHasil Kelas 1 Banin = 0 (Peringkat Kelas Final, bukan Sementara).
 
 ## Luqman Kelas 10
 

@@ -149,6 +149,7 @@ const SEL_RATA_TAJWID = 'Q51'
 // footnote (dibaca sebelum ditimpa) supaya tetap menyatu dengan desain template.
 const SEL_PERINGKAT_KELAS = 'M53'
 const SEL_CATATAN_KT_BARU = 'M54'
+const TEKS_CATATAN_KT = '*K : Kelancaran, T : Tajwid'
 // Baris 57 kolom M:Q juga kosong pada template (blok A masih berisi data juz di baris ini, tapi
 // blok M/N/O/P/Q sudah lama berhenti di baris 53) -- dipakai untuk keterangan singkat "Masih ada N
 // santri..." saat ranking berstatus Sementara. Hanya ditulis kalau keterangan-nya ada (lihat
@@ -347,6 +348,9 @@ function kosongkanNilaiContohSheet(ws: Worksheet) {
   // Narasi ringkasan hafalan contoh (mis. "Alhamdulillaah, ananda sudah menghafal dari QS. ...")
   // tidak bisa dihitung aman dari data sistem saat ini -- dikosongkan.
   SEL_NARASI_HAFALAN.forEach(sel => { ws.getCell(sel).value = null })
+  ws.getCell(SEL_PERINGKAT_KELAS).value = null
+  ws.getCell(SEL_CATATAN_KT_BARU).value = null
+  ws.getCell(SEL_KETERANGAN_PERINGKAT).value = null
 }
 
 type WorksheetDenganMedia = Worksheet & {
@@ -405,6 +409,8 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
 
   const master = wb.getWorksheet(MASTER_SHEET_NAME)
   if (!master) throw new Error('Sheet template individu tidak ditemukan')
+  const templateCatatanKtFont = master.getCell(SEL_PERINGKAT_KELAS).font
+  const templateCatatanKtAlignment = master.getCell(SEL_PERINGKAT_KELAS).alignment
   const rekap = wb.getWorksheet(REKAP_SHEET_NAME)
   if (!rekap) throw new Error('Sheet Rekap tidak ditemukan pada template')
 
@@ -561,23 +567,17 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
       }
     }
 
-    // Pindahkan footnote asli (dibaca SEBELUM ditimpa) satu baris ke bawah, lalu tulis "Peringkat
-    // Kelas"/"Peringkat Sementara" di baris yang ditinggalkannya -- lihat catatan SEL_PERINGKAT_KELAS
-    // di atas. Keterangan singkat (hanya muncul saat status Sementara atau Ujian Tidak Selesai) ditulis ke SEL_KETERANGAN_PERINGKAT
-    // memakai style yang sama, dan dibiarkan kosong (bawaan template) saat tidak ada keterangan.
-    const catatanKtCell = ws.getCell(SEL_PERINGKAT_KELAS)
-    const catatanKtValue = catatanKtCell.value
-    const catatanKtFont = catatanKtCell.font
-    const catatanKtAlignment = catatanKtCell.alignment
+    // Tulis footnote *K : Kelancaran, T : Tajwid di M54 deterministik, dan label peringkat di M53.
     const catatanKtBaruCell = ws.getCell(SEL_CATATAN_KT_BARU)
-    catatanKtBaruCell.value = catatanKtValue
-    catatanKtBaruCell.font = catatanKtFont
-    catatanKtBaruCell.alignment = catatanKtAlignment
+    catatanKtBaruCell.value = TEKS_CATATAN_KT
+    catatanKtBaruCell.font = templateCatatanKtFont
+    catatanKtBaruCell.alignment = templateCatatanKtAlignment
 
+    const peringkatCell = ws.getCell(SEL_PERINGKAT_KELAS)
     const { label, keterangan } = infoPeringkatKelas(santri)
-    catatanKtCell.value = label
-    catatanKtCell.font = catatanKtFont
-    catatanKtCell.alignment = catatanKtAlignment
+    peringkatCell.value = label
+    peringkatCell.font = templateCatatanKtFont
+    peringkatCell.alignment = templateCatatanKtAlignment
 
     const teksKeterangan: string[] = []
     if (santri.statusUjian === 'TIDAK_SELESAI') {
@@ -590,8 +590,8 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
     if (teksKeterangan.length > 0) {
       const keteranganCell = ws.getCell(SEL_KETERANGAN_PERINGKAT)
       keteranganCell.value = teksKeterangan.join(' ')
-      keteranganCell.font = catatanKtFont
-      keteranganCell.alignment = catatanKtAlignment
+      keteranganCell.font = templateCatatanKtFont
+      keteranganCell.alignment = templateCatatanKtAlignment
     }
   })
 
