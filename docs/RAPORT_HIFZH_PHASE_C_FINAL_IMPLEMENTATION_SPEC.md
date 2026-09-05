@@ -222,13 +222,27 @@ reportComponent = min(raw, 9.0)
 display100 = round(reportComponent * 10)
 ```
 
-Special case:
+## Warna Nilai Angka Rapot Hifzh
 
-```text
-incomplete required juz = 0 merah
-```
+Untuk seluruh angka nilai Rapot Hifzh (Kelancaran, Tajwid, dan Rata-rata):
 
-Nilai 0 penalty tidak boleh melewati mapper normal.
+- `display >= 60`: font **HITAM eksplisit** (`FF000000`). Tidak boleh menggunakan theme color atau warna orange.
+- `display < 60`: font **MERAH** (`FFFF0000`).
+
+Perhatikan style ExcelJS: clone object `cell.style` pada setiap mutasi font/fill agar tidak terjadi *shared-style mutation / style pollution*.
+
+## Red Block Nama Surat per Segmen
+
+Red block nama surat pada tabel Rapot ditentukan berdasarkan **NILAI PER SEGMEN**, bukan rata-rata juz:
+
+- Segmen wajib dengan nilai efektif `< 6.0` (termasuk missing required = 0):
+  - Seluruh baris nama surat yang termasuk segment tersebut diberi background MERAH (`FFFF0000`) dan font PUTIH (`FFFFFFFF`).
+- Segmen wajib dengan nilai efektif `>= 6.0`:
+  - Background normal (`none`), font normal/hitam (`FF000000`).
+- Segmen *non-required* (di luar required scope santri):
+  - **TIDAK** diberi nilai 0.
+  - **TIDAK** diwarnai red block hanya karena belum diuji.
+  - Tetap normal/blank.
 
 ---
 
@@ -255,47 +269,62 @@ Semester Gasal 2026/2027 adalah masa transisi:
 
 Jika baseline hafalan berhenti di tengah segmen:
 
-- segmen tersebut **bukan required segment penuh**
-- jangan dimasukkan ke `segmentIds`
-- jangan menambah `jumlahSegmenPerJuz`
-- jangan membuat santri incomplete hanya karena baru menyentuh sebagian segmen
+- segmen tersebut **bukan required segment penuh** (non-required).
+- jangan dimasukkan ke `segmentIds`.
+- jangan menambah `jumlahSegmenPerJuz`.
+- jangan membuat santri incomplete hanya karena baru menyentuh sebagian segmen.
 
-Rule:
+Rule Generik:
 
 ```text
-checkpoint belum mencapai akhir segment
-=> segment OUTSIDE REQUIRED SCOPE
-=> stop pembentukan scope pada rantai kontinu tersebut
+Segment HANYA required jika checkpoint sudah mencapai endpoint penuh segment.
+Checkpoint di tengah segment => segment tersebut NON-REQUIRED.
 ```
 
-Contoh: santri baru hafal Al-Fath ayat 1–3, sedangkan satu segmen ujian lebih panjang. Maka segmen itu belum menjadi kewajiban ujian penuh.
+Contoh boundary (misal Segmen 4 Juz 30 berakhir di Surah 83 Ayat 35):
+- `83:33` $\rightarrow$ 3 segment (Juz 30 Segmen 1–3)
+- `83:34` $\rightarrow$ 3 segment (Juz 30 Segmen 1–3)
+- `83:35` $\rightarrow$ 4 segment (mencapai endpoint Segmen 4)
+- `83:36` $\rightarrow$ 4 segment (melewati endpoint Segmen 4)
 
 ---
 
-# 9. PARTIAL JUZ
+# 9. PARTIAL JUZ & INCOMPLETE JUZ SCORING
 
-Partial juz tetap boleh memiliki nilai Kelancaran.
+Business Rule Final: **Incomplete required juz TIDAK membuat seluruh nilai juz = 0.**
 
-Contoh:
+Untuk setiap juz:
+- **target** = jumlah REQUIRED segment pada juz tersebut.
+- **effective score** setiap required segment:
+  - ada nilai $\rightarrow$ gunakan nilai aslinya
+  - belum diuji $\rightarrow$ 0
+- **rata-rata juz** = $\text{SUM}(\text{effective required segment}) / \text{target}$
 
-```text
-Juz 25 required hanya segmen 1,2,3
-```
+Status dan skor adalah dua hal berbeda:
+- semua required segment selesai $\rightarrow$ `selesai`
+- ada required segment missing $\rightarrow$ `belum_selesai` / `TIDAK_SELESAI`
 
-Jika completed 1,2,3 maka:
+Contoh Idris Juz 27:
+- required = 4 segmen (Segmen 1–4)
+- nilai = 5.8, 6.6, missing (0), missing (0)
+- rata raw = $\frac{5.8 + 6.6 + 0 + 0}{4} = 3.10$
+- rata Raport = $\frac{\min(5.8, 9) + \min(6.6, 9) + 0 + 0}{4} = 3.10$
+- Rapot display = **31** (bukan 0)
+- status = `belum_selesai` / `TIDAK_SELESAI`
 
-- status juz = selesai untuk required scope
-- nilai juz = average segmen 1,2,3
+Segmen kelima Juz 27 bukan required:
+- blank
 - bukan 0
-- segmen 4,5 outside scope
-- segmen 4,5 tidak masuk denominator
+- tidak masuk denominator
+- tidak diberi red block karena missing.
 
-Jika required 1,2,3 tetapi completed 1,2 maka:
-
-- status = belum selesai
-- hasil final juz = 0
-- 0 merah di Raport
-- tetap masuk denominator
+### Komponen Rapot Cap 9.0 Sebelum Average
+Untuk `rataRaport`:
+- cap Raport tetap **PER COMPONENT** sebelum average:
+  - missing $\rightarrow$ 0
+  - nilai raw $\rightarrow$ $\min(\text{raw}, 9.0)$
+- kemudian dirata-ratakan membagi seluruh required segment target.
+- **JANGAN** cap ranking/raw ke 9.0.
 
 Status juz ditentukan oleh **required segments santri**, bukan semua segmen standar di juz.
 
@@ -364,20 +393,16 @@ nilaiUjianKeseluruhan = 0
 tetap ikut ranking final
 ```
 
-Jika sebagian required juz selesai:
+Semua required juz dengan scope > 0 berkontribusi menggunakan nilai rata-rata juz hasil formula proporsional:
 
-- juz selesai → nilai normal
-- required juz yang belum selesai → 0
-- denominator tetap seluruh required juz
+- juz selesai penuh $\rightarrow$ nilai rata-rata normal
+- juz incomplete (ada segmen teruji + missing) $\rightarrow$ nilai rata-rata proporsional $(\text{SUM}(\text{effective}) / \text{target})$
+- juz yang belum dimulai sama sekali (0 dinilai) $\rightarrow$ 0
+- denominator tetap seluruh required juz santri
 
-Contoh required 10 juz, selesai 5:
+Juz incomplete **TIDAK lagi dinolkan secara keseluruhan** atau dibuang dari perhitungan nilai ujian keseluruhan. Status incomplete tetap dipertahankan untuk indikator `TIDAK_SELESAI`.
 
-```text
-overall =
-(sum 5 juz selesai + 5*0) / 10
-```
-
-Santri incomplete tetap ikut ranking final secara natural.
+Ranking tetap menggunakan raw score dan formula 80/20 existing tanpa penalti zeroing whole-juz.
 
 ---
 
@@ -593,9 +618,10 @@ Raport display = 85
 ```
 
 ## Test 6 — Incomplete required
-- Raport = 0 merah
-- tidak menjadi 50
-- tetap masuk denominator
+- Status incomplete (`belum_selesai`) jika ada required segment missing
+- Nilai rata-rata dihitung proporsional $\text{SUM}(\text{effective}) / \text{target}$ (missing = 0)
+- Raport display proporsional (font merah jika $< 60$, hitam jika $\ge 60$)
+- Tetap masuk denominator
 
 ## Test 7 — Partial segment
 Baseline berhenti di tengah segmen:
@@ -608,8 +634,10 @@ Required segmen 1,2,3; completed 1,2,3:
 - bukan 0
 
 ## Test 9 — Partial juz incomplete
-Required 1,2,3; completed 1,2:
-- final = 0
+Required 1,2,3; completed 1,2 (mis. nilai 8.0, 8.0):
+- raw average = $\frac{8.0 + 8.0 + 0}{3} = 5.33 \rightarrow 5.3$
+- Raport display = 53
+- status = belum_selesai / TIDAK_SELESAI
 
 ## Test 10 — Tajwid partial
 Partial juz + Tajwid kosong:
@@ -725,7 +753,7 @@ Jangan mengubah tanpa keputusan baru:
 - historical raw data
 - scope Banin-only Semester Gasal saat ini
 - baseline 1 Agustus 2026
-- incomplete penalty 0
+- incomplete juz proportional scoring (SUM/target)
 - partial segment exclusion
 - partial juz Kelancaran tetap sah
 - future snapshot locking requirement
@@ -746,6 +774,7 @@ Bukan bagian implementasi Phase C sekarang:
 7. legacy assignment retirement
 8. minor timezone backlog
 9. filesystem recovery folder `scripts/`
+10. Prevention typo auto-progress setoran santri (mitigasi lonjakan progres akibat kesalahan input nomor surat di write-path `/api/setoran`)
 
 Jangan menarik backlog ini masuk ke Phase C kecuali diminta Owner.
 

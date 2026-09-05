@@ -449,14 +449,22 @@ export default function AdminRekapNilaiUjian() {
     return Object.entries(detailCakupan.jumlahSegmenPerJuz).map(([juzText, target]) => {
       const juz = Number(juzText)
       const segmentIds = masterSegments.filter(s => s.juz === juz && detailCakupan.segmentIds.includes(s.id)).map(s => s.id)
-      const nilaiJuz = segmentIds
-        .map(id => nilaiTerbaruPerSegmen.get(id))
-        .filter((item): item is NilaiUjianRow => Boolean(item))
-      const rata = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + nilaiAman(item.nilai_akhir), 0) / nilaiJuz.length : null
-      const rataRaport = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + Math.min(9.0, nilaiAman(item.nilai_akhir)), 0) / nilaiJuz.length : null
-      const status: StatusJuz = nilaiJuz.length === 0 ? 'belum_dimulai' : nilaiJuz.length >= target ? 'selesai' : 'belum_selesai'
+      let dinilaiCount = 0
+      let sumRaw = 0
+      let sumRaport = 0
+      for (const id of segmentIds) {
+        const item = nilaiTerbaruPerSegmen.get(id)
+        if (item) {
+          dinilaiCount += 1
+          sumRaw += nilaiAman(item.nilai_akhir)
+          sumRaport += Math.min(9.0, nilaiAman(item.nilai_akhir))
+        }
+      }
+      const rata = target > 0 ? sumRaw / target : null
+      const rataRaport = target > 0 ? sumRaport / target : null
+      const status: StatusJuz = dinilaiCount === 0 ? 'belum_dimulai' : dinilaiCount >= target ? 'selesai' : 'belum_selesai'
       const tajwid = detailTajwid[juz] ?? null
-      return { juz, target, dinilai: nilaiJuz.length, rata, rataRaport, status, segmentIds, tajwid }
+      return { juz, target, dinilai: dinilaiCount, rata, rataRaport, status, segmentIds, tajwid }
     }).sort((a, b) => b.juz - a.juz)
   }, [detailCakupan, masterSegments, nilaiTerbaruPerSegmen, detailTajwid])
 

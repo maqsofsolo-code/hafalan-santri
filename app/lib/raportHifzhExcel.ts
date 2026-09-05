@@ -27,6 +27,109 @@ const BARIS_TABEL_JUZ_MULAI = 14
 const BARIS_TABEL_JUZ_SELESAI = 65
 const SEL_NARASI_HAFALAN = ['M55', 'M56'] as const
 
+// Pemetaan segmen (juz:segmen) ke baris dan kolom tabel pada sheet template.
+// Blok 3 (Juz 30, cols N:O): baris 14-50
+// Blok 2 (Juz 22-29, cols H:I): baris 14-62
+// Blok 1 (Juz 1-21, cols B:C): baris 14-62
+const JUZ_BLOK1_ROWS: Record<number, number[]> = {
+  1: [14, 15],
+  2: [16],
+  3: [17, 18],
+  4: [19, 20],
+  5: [21],
+  6: [22, 23],
+  7: [24, 25],
+  8: [26, 27],
+  9: [28, 29],
+  10: [30, 31],
+  11: [32, 33, 34],
+  12: [35, 36],
+  13: [37, 38, 39],
+  14: [40, 41],
+  15: [42, 43],
+  16: [44, 45, 46],
+  17: [47, 48],
+  18: [49, 50, 51],
+  19: [52, 53, 54],
+  20: [55, 56, 57],
+  21: [58, 59, 60, 61, 62],
+}
+
+const SEGMENT_ROW_MAPPING: Record<string, { cols: readonly string[], rows: readonly number[] }> = {
+  // Blok 3: Juz 30 (cols N, O)
+  '30:1': { cols: ['N', 'O'], rows: [39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50] },
+  '30:2': { cols: ['N', 'O'], rows: [31, 32, 33, 34, 35, 36, 37, 38] },
+  '30:3': { cols: ['N', 'O'], rows: [25, 26, 27, 28, 29, 30] },
+  '30:4': { cols: ['N', 'O'], rows: [19, 20, 21, 22, 23, 24] },
+  '30:5': { cols: ['N', 'O'], rows: [16, 17, 18] },
+  '30:6': { cols: ['N', 'O'], rows: [14, 15] },
+
+  // Blok 2: Juz 22-29 (cols H, I)
+  // Juz 29
+  '29:1': { cols: ['H', 'I'], rows: [60, 61, 62] },
+  '29:2': { cols: ['H', 'I'], rows: [58, 59] },
+  '29:3': { cols: ['H', 'I'], rows: [56, 57] },
+  '29:4': { cols: ['H', 'I'], rows: [54, 55] },
+  '29:5': { cols: ['H', 'I'], rows: [52, 53] },
+
+  // Juz 28
+  '28:1': { cols: ['H', 'I'], rows: [50, 51] },
+  '28:2': { cols: ['H', 'I'], rows: [48, 49] },
+  '28:3': { cols: ['H', 'I'], rows: [46, 47] },
+  '28:4': { cols: ['H', 'I'], rows: [45] },
+  '28:5': { cols: ['H', 'I'], rows: [43, 44] },
+
+  // Juz 27
+  '27:1': { cols: ['H', 'I'], rows: [42] },
+  '27:2': { cols: ['H', 'I'], rows: [40, 41] },
+  '27:3': { cols: ['H', 'I'], rows: [39] },
+  '27:4': { cols: ['H', 'I'], rows: [38] },
+  '27:5': { cols: ['H', 'I'], rows: [36, 37] },
+
+  // Juz 26
+  '26:1': { cols: ['H', 'I'], rows: [34, 35] },
+  '26:2': { cols: ['H', 'I'], rows: [32, 33] },
+  '26:3': { cols: ['H', 'I'], rows: [31] },
+  '26:4': { cols: ['H', 'I'], rows: [30] },
+  '26:5': { cols: ['H', 'I'], rows: [30] },
+
+  // Juz 25
+  '25:1': { cols: ['H', 'I'], rows: [29] },
+  '25:2': { cols: ['H', 'I'], rows: [27, 28] },
+  '25:3': { cols: ['H', 'I'], rows: [27] },
+  '25:4': { cols: ['H', 'I'], rows: [26] },
+  '25:5': { cols: ['H', 'I'], rows: [25] },
+
+  // Juz 24
+  '24:1': { cols: ['H', 'I'], rows: [24] },
+  '24:2': { cols: ['H', 'I'], rows: [23] },
+  '24:3': { cols: ['H', 'I'], rows: [23] },
+  '24:4': { cols: ['H', 'I'], rows: [22] },
+  '24:5': { cols: ['H', 'I'], rows: [22] },
+
+  // Juz 23
+  '23:1': { cols: ['H', 'I'], rows: [21] },
+  '23:2': { cols: ['H', 'I'], rows: [20] },
+  '23:3': { cols: ['H', 'I'], rows: [19, 20] },
+  '23:4': { cols: ['H', 'I'], rows: [19] },
+  '23:5': { cols: ['H', 'I'], rows: [18] },
+
+  // Juz 22
+  '22:1': { cols: ['H', 'I'], rows: [16, 17] },
+  '22:2': { cols: ['H', 'I'], rows: [15] },
+  '22:3': { cols: ['H', 'I'], rows: [15] },
+  '22:4': { cols: ['H', 'I'], rows: [14] },
+  '22:5': { cols: ['H', 'I'], rows: [14] },
+}
+
+// Inisialisasi pemetaan untuk Juz 1..21
+for (let j = 1; j <= 21; j++) {
+  const rows = JUZ_BLOK1_ROWS[j] || []
+  for (let seg = 1; seg <= 5; seg++) {
+    SEGMENT_ROW_MAPPING[`${j}:${seg}`] = { cols: ['B', 'C'], rows }
+  }
+}
+
 // "Nilai Rata-rata" (merge P51:P52 utk Kelancaran, Q51:Q52 utk Tajwid) pada template berisi FORMULA
 // (=AZ14/=AZ15) dengan hasil CACHE dari data santri sungguhan yang pernah dicetak sebelumnya --
 // ExcelJS tidak pernah menghitung ulang formula, jadi cache lama itu tetap tampil di pembaca yang
@@ -87,7 +190,7 @@ const TANDA_TANGAN_TINGGI_PX = 42
 
 export type TandaTanganGambar = { buffer: Buffer, extension: 'png' | 'jpeg' }
 
-import type { StatusUjianSantri } from './adminNilaiUjian'
+import type { MasterSegment, StatusUjianSantri } from './adminNilaiUjian'
 
 export type SantriRaport = {
   id: string
@@ -96,10 +199,12 @@ export type SantriRaport = {
   kelasNum: number | null
   jenjang: string | null
   jenisKelas: string | null
-  juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor (50-95, Phase B maks 95, atau 0 merah jika incomplete required)
-  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor (50-95, atau 0 merah jika incomplete required, null jika belum diisi)
+  juzNilai: Map<number, number | null> // juz(1-30) -> nilai rapor proporsional (skala 0-90)
+  juzTajwid: Map<number, number | null> // juz(1-30) -> nilai rapor proporsional, null jika belum diisi
   juzIncomplete?: Set<number> // juz wajib yang belum selesai diuji (Phase C)
   statusUjian?: StatusUjianSantri // SELESAI | TIDAK_SELESAI
+  segmentIdsWajib?: Set<string> // required segment IDs for this santri (cakupan.segmentIds)
+  nilaiPerSegmen?: Map<string, number> // Map segment_id -> raw score
   // Peringkat Kelas: rumus/tie-breaker ranking DIHITUNG DI CALLER (hitungRankingUjianHafalanKelas,
   // app/lib/ranking.ts) -- workbook hanya menulis hasilnya, tidak pernah menghitung ranking sendiri.
   // Denominator SELALU jumlah santri yang SUDAH eligible (bukan total santri kelas) -- baik saat
@@ -121,6 +226,7 @@ export type BuildRaportParams = {
   periodeLabel: string
   semesterLabel: string
   tanggalIndonesia: string
+  masterSegments?: MasterSegment[]
 }
 
 // Perakitan teks TAMPILAN saja (bukan perhitungan ranking) -- rumus/eligibility sepenuhnya berasal
@@ -207,34 +313,39 @@ function cloneWorksheet(wb: Workbook, source: Worksheet, newName: string) {
   return target
 }
 
-// Reset fill (ke tanpa-warna) dan warna font (ke warna tema default) satu sel -- HANYA warna yang
-// disentuh, border/ukuran/font family/bold tetap dari template apa adanya.
+// Reset fill (ke tanpa-warna) dan warna font (ke hitam eksplisit FF000000) satu sel.
+// Clone object style untuk mencegah mutasi referensi bersama (style pollution).
 function resetWarnaSel(ws: Worksheet, alamat: string) {
   const cell = ws.getCell(alamat)
-  cell.fill = { type: 'pattern', pattern: 'none' }
-  if (cell.font) cell.font = { ...cell.font, color: { theme: 1 } }
+  cell.style = {
+    ...cell.style,
+    fill: { type: 'pattern', pattern: 'none' },
+    font: { ...(cell.font || {}), color: { argb: 'FF000000' } },
+  }
 }
 
+const BARIS_AKHIR_PER_BLOK = [62, 62, 50] as const
+
 // Template dipakai HANYA sebagai desain: seluruh nilai Kelancaran & Tajwid contoh bawaan template
-// (mis. "K"/"T" = 90/70 pada santri contoh) dibersihkan lebih dulu di setiap sheet individu, baru
-// nilai Kelancaran & Tajwid sungguhan (dari nilai_ujian & nilai_tajwid_juz) ditulis ulang di lokasi
-// yang sama. Juz yang Tajwid-nya belum diisi dibiarkan kosong (bukan 0) -- lihat SantriRaport.juzTajwid.
-// Highlight merah/font berwarna bawaan sheet 2-11 (peninggalan cetak santri sungguhan sebelumnya)
-// juga dibersihkan total di sini -- lihat catatan pada KOLOM_RESET_WARNA_PER_BLOK.
+// (mis. "K"/"T" = 90/70 pada santri contoh) dibersihkan total di setiap baris tabel pada setiap sheet individu,
+// baru nilai Kelancaran & Tajwid sungguhan ditulis ulang di lokasi yang sesuai.
+// Seluruh baris tabel dibersihkan (termasuk baris turunan juz merge) agar tidak ada nilai contoh atau
+// style lama (highlight merah/font berwarna warisan template) yang tertinggal.
 function kosongkanNilaiContohSheet(ws: Worksheet) {
-  BLOK_NILAI_JUZ.forEach(({ kolomJuz, kolomNilai, kolomTajwid }, blokIndex) => {
-    for (let row = BARIS_TABEL_JUZ_MULAI; row <= BARIS_TABEL_JUZ_SELESAI; row += 1) {
-      const nilaiSel = ws.getCell(`${kolomJuz}${row}`).value
-      const juz = typeof nilaiSel === 'number' ? nilaiSel : (typeof nilaiSel === 'string' ? Number(nilaiSel) : NaN)
-      if (!Number.isInteger(juz)) continue // bukan baris data juz (mis. label "Nilai Rata-rata", narasi, tanda tangan)
+  BLOK_NILAI_JUZ.forEach(({ kolomNilai, kolomTajwid }, blokIndex) => {
+    const rowAkhir = BARIS_AKHIR_PER_BLOK[blokIndex]
+    for (let row = BARIS_TABEL_JUZ_MULAI; row <= rowAkhir; row += 1) {
       ws.getCell(`${kolomNilai}${row}`).value = null
       ws.getCell(`${kolomTajwid}${row}`).value = null
       KOLOM_RESET_WARNA_PER_BLOK[blokIndex].forEach(kolom => resetWarnaSel(ws, `${kolom}${row}`))
     }
   })
+  resetWarnaSel(ws, SEL_RATA_KELANCARAN)
+  resetWarnaSel(ws, SEL_RATA_TAJWID)
+  ws.getCell(SEL_RATA_KELANCARAN).value = null
+  ws.getCell(SEL_RATA_TAJWID).value = null
   // Narasi ringkasan hafalan contoh (mis. "Alhamdulillaah, ananda sudah menghafal dari QS. ...")
-  // tidak bisa dihitung aman dari data sistem saat ini -- lebih baik dikosongkan daripada salah
-  // menampilkan cakupan hafalan milik santri contoh di template.
+  // tidak bisa dihitung aman dari data sistem saat ini -- dikosongkan.
   SEL_NARASI_HAFALAN.forEach(sel => { ws.getCell(sel).value = null })
 }
 
@@ -365,37 +476,90 @@ export async function buildRaportHifzhWorkbook(params: BuildRaportParams): Promi
       })
     }
 
+    // Styling Red Block per Segmen (Section 5):
+    // Untuk setiap required segment santri:
+    // - effective segment score < 6.0 (termasuk missing required = 0):
+    //   seluruh baris nama surat yang termasuk segment tersebut diberi background merah FFFF0000 dan font putih FFFFFFFF.
+    // - effective segment score >= 6.0: background normal, font normal/hitam.
+    // NON-REQUIRED segment: tetap normal/blank, tidak diberi red block karena missing.
+    if (params.masterSegments && santri.segmentIdsWajib) {
+      params.masterSegments.forEach(segment => {
+        const isRequired = santri.segmentIdsWajib?.has(segment.id) ?? false
+        if (!isRequired) return
+
+        const val = santri.nilaiPerSegmen?.get(segment.id)
+        const effectiveScore = typeof val === 'number' ? val : 0
+        const mapping = SEGMENT_ROW_MAPPING[`${segment.juz}:${segment.segmen}`]
+
+        if (effectiveScore < 6.0 && mapping) {
+          mapping.rows.forEach(r => {
+            mapping.cols.forEach(col => {
+              const cell = ws.getCell(`${col}${r}`)
+              cell.style = {
+                ...cell.style,
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } },
+                font: { ...(cell.font || {}), color: { argb: 'FFFFFFFF' } },
+              }
+            })
+          })
+        }
+      })
+    }
+
     juzMap.forEach((lokasi, juz) => {
       const nilai = santri.juzNilai.get(juz)
       const nilaiCell = ws.getCell(`${lokasi.kolomNilai}${lokasi.row}`)
       nilaiCell.value = (typeof nilai === 'number') ? nilai : null
-      if (nilai === 0 || santri.juzIncomplete?.has(juz)) {
-        nilaiCell.font = { ...(nilaiCell.font || {}), color: { argb: 'FFFF0000' }, bold: true }
+      if (typeof nilai === 'number') {
+        const colorArgb = nilai < 60 ? 'FFFF0000' : 'FF000000'
+        nilaiCell.style = {
+          ...nilaiCell.style,
+          font: { ...(nilaiCell.font || {}), color: { argb: colorArgb }, bold: true },
+        }
       }
 
       const tajwid = santri.juzTajwid.get(juz)
       const tajwidCell = ws.getCell(`${lokasi.kolomTajwid}${lokasi.row}`)
       tajwidCell.value = (typeof tajwid === 'number') ? tajwid : null
-      if (tajwid === 0 || santri.juzIncomplete?.has(juz)) {
-        tajwidCell.font = { ...(tajwidCell.font || {}), color: { argb: 'FFFF0000' }, bold: true }
+      if (typeof tajwid === 'number') {
+        const colorArgb = tajwid < 60 ? 'FFFF0000' : 'FF000000'
+        tajwidCell.style = {
+          ...tajwidCell.style,
+          font: { ...(tajwidCell.font || {}), color: { argb: colorArgb }, bold: true },
+        }
       }
     })
 
     // "Nilai Rata-rata" dihitung langsung dari nilai juz yang benar-benar final (bukan lewat formula
     // template AZ14/AZ15 yang cache-nya bisa basi -- lihat catatan SEL_RATA_KELANCARAN).
-    // Phase C: santri.juzNilai memuat nilai seluruh juz wajib (termasuk 0 untuk incomplete),
-    // sehingga rata-rata dan penyebut mencakup seluruh juz wajib santri.
+    // Nilai seluruh juz wajib yang dinilai proporsional dirata-ratakan ke skala 0-90.
     const nilaiJuzFinal = [...santri.juzNilai.values()].filter((n): n is number => typeof n === 'number')
     const rataKelancaran = nilaiJuzFinal.length > 0
       ? Math.round((nilaiJuzFinal.reduce((sum, n) => sum + n, 0) / nilaiJuzFinal.length) * 10) / 10
       : null
-    ws.getCell(SEL_RATA_KELANCARAN).value = rataKelancaran
+    const rataKelancaranCell = ws.getCell(SEL_RATA_KELANCARAN)
+    rataKelancaranCell.value = rataKelancaran
+    if (typeof rataKelancaran === 'number') {
+      const colorArgb = rataKelancaran < 60 ? 'FFFF0000' : 'FF000000'
+      rataKelancaranCell.style = {
+        ...rataKelancaranCell.style,
+        font: { ...(rataKelancaranCell.font || {}), color: { argb: colorArgb } },
+      }
+    }
 
     const tajwidJuzFinal = [...santri.juzTajwid.values()].filter((n): n is number => typeof n === 'number')
     const rataTajwid = tajwidJuzFinal.length > 0
       ? Math.round((tajwidJuzFinal.reduce((sum, n) => sum + n, 0) / tajwidJuzFinal.length) * 10) / 10
       : null
-    ws.getCell(SEL_RATA_TAJWID).value = rataTajwid
+    const rataTajwidCell = ws.getCell(SEL_RATA_TAJWID)
+    rataTajwidCell.value = rataTajwid
+    if (typeof rataTajwid === 'number') {
+      const colorArgb = rataTajwid < 60 ? 'FFFF0000' : 'FF000000'
+      rataTajwidCell.style = {
+        ...rataTajwidCell.style,
+        font: { ...(rataTajwidCell.font || {}), color: { argb: colorArgb } },
+      }
+    }
 
     // Pindahkan footnote asli (dibaca SEBELUM ditimpa) satu baris ke bawah, lalu tulis "Peringkat
     // Kelas"/"Peringkat Sementara" di baris yang ditinggalkannya -- lihat catatan SEL_PERINGKAT_KELAS

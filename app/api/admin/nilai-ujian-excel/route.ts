@@ -278,26 +278,25 @@ export async function GET(request: Request) {
 
     juzList.forEach(j => {
       const isFull = isFullJuzMaster(j.juz, j.target, masterSegments)
-      if (j.status === 'selesai') {
-        juzNilai.set(j.juz, nilaiRapor(j.rataRaport))
-        const nilaiTajwid = tajwidSantri.get(j.juz)
-        if (typeof nilaiTajwid === 'number') {
-          juzTajwid.set(j.juz, nilaiRapor(nilaiTajwid))
-        } else if (isFull) {
-          juzTajwid.set(j.juz, 0)
-        } else {
-          juzTajwid.set(j.juz, null)
-        }
+      // Gunakan nilai rata-rata Rapot yang sudah dihitung secara proporsional (e.g. Idris Juz 27 = 31)
+      juzNilai.set(j.juz, nilaiRapor(j.rataRaport))
+      const nilaiTajwid = tajwidSantri.get(j.juz)
+      if (typeof nilaiTajwid === 'number') {
+        juzTajwid.set(j.juz, nilaiRapor(nilaiTajwid))
+      } else if (isFull) {
+        juzTajwid.set(j.juz, 0)
       } else {
-        // Phase C: Incomplete required juz = 0 (penalti penomoran khusus, TIDAK dinaikkan ke floor 50)
-        juzNilai.set(j.juz, 0)
-        juzTajwid.set(j.juz, isFull ? 0 : null)
+        juzTajwid.set(j.juz, null)
+      }
+      if (j.status !== 'selesai') {
         juzIncomplete.add(j.juz)
       }
     })
 
     return {
       santri,
+      cakupan,
+      nilaiPerSegmen,
       juzNilai,
       juzTajwid,
       juzIncomplete,
@@ -328,7 +327,7 @@ export async function GET(request: Request) {
   const jumlahBelumAdaHasilKelas = belumAdaHasil.length
   const peringkatMap = new Map<string, number>(peringkat.map(s => [s.id, s.peringkat]))
 
-  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, juzNilai, juzTajwid, juzIncomplete, statusUjian }) => {
+  const santriRaportList: SantriRaport[] = santriKomputasi.map(({ santri, cakupan, nilaiPerSegmen, juzNilai, juzTajwid, juzIncomplete, statusUjian }) => {
     // Per-santri (bukan per-dokumen): jenis_kelas SANTRI ('banin'/'banat'/'tn_a'/'tn_b') dicocokkan
     // langsung ke jenis_kelas wali_kelas_assignment -- lihat catatan SantriRaport.waliKelasNama.
     const waliInfo = petaWaliKelas.get(santri.jenis_kelas || '')
@@ -349,6 +348,8 @@ export async function GET(request: Request) {
       jumlahBelumAdaHasil: jumlahBelumAdaHasilKelas,
       waliKelasNama: waliInfo?.nama || 'Belum ditentukan',
       tandaTangan,
+      segmentIdsWajib: new Set<string>(cakupan.segmentIds),
+      nilaiPerSegmen,
     }
   })
 
@@ -359,6 +360,7 @@ export async function GET(request: Request) {
       periodeLabel,
       semesterLabel,
       tanggalIndonesia,
+      masterSegments,
     })
   } catch {
     return responseError('Gagal membentuk file raport dari template', 500)

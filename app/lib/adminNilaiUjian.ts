@@ -138,9 +138,13 @@ export type RingkasanJuz = {
 }
 
 // Menghitung ringkasan per juz dari nilai terbaru per segmen (Map keyed by segmentId -> nilai_akhir terbaru).
-// Sesuai Section 6 & 18 (Test 5):
-// - `rata` dihitung dari nilai mentah (raw average) untuk konsumsi Ranking.
-// - `rataRaport` dihitung dari komponen yang di-cap min(raw, 9.0) SEBELUM dirata-ratakan untuk Raport Hifzh.
+// Sesuai Final Rule:
+// - target = jumlah REQUIRED segment pada juz tersebut.
+// - effective score setiap required segment: ada nilai -> nilai asli, belum diuji -> 0.
+// - rata / rataRaport membagi SELURUH target required segment (missing = 0).
+// - Untuk rataRaport: cap Raport min(raw, 9.0) tetap PER COMPONENT sebelum average.
+// - Non-required segment tidak masuk denominator dan tidak diberi 0.
+// - Status: selesai jika semua required segment dinilai; belum_selesai jika ada missing; belum_dimulai jika 0 dinilai.
 export function hitungRingkasanJuz(
   cakupan: CakupanSegment,
   masterSegments: MasterSegment[],
@@ -149,20 +153,28 @@ export function hitungRingkasanJuz(
   return Object.entries(cakupan.jumlahSegmenPerJuz).map(([juzText, target]) => {
     const juz = Number(juzText)
     const segmentIds = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
-    const nilaiJuzRaw = segmentIds
-      .map(id => nilaiTerbaruPerSegmen.get(id))
-      .filter((nilai): nilai is number => typeof nilai === 'number')
 
-    const rata = nilaiJuzRaw.length > 0
-      ? nilaiJuzRaw.reduce((sum, nilai) => sum + nilai, 0) / nilaiJuzRaw.length
-      : null
+    let dinilaiCount = 0
+    let sumRaw = 0
+    let sumRaport = 0
 
-    const rataRaport = nilaiJuzRaw.length > 0
-      ? nilaiJuzRaw.reduce((sum, nilai) => sum + Math.min(9.0, nilai), 0) / nilaiJuzRaw.length
-      : null
+    for (const id of segmentIds) {
+      const val = nilaiTerbaruPerSegmen.get(id)
+      if (typeof val === 'number') {
+        dinilaiCount += 1
+        sumRaw += val
+        sumRaport += Math.min(9.0, val)
+      } else {
+        sumRaw += 0
+        sumRaport += 0
+      }
+    }
 
-    const status: StatusJuz = nilaiJuzRaw.length === 0 ? 'belum_dimulai' : nilaiJuzRaw.length >= target ? 'selesai' : 'belum_selesai'
-    return { juz, target, dinilai: nilaiJuzRaw.length, rata, rataRaport, status, segmentIds }
+    const rata = target > 0 ? (sumRaw / target) : null
+    const rataRaport = target > 0 ? (sumRaport / target) : null
+    const status: StatusJuz = dinilaiCount === 0 ? 'belum_dimulai' : dinilaiCount >= target ? 'selesai' : 'belum_selesai'
+
+    return { juz, target, dinilai: dinilaiCount, rata, rataRaport, status, segmentIds }
   }).sort((a, b) => b.juz - a.juz)
 }
 
@@ -180,16 +192,15 @@ export function isFullJuzMaster(juz: number, targetSegments: number, masterSegme
   return targetSegments >= totalInMaster
 }
 
-// Phase C (RAPORT_HIFZH_PHASE_C_FINAL_IMPLEMENTATION_SPEC.md):
-// Nilai Ujian Keseluruhan membagi jumlah seluruh nilai juz wajib dengan SELURUH JUMLAH JUZ WAJIB
-// (ringkasanJuz.length). Juz wajib yang tidak selesai dihitung bernilai 0 (kontribusi 0 ke pembilang,
-// tetapi tetap masuk ke penyebut).
+// Nilai Ujian Keseluruhan:
+// Semua REQUIRED juz dengan scope > 0 berkontribusi menggunakan nilai rata-rata juz hasil formula di atas.
+// Juz incomplete (status belum_selesai) TIDAK lagi dibuang atau dinolkan keseluruhan; nilai rata-rata proporsionalnya
+// tetap berkontribusi ke total nilai.
 //
-// Aturan 0 Juz Selesai:
-// - Jika santri memiliki kewajiban ujian (ringkasanJuz.length > 0) tetapi menyelesaikan 0 juz:
-//   - Untuk hasil FINAL (options?.isFinal === true): nilai = 0 (status TIDAK_SELESAI, berhak atas hasil resmi).
+// Aturan 0 Segment Dinilai:
+// - Jika santri memiliki kewajiban ujian (ringkasanJuz.length > 0) tetapi belum memiliki satu pun segmen yang dinilai:
+//   - Untuk hasil FINAL (options?.isFinal === true): nilai = 0 (status TIDAK_SELESAI).
 //   - Untuk hasil PROVISIONAL (sebelum final / default): return null (masuk belumAdaHasil selama masa ujian).
-// - Jika santri menyelesaikan >= 1 juz: membagi seluruh required juz (missing juz = 0).
 //
 // Pemisahan domain:
 // - Default (options?.forRaport === false): menggunakan `j.rata` (raw average murni untuk ranking).
@@ -199,12 +210,12 @@ export function hitungNilaiUjianKeseluruhan(
   options?: { isFinal?: boolean; forRaport?: boolean }
 ): number | null {
   if (ringkasanJuz.length === 0) return null
-  const juzSelesai = ringkasanJuz.filter((j): j is RingkasanJuz & { rata: number, rataRaport: number } => j.status === 'selesai' && j.rata !== null)
-  if (juzSelesai.length === 0) {
+  const totalDinilai = ringkasanJuz.reduce((sum, j) => sum + j.dinilai, 0)
+  if (totalDinilai === 0) {
     return options?.isFinal ? 0 : null
   }
-  const total = juzSelesai.reduce((sum, j) => {
-    const nilai = options?.forRaport ? (j.rataRaport ?? 0) : j.rata
+  const total = ringkasanJuz.reduce((sum, j) => {
+    const nilai = options?.forRaport ? (j.rataRaport ?? 0) : (j.rata ?? 0)
     return sum + (Number.isFinite(nilai) ? nilai : 0)
   }, 0)
   const totalRequired = ringkasanJuz.length

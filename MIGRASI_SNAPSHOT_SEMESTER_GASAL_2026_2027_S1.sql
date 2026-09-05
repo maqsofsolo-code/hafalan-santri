@@ -128,7 +128,7 @@ INSERT INTO public.santri_hafalan_exam_snapshot (
   ('430537fe-ee8a-4c3c-8584-8a7755f4e8f3', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 20, 77, 14.87), -- Tsumamah                       [Kelas 8 Banin]  Reconstructed (-0.14 juz from 15.01 to 14.87)
   ('19cdbbfc-66c3-45bf-9de6-49842073a61f', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 76, 26, 1.37), -- Ubaidullah Salman Huda         [Kelas 3 Banin]  Reconstructed (-0.04 juz from 1.41 to 1.37)
   ('65e43e14-c9f7-4d27-a3c7-6ce773772efb', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 3, 200, 28.67), -- Ubaidulloh bin Nashir          [Kelas 8 Banin]  Unchanged (no Aug new memorization)
-  ('f7ee66c3-9c82-4557-9e0f-6b8bf6dc77f1', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 64, 3, 0.88), -- Ubay Yafiq                     [Kelas 5 Banin]  Reconstructed (-0.00 juz from 0.88 to 0.88)
+  ('f7ee66c3-9c82-4557-9e0f-6b8bf6dc77f1', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 83, 33, 0.88), -- Ubay Yafiq                     [Kelas 5 Banin]  Reconstructed (-0.00 juz from 0.88 to 0.88)
   ('f75f88c1-d9af-4898-b995-6d217fb3d5b8', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 42, 1, 6.21), -- Ukkasyah bin Soil              [Kelas 4 Banin]  Reconstructed (-0.07 juz from 6.28 to 6.21)
   ('941a1145-319d-4402-a0bb-b218e4bddc27', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 11, 97, 19.20), -- Umar al-Faruq                  [Kelas 9 Banin]  Reconstructed (-0.00 juz from 19.2 to 19.2)
   ('5be34ab4-3d10-47ea-9894-d225df3fd276', '1c9739bc-7924-4d8c-9b2b-75020eb914ea', 82, 1, 0.98), -- Urwah Abdullah                 [Kelas 1 Banin]  Reconstructed (-0.08 juz from 1.06 to 0.98)

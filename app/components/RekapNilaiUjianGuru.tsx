@@ -325,13 +325,19 @@ export default function RekapNilaiUjianGuru({ data, cakupanSantri, masterSegment
         const juzList = Object.entries(jumlahSegmenPerJuz).map(([juzText, target]) => {
           const juz = Number(juzText)
           const segmentIds = masterSegments.filter(s => s.juz === juz && cakupan.segmentIds.includes(s.id)).map(s => s.id)
-          const nilaiJuz = segmentIds
-            .map(id => nilaiTerbaruPerSegmen.get(`${santri.id}|${id}`))
-            .filter((item): item is NilaiUjianGuru => Boolean(item))
-          const rata = nilaiJuz.length > 0 ? nilaiJuz.reduce((sum, item) => sum + nilaiAman(item.nilai_akhir), 0) / nilaiJuz.length : null
-          const status: StatusJuz = nilaiJuz.length === 0 ? 'belum_dimulai' : nilaiJuz.length >= target ? 'selesai' : 'belum_selesai'
+          let dinilaiCount = 0
+          let sumRaw = 0
+          for (const id of segmentIds) {
+            const item = nilaiTerbaruPerSegmen.get(`${santri.id}|${id}`)
+            if (item) {
+              dinilaiCount += 1
+              sumRaw += nilaiAman(item.nilai_akhir)
+            }
+          }
+          const rata = target > 0 ? sumRaw / target : null
+          const status: StatusJuz = dinilaiCount === 0 ? 'belum_dimulai' : dinilaiCount >= target ? 'selesai' : 'belum_selesai'
           const tajwid = tajwidPerSantriJuz.get(`${santri.id}|${juz}`) ?? null
-          return { juz, target, dinilai: nilaiJuz.length, rata, status, segmentIds, tajwid }
+          return { juz, target, dinilai: dinilaiCount, rata, status, segmentIds, tajwid }
         }).sort((a, b) => b.juz - a.juz)
 
         const juzDimulai = juzList.filter(j => j.status !== 'belum_dimulai').length
