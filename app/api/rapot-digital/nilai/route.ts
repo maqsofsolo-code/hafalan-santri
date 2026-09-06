@@ -236,7 +236,7 @@ export async function POST(request: Request) {
   // 5. Cek apakah row nilai_rapot sudah ada (untuk menentukan INSERT vs UPDATE)
   const { data: existingRow, error: checkError } = await serviceClient
     .from('nilai_rapot')
-    .select('id, guru_id, kelancaran, tajwid, keterangan_hafalan')
+    .select('id, guru_id')
     .eq('santri_id', santriId)
     .eq('periode_id', periodeId)
     .maybeSingle()
@@ -258,7 +258,8 @@ export async function POST(request: Request) {
   if (existingRow) {
     // UPDATE:
     // Pertahankan guru_id lama (jangan percaya guru_id dari frontend payload)
-    // Tulis nilai Absensi & Hifzh yang dihitung secara otoritatif oleh server
+    // Tulis nilai Absensi yang dihitung secara otoritatif oleh server
+    // Legacy Hifzh columns (kelancaran, tajwid, keterangan_hafalan) selalu eksplisit NULL
     const updatePayload = {
       ...snapshotData,
       ...mapelData,
@@ -270,9 +271,9 @@ export async function POST(request: Request) {
       hadir_sakit: absensiOtoritatif.hadir_sakit,
       hadir_izin: absensiOtoritatif.hadir_izin,
       hadir_alpha: absensiOtoritatif.hadir_alpha,
-      kelancaran: hifzhOtoritatif.kelancaran,
-      tajwid: hifzhOtoritatif.tajwid,
-      keterangan_hafalan: hifzhOtoritatif.keterangan_hafalan,
+      kelancaran: null,
+      tajwid: null,
+      keterangan_hafalan: null,
       catatan,
     }
 
@@ -291,6 +292,7 @@ export async function POST(request: Request) {
   } else {
     // INSERT:
     // Server menetapkan guru_id dari authenticated user (auth.userId)
+    // Legacy Hifzh columns (kelancaran, tajwid, keterangan_hafalan) selalu eksplisit NULL
     const insertPayload = {
       santri_id: santriId,
       periode_id: periodeId,
@@ -305,10 +307,10 @@ export async function POST(request: Request) {
       hadir_sakit: absensiOtoritatif.hadir_sakit,
       hadir_izin: absensiOtoritatif.hadir_izin,
       hadir_alpha: absensiOtoritatif.hadir_alpha,
+      kelancaran: null,
+      tajwid: null,
+      keterangan_hafalan: null,
       catatan,
-      kelancaran: hifzhOtoritatif.kelancaran,
-      tajwid: hifzhOtoritatif.tajwid,
-      keterangan_hafalan: hifzhOtoritatif.keterangan_hafalan,
     }
 
     const { data: inserted, error: insertError } = await serviceClient
@@ -327,6 +329,13 @@ export async function POST(request: Request) {
   return NextResponse.json({
     success: true,
     action: isInsert ? 'INSERT' : 'UPDATE',
-    nilai: savedData,
+    nilai: savedData
+      ? {
+          ...savedData,
+          kelancaran: hifzhOtoritatif.kelancaran,
+          tajwid: hifzhOtoritatif.tajwid,
+          keterangan_hafalan: hifzhOtoritatif.keterangan_hafalan,
+        }
+      : null,
   })
 }
