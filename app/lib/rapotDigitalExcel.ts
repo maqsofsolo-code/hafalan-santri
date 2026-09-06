@@ -308,7 +308,8 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     })
     r++
 
-    // SUBJECT GROUPS (B. DINIYYAH, C. UMUM, dsb.)
+    const totalActiveSubjects = cfg.groups.reduce((sum, g) => sum + g.subjects.length, 0)
+
     cfg.groups.forEach(group => {
       ws.mergeCells(`A${r}:F${r}`)
       ws.getCell(`A${r}`).value = `${group.code}. ${group.name}`
@@ -322,14 +323,30 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       group.subjects.forEach((sub, sIdx) => {
         const val = data.evaluasi.nilaiEfektifMap[sub.id]
         const isBilingual = Boolean(sub.labelArab && (jenjang === 'ulya' || data.santri.jenjang === 'ulya'))
-        const displayLabel = isBilingual ? `${sub.label}\n${sub.labelArab}` : sub.label
 
         ws.getCell(`A${r}`).value = String(sIdx + 1)
         ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
-        ws.getCell(`B${r}`).value = displayLabel
-        ws.getCell(`B${r}`).alignment = isBilingual
-          ? { vertical: 'middle', wrapText: true }
-          : { vertical: 'middle' }
+
+        if (isBilingual) {
+          ws.getCell(`B${r}`).value = {
+            richText: [
+              {
+                text: sub.label.toUpperCase() + '\n',
+                font: { name: 'Times New Roman', size: 10, bold: true },
+              },
+              {
+                text: sub.labelArab || '',
+                font: { name: 'Traditional Arabic', size: 11, bold: false },
+              },
+            ],
+          }
+          ws.getCell(`B${r}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+          ws.getRow(r).height = 34
+        } else {
+          ws.getCell(`B${r}`).value = sub.label.toUpperCase()
+          ws.getCell(`B${r}`).alignment = { vertical: 'middle' }
+        }
+
         ws.getCell(`C${r}`).value = val ?? '-'
         ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
         ws.getCell(`D${r}`).value = typeof val === 'number' ? angkaKeHuruf(val) : '-'
@@ -338,13 +355,11 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
         ws.getCell(`F${r}`).value = '-'
         ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
 
-        if (isBilingual) {
-          ws.getRow(r).height = 27
-        }
-
         ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
           ws.getCell(`${c}${r}`).border = BORDER_THIN
-          ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
+          if (!(c === 'B' && isBilingual)) {
+            ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
+          }
         })
         ws.getCell(`C${r}`).font = getScoreFont(val, { size: 9, bold: true })
         ws.getCell(`D${r}`).font = getScoreFont(val, { size: 9, bold: false })
@@ -400,7 +415,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ws.mergeCells(`C${r}:F${r}`)
     ws.getCell(`C${r}`).value = data.evaluasi.peringkat !== null
       ? `Peringkat ke : ${data.evaluasi.peringkat} dari ${totalSantriKelas} santri`
-      : 'Peringkat ke : - (Nilai akademik belum lengkap 10 mapel)'
+      : `Peringkat ke : - (Nilai akademik belum lengkap ${totalActiveSubjects} mapel)`
     ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
     ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
       ws.getCell(`${c}${r}`).border = BORDER_THIN
