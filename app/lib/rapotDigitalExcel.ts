@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import ExcelJS from 'exceljs'
 import {
   RAPOT_SUBJECT_CONFIG,
@@ -10,6 +12,8 @@ export type SantriRapotExcelData = {
     id: string
     nama: string
     nisn: string | null
+    nis?: string | null
+    no_induk?: string | null
     kelas_num: number
     jenjang: string
     jenis_kelas: string
@@ -57,6 +61,17 @@ const BORDER_THIN: Partial<ExcelJS.Borders> = {
   right: { style: 'thin', color: { argb: 'FF999999' } },
 }
 
+function getScoreFont(val: number | null | undefined, baseFont: Partial<ExcelJS.Font> = {}): Partial<ExcelJS.Font> {
+  const isBelow60 = typeof val === 'number' && !Number.isNaN(val) && val < 60
+  return {
+    name: 'Times New Roman',
+    size: 9,
+    bold: true,
+    ...baseFont,
+    color: { argb: isBelow60 ? 'FFFF0000' : 'FF000000' },
+  }
+}
+
 /**
  * Membangun workbook Excel (.xlsx) untuk satu kelas penuh.
  * Tiap santri memiliki sheet tersendiri ('1', '2', ...), mempertahankan
@@ -84,44 +99,87 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ? new Date(periode.tanggal_selesai).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '-'
 
+  // Load logo resmi Ma'had Daarus Salaf
+  let logoImageId: number | null = null
+  try {
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png')
+    if (fs.existsSync(logoPath)) {
+      const logoBuffer = fs.readFileSync(logoPath)
+      logoImageId = wb.addImage({
+        buffer: logoBuffer,
+        extension: 'png',
+      } as any)
+    }
+  } catch (err) {
+    console.warn('Gagal memuat logo resmi untuk Excel rapot digital:', err)
+  }
+
   santriDataList.forEach((data, index) => {
     const sheetName = String(index + 1)
     const ws = wb.addWorksheet(sheetName, {
-      pageSetup: { paperSize: 9, orientation: 'portrait' }, // A4
+      pageSetup: {
+        paperSize: 14 as any, // F4 / Folio (8.5 x 13 inch / 21.59 x 33 cm)
+        orientation: 'portrait',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        horizontalCentered: true,
+        margins: {
+          left: 0.4,
+          right: 0.4,
+          top: 0.4,
+          bottom: 0.4,
+          header: 0.2,
+          footer: 0.2,
+        },
+      },
     })
 
-    // Atur lebar kolom
-    ws.getColumn('A').width = 6   // No
-    ws.getColumn('B').width = 28  // Mapel
-    ws.getColumn('C').width = 12  // Nilai Angka
-    ws.getColumn('D').width = 24  // Nilai Huruf
-    ws.getColumn('E').width = 14  // Rata-rata
-    ws.getColumn('F').width = 16  // Rata-rata Kelas
+    // Atur lebar kolom yang proporsional dan tidak memotong teks identitas
+    ws.getColumn('A').width = 18  // No / Label Identitas
+    ws.getColumn('B').width = 26  // Mapel / Nilai Santri
+    ws.getColumn('C').width = 11  // Nilai Angka
+    ws.getColumn('D').width = 21  // Nilai Huruf / Label Kanan
+    ws.getColumn('E').width = 13  // Rata-rata / Nilai Kanan 1
+    ws.getColumn('F').width = 15  // Rata-rata Kelas / Nilai Kanan 2
+
+    // Posisikan logo resmi Daarus Salaf seimbang di sebelah kiri header kop
+    if (logoImageId !== null) {
+      ws.addImage(logoImageId, {
+        tl: { col: 0.2, row: 0.25 },
+        ext: { width: 68, height: 68 },
+        editAs: 'oneCell',
+      })
+    }
 
     let r = 1
 
     // KOP PESANTREN
+    ws.getRow(r).height = 24
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'مَعْهَدُ دَارِ السَّلَفِ الْإِسْلَامِي'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`A${r}`).font = { name: 'Traditional Arabic', size: 16, bold: true }
     r++
 
+    ws.getRow(r).height = 20
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'PONDOK PESANTREN DAARUS SALAF'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 13, bold: true }
     r++
 
+    ws.getRow(r).height = 16
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'Nomor Statistik Pondok Pesantren : 510033110106'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9 }
     r++
 
+    ws.getRow(r).height = 16
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'Sekretariat: Masjid Ibnu Taimiyyah, Jl. Pandawa, Karang RT 04 RW 07, Sanggrahan, Grogol, Sukoharjo.'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 8, italic: true }
     r++
 
@@ -131,37 +189,51 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     r++
 
     // Basmalah & Judul
+    ws.getRow(r).height = 22
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيْمِ'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`A${r}`).font = { name: 'Traditional Arabic', size: 13, bold: true }
     r++
 
+    ws.getRow(r).height = 20
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'Laporan Penilaian Hasil Belajar'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 11, bold: true, underline: true }
     r += 2
 
     // IDENTITAS SANTRI
+    const noIndukRaw = data.santri.nis || data.santri.no_induk
+    const noIndukDisplay = noIndukRaw ? `: ${noIndukRaw}` : ''
+    const nisnDisplay = data.santri.nisn ? `: ${data.santri.nisn}` : '-'
+
     const barisIdentitas = [
       ['Nama Santri', `: ${data.santri.nama}`, 'Tahun Ajaran', `: ${periode.tahun_ajaran}`],
-      ['Nomor Induk Santri', `: ${data.santri.nisn || '-'}`, 'Kelas / Jenjang', `: ${kelasNum} / ${jenjang.toUpperCase()}`],
-      ['NISN', `: ${data.santri.nisn || '-'}`, 'Semester', `: ${semesterLabel}`],
+      ['Nomor Induk Santri', noIndukDisplay, 'Kelas / Jenjang', `: ${kelasNum} / ${jenjang.toUpperCase()}`],
+      ['NISN', nisnDisplay, 'Semester', `: ${semesterLabel}`],
     ]
 
     barisIdentitas.forEach(row => {
+      ws.getRow(r).height = 20
+
       ws.getCell(`A${r}`).value = row[0]
       ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
+      ws.getCell(`A${r}`).alignment = { vertical: 'middle', horizontal: 'left' }
+
       ws.mergeCells(`B${r}:C${r}`)
       ws.getCell(`B${r}`).value = row[1]
       ws.getCell(`B${r}`).font = { name: 'Times New Roman', size: 9 }
+      ws.getCell(`B${r}`).alignment = { vertical: 'middle', horizontal: 'left', wrapText: false }
 
       ws.getCell(`D${r}`).value = row[2]
       ws.getCell(`D${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
+      ws.getCell(`D${r}`).alignment = { vertical: 'middle', horizontal: 'left' }
+
       ws.mergeCells(`E${r}:F${r}`)
       ws.getCell(`E${r}`).value = row[3]
       ws.getCell(`E${r}`).font = { name: 'Times New Roman', size: 9 }
+      ws.getCell(`E${r}`).alignment = { vertical: 'middle', horizontal: 'left' }
       r++
     })
     r++
@@ -211,7 +283,6 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       ws.getCell(`B${r}`).value = label
       ws.getCell(`C${r}`).value = val ?? '-'
       ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
-      ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
       ws.getCell(`D${r}`).value = typeof val === 'number' ? angkaKeHuruf(val) : '-'
       ws.getCell(`E${r}`).value = ''
       ws.getCell(`F${r}`).value = '-'
@@ -221,7 +292,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
         ws.getCell(`${c}${r}`).border = BORDER_THIN
         ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
       })
-      ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
+      ws.getCell(`C${r}`).font = getScoreFont(val, { size: 9, bold: true })
       r++
     })
 
@@ -257,7 +328,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
           ws.getCell(`${c}${r}`).border = BORDER_THIN
           ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
         })
-        ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
+        ws.getCell(`C${r}`).font = getScoreFont(val, { size: 9, bold: true })
         r++
       })
 
@@ -278,6 +349,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
         ws.getCell(`${c}${r}`).border = BORDER_THIN
         ws.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } } // amber muda
       })
+      ws.getCell(`C${r}`).font = getScoreFont(groupRata, { size: 9, bold: true })
       r++
     })
 
@@ -297,6 +369,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       ws.getCell(`${c}${r}`).border = BORDER_THIN
       ws.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } }
     })
+    ws.getCell(`C${r}`).font = getScoreFont(data.evaluasi.rataAkhir, { size: 10, bold: true })
     r++
 
     // PERINGKAT KELAS
@@ -397,7 +470,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
 
     ws.mergeCells(`C${r}:D${r}`)
-    ws.getCell(`C${r}`).value = '( Abu Farras, Lc. )'
+    ws.getCell(`C${r}`).value = '( Ustadz Abu Muhammad Idral )'
     ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
 
     ws.mergeCells(`E${r}:F${r}`)
