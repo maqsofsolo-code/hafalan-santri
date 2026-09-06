@@ -1,7 +1,12 @@
 'use client'
 import React, { useEffect } from 'react'
 import { useRapotDigital } from '../hooks/useRapotDigital'
-import { MATA_PELAJARAN_ULA_DINIYYAH, MATA_PELAJARAN_ULA_UMUM } from '../../lib/rapotDigital'
+import {
+  MATA_PELAJARAN_ULA_DINIYYAH,
+  MATA_PELAJARAN_ULA_UMUM,
+  getAcademicProgress,
+  type JenjangKey,
+} from '../../lib/rapotDigital'
 
 export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapotDigital> }) {
   const localRapot = useRapotDigital()
@@ -182,7 +187,7 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                           <p className="text-xs text-gray-500">Pilih santri untuk memasukkan atau mengedit nilai rapot.</p>
                         </div>
                         <div className="text-xs font-semibold px-3 py-1 bg-gray-100 rounded-full text-gray-600">
-                          {rapot.santriList.filter(s => s.has_nilai).length} / {rapot.santriList.length} Sudah Diinput
+                          {rapot.santriList.filter(s => (s.academic_progress || getAcademicProgress(s.nilai, s.jenjang as JenjangKey)).lengkap).length} / {rapot.santriList.length} Lengkap
                         </div>
                       </div>
 
@@ -192,27 +197,69 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                         <div className="text-center py-8 text-gray-400">Tidak ada santri aktif di kelas ini.</div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {rapot.santriList.map((s, idx) => (
-                            <div
-                              key={s.id}
-                              onClick={() => rapot.handleSelectSantri(s)}
-                              className="p-3.5 rounded-xl border-2 border-gray-100 hover:border-blue-300 bg-gray-50 hover:bg-blue-50/50 cursor-pointer transition flex flex-col justify-between"
-                            >
-                              <div className="flex justify-between items-start mb-2">
+                          {rapot.santriList.map((s, idx) => {
+                            const prog = s.academic_progress || getAcademicProgress(s.nilai, s.jenjang as JenjangKey)
+                            const isLengkap = prog.lengkap
+                            const isPartial = prog.hasAny && !prog.lengkap
+
+                            return (
+                              <div
+                                key={s.id}
+                                onClick={() => rapot.handleSelectSantri(s)}
+                                className="p-3.5 rounded-xl border-2 border-gray-100 hover:border-blue-300 bg-gray-50 hover:bg-blue-50/50 cursor-pointer transition flex flex-col justify-between"
+                              >
                                 <div>
-                                  <span className="text-xs font-bold text-gray-400 mr-1.5">{idx + 1}.</span>
-                                  <span className="font-bold text-gray-800 text-sm">{s.nama}</span>
+                                  <div className="flex justify-between items-start mb-1.5">
+                                    <div>
+                                      <span className="text-xs font-bold text-gray-400 mr-1.5">{idx + 1}.</span>
+                                      <span className="font-bold text-gray-800 text-sm">{s.nama}</span>
+                                    </div>
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        isLengkap
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : isPartial
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-gray-200 text-gray-600'
+                                      }`}
+                                    >
+                                      {isLengkap ? 'Lengkap' : isPartial ? 'Belum Lengkap' : 'Belum Input'}
+                                    </span>
+                                  </div>
+
+                                  {/* Progress breakdown per kelompok mapel */}
+                                  {prog.groups.length > 0 && (
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                      {prog.groups.map((g, gIdx) => (
+                                        <span key={g.id} className="flex items-center gap-1">
+                                          {gIdx > 0 && <span className="text-gray-300">•</span>}
+                                          <span>
+                                            {g.label}{' '}
+                                            <strong
+                                              className={
+                                                g.filled === g.total
+                                                  ? 'text-emerald-700'
+                                                  : g.filled > 0
+                                                  ? 'text-amber-700'
+                                                  : 'text-gray-500'
+                                              }
+                                            >
+                                              {g.filled}/{g.total}
+                                            </strong>
+                                          </span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.has_nilai ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'}`}>
-                                  {s.has_nilai ? '✓ Sudah Input' : 'Belum Input'}
-                                </span>
+
+                                <div className="text-xs text-gray-500 flex justify-between items-center mt-3 pt-2 border-t border-gray-200/60">
+                                  <span>NISN: {s.nisn || '-'}</span>
+                                  <span className="text-blue-600 font-semibold text-xs">Pilih →</span>
+                                </div>
                               </div>
-                              <div className="text-xs text-gray-500 flex justify-between items-center mt-2 pt-2 border-t border-gray-200/60">
-                                <span>NISN: {s.nisn || '-'}</span>
-                                <span className="text-blue-600 font-semibold text-xs">Pilih →</span>
-                              </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -229,11 +276,38 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                           <p className="text-xs text-gray-500">
                             NISN: {rapot.selectedSantri.nisn || '-'} • Kelas {rapot.selectedAssignment.kelas_num} {formatJenisKelas(rapot.selectedAssignment.jenis_kelas)}
                           </p>
-                          {rapot.existingRapotId && (
-                            <span className="inline-block mt-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                              Mode Edit Nilai yang Sudah Ada
-                            </span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                            {(() => {
+                              const currentProg = getAcademicProgress(rapot.nilaiRapot, rapot.selectedSantri.jenjang as JenjangKey)
+                              const isLengkap = currentProg.lengkap
+                              const isPartial = currentProg.hasAny && !currentProg.lengkap
+                              return (
+                                <>
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      isLengkap
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : isPartial
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-gray-200 text-gray-600'
+                                    }`}
+                                  >
+                                    {isLengkap ? '✓ Lengkap' : isPartial ? 'Belum Lengkap' : 'Belum Input'} ({currentProg.filled}/{currentProg.total} Mapel)
+                                  </span>
+                                  {currentProg.groups.map(g => (
+                                    <span key={g.id} className="text-[11px] text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md">
+                                      {g.label}: <strong className={g.filled === g.total ? 'text-emerald-700' : g.filled > 0 ? 'text-amber-700' : 'text-gray-500'}>{g.filled}/{g.total}</strong>
+                                    </span>
+                                  ))}
+                                </>
+                              )
+                            })()}
+                            {rapot.existingRapotId && (
+                              <span className="text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                Mode Edit
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <button
                           onClick={rapot.handleBatalSantri}

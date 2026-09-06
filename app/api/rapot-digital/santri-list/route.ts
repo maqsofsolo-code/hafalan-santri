@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
+import { getAcademicProgress, type JenjangKey } from '../../../lib/rapotDigital'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -127,7 +128,8 @@ export async function GET(request: Request) {
   const merged = santriRows.map(s => {
     const nilaiDb = nilaiMap.get(s.id) || null
     const absensi = absensiMap.get(s.id) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
-    const hifzh = hifzhMap.get(s.id) || { kelancaran: null, tajwid: null, keterangan_hafalan: s.total_hafalan_juz ? `${s.total_hafalan_juz} Juz` : '-' }
+    const hifzh = hifzhMap.get(s.id) || { kelancaran: null, tajwid: null, keterangan_hafalan: '-' }
+    const academicProgress = getAcademicProgress(nilaiDb, s.jenjang as JenjangKey)
 
     // Merged nilai: timpa kolom absensi & hifzh dengan data otoritatif server
     const nilai = nilaiDb
@@ -149,6 +151,7 @@ export async function GET(request: Request) {
       nilai,
       absensi_otomatis: absensi,
       hifzh_otomatis: hifzh,
+      academic_progress: academicProgress,
     }
   })
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
-import { validateNilaiRaw, ALL_MAPEL_ULA_KEYS } from '../../../lib/rapotDigital'
+import { validateNilaiRaw, ALL_MAPEL_ULA_KEYS, getAcademicProgress, type JenjangKey } from '../../../lib/rapotDigital'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
   }
 
   const absensi = absensiMap.get(santriId) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
-  const hifzh = hifzhMap.get(santriId) || { kelancaran: null, tajwid: null, keterangan_hafalan: santri.total_hafalan_juz ? `${santri.total_hafalan_juz} Juz` : '-' }
+  const hifzh = hifzhMap.get(santriId) || { kelancaran: null, tajwid: null, keterangan_hafalan: '-' }
 
   const nilai = nilaiRes.data
     ? {
@@ -99,7 +99,8 @@ export async function GET(request: Request) {
       }
     : null
 
-  return NextResponse.json({ santri, nilai, absensi_otomatis: absensi, hifzh_otomatis: hifzh })
+  const academicProgress = getAcademicProgress(nilaiRes.data, santri.jenjang as JenjangKey)
+  return NextResponse.json({ santri, nilai, absensi_otomatis: absensi, hifzh_otomatis: hifzh, academic_progress: academicProgress })
 }
 
 export async function POST(request: Request) {
@@ -222,7 +223,7 @@ export async function POST(request: Request) {
   const hifzhOtoritatif = hifzhMap.get(santriId) || {
     kelancaran: null,
     tajwid: null,
-    keterangan_hafalan: santri.total_hafalan_juz ? `${santri.total_hafalan_juz} Juz` : '-',
+    keterangan_hafalan: '-',
   }
 
   // Validasi Ekskul
@@ -326,6 +327,8 @@ export async function POST(request: Request) {
     isInsert = true
   }
 
+  const academicProgress = getAcademicProgress(savedData, santri.jenjang as JenjangKey)
+
   return NextResponse.json({
     success: true,
     action: isInsert ? 'INSERT' : 'UPDATE',
@@ -337,5 +340,6 @@ export async function POST(request: Request) {
           keterangan_hafalan: hifzhOtoritatif.keterangan_hafalan,
         }
       : null,
+    academic_progress: academicProgress,
   })
 }

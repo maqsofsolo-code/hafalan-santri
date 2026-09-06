@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { getKelasOptions, jenjangLabel } from '../utils'
 import type { useAdminRapot } from '../hooks/useAdminRapot'
+import { getAcademicProgress, type JenjangKey } from '../../lib/rapotDigital'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
@@ -183,7 +184,14 @@ export function RapotDigitalSection(props: {
                           {rapot.rapotInputSantri.status}
                         </span>
                       </div>
-                      {rapot.rapotExistingId && <div className="text-xs text-green-600 mt-0.5">✓ Data sudah ada — akan diupdate</div>}
+                      {rapot.rapotExistingId && (() => {
+                        const prog = getAcademicProgress(rapot.rapotNilai, (rapot.rapotJenjangSnapshot as JenjangKey) || 'ula')
+                        return (
+                          <div className={`text-xs mt-0.5 font-medium ${prog.lengkap ? 'text-green-600' : prog.hasAny ? 'text-amber-600' : 'text-gray-500'}`}>
+                            {prog.lengkap ? `✓ Lengkap (${prog.filled}/${prog.total} mapel)` : prog.hasAny ? `Belum Lengkap (${prog.filled}/${prog.total} mapel)` : '✓ Data sudah ada (Belum ada nilai mapel)'}
+                          </div>
+                        )
+                      })()}
                     </div>
                     <button onClick={rapot.handleBatalkanRapotInputSantri} className="text-gray-400 text-xl ml-3">×</button>
                   </div>

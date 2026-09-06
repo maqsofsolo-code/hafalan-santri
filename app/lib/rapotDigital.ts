@@ -140,12 +140,97 @@ export function angkaKeHuruf(n: number | null | undefined): string {
   return puluhan[Math.floor(num / 10)] + (num % 10 ? ' ' + satuan[num % 10] : '')
 }
 
+export type AcademicGroupProgress = {
+  id: string
+  label: string
+  filled: number
+  total: number
+}
+
+export type AcademicProgress = {
+  groups: AcademicGroupProgress[]
+  filled: number
+  total: number
+  hasAny: boolean
+  lengkap: boolean
+}
+
+/**
+ * Menghitung progress pengisian nilai akademik santri secara dinamis
+ * berdasarkan RAPOT_SUBJECT_CONFIG jenjang aktif (tanpa hardcode jumlah mapel).
+ */
+export function getAcademicProgress(
+  nilai: Record<string, any> | null | undefined,
+  jenjang: JenjangKey = 'ula'
+): AcademicProgress {
+  const cfg = RAPOT_SUBJECT_CONFIG[jenjang]
+  if (!cfg || !cfg.enabled) {
+    return {
+      groups: [],
+      filled: 0,
+      total: 0,
+      hasAny: false,
+      lengkap: false,
+    }
+  }
+
+  let overallFilled = 0
+  let overallTotal = 0
+
+  const groups: AcademicGroupProgress[] = cfg.groups.map(group => {
+    let groupFilled = 0
+    for (const sub of group.subjects) {
+      const val = nilai ? nilai[sub.id] : null
+      if (val !== null && val !== undefined && val !== '') {
+        const num = Number(val)
+        if (Number.isFinite(num) && num >= 0 && num <= 100) {
+          groupFilled++
+        }
+      }
+    }
+    const groupTotal = group.subjects.length
+    overallFilled += groupFilled
+    overallTotal += groupTotal
+
+    const label = group.id === 'diniyyah'
+      ? 'Diniyyah'
+      : group.id === 'umum'
+      ? 'Umum'
+      : (group.name
+          ? group.name
+              .replace(/^MATERI\s+/i, '')
+              .split(' ')
+              .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+              .join(' ')
+          : group.id)
+
+    return {
+      id: group.id,
+      label,
+      filled: groupFilled,
+      total: groupTotal,
+    }
+  })
+
+  const lengkap = overallTotal > 0 && overallFilled === overallTotal
+  const hasAny = overallFilled > 0
+
+  return {
+    groups,
+    filled: overallFilled,
+    total: overallTotal,
+    hasAny,
+    lengkap,
+  }
+}
+
 export type HasilRataRataSantri = {
   lengkap: boolean
   rataAkhir: number | null
   rataDiniyyah: number | null
   rataUmum: number | null
   nilaiEfektifMap: Record<string, number | null>
+  progress?: AcademicProgress
 }
 
 /**
@@ -170,12 +255,13 @@ export function hitungRataRataAkademik(
       rataDiniyyah: null,
       rataUmum: null,
       nilaiEfektifMap: {},
+      progress: getAcademicProgress(nilaiRaw, jenjang),
     }
   }
 
+  const progress = getAcademicProgress(nilaiRaw, jenjang)
   const activeSubjects = getActiveSubjects(jenjang)
   const nilaiEfektifMap: Record<string, number | null> = {}
-  let isLengkap = true
   let sumTotal = 0
 
   for (const sub of activeSubjects) {
@@ -185,7 +271,6 @@ export function hitungRataRataAkademik(
       : null
 
     if (valNum === null || !Number.isFinite(valNum)) {
-      isLengkap = false
       nilaiEfektifMap[sub.id] = null
     } else {
       const efektif = nilaiEfektifRapot(valNum)
@@ -219,16 +304,17 @@ export function hitungRataRataAkademik(
   }
 
   const totalSubjects = activeSubjects.length
-  const rataAkhir = isLengkap && totalSubjects > 0
+  const rataAkhir = progress.lengkap && totalSubjects > 0
     ? Math.round((sumTotal / totalSubjects) * 10) / 10
     : null
 
   return {
-    lengkap: isLengkap,
+    lengkap: progress.lengkap,
     rataAkhir,
     rataDiniyyah,
     rataUmum,
     nilaiEfektifMap,
+    progress,
   }
 }
 
@@ -244,6 +330,7 @@ export type SantriRankingResult = SantriRankingItem & {
   rataUmum: number | null
   peringkat: number | null
   nilaiEfektifMap: Record<string, number | null>
+  progress?: AcademicProgress
 }
 
 /**
@@ -273,6 +360,7 @@ export function hitungRankingRapotKelas<T extends SantriRankingItem>(
       rataDiniyyah: rata.rataDiniyyah,
       rataUmum: rata.rataUmum,
       nilaiEfektifMap: rata.nilaiEfektifMap,
+      progress: rata.progress,
       peringkat: null as number | null,
     }
   })

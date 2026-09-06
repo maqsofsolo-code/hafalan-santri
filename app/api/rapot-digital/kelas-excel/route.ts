@@ -143,7 +143,7 @@ export async function GET(request: Request) {
   const santriDataList: SantriRapotExcelData[] = santriRows.map(s => {
     const rawNilai = nilaiMap.get(s.id) || {}
     const absensi = absensiMap.get(s.id) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
-    const hifzh = hifzhMap.get(s.id) || { kelancaran: null, tajwid: null, keterangan_hafalan: s.total_hafalan_juz ? `${s.total_hafalan_juz} Juz` : '-' }
+    const hifzh = hifzhMap.get(s.id) || { kelancaran: null, tajwid: null, keterangan_hafalan: '-' }
     const evaluasi = rankingEvaluasiMap.get(s.id) || {
       lengkap: false,
       rataAkhir: null,

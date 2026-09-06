@@ -114,6 +114,7 @@ export type SantriRapotItem = {
   has_nilai: boolean
   nilai_id?: string | null
   nilai?: any
+  academic_progress?: import('../lib/rapotDigital').AcademicProgress
 }
 
 /** Form input nilai rapot -- field dinamis (angka sebagai string dari <input>, huruf A/B/C dari <select>). */
