@@ -295,6 +295,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
         ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
       })
       ws.getCell(`C${r}`).font = getScoreFont(val, { size: 9, bold: true })
+      ws.getCell(`D${r}`).font = getScoreFont(val, { size: 9, bold: false })
       r++
     })
 
@@ -335,6 +336,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
           ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
         })
         ws.getCell(`C${r}`).font = getScoreFont(val, { size: 9, bold: true })
+        ws.getCell(`D${r}`).font = getScoreFont(val, { size: 9, bold: false })
         r++
       })
 
@@ -356,6 +358,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
         ws.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } } // amber muda
       })
       ws.getCell(`C${r}`).font = getScoreFont(groupRata, { size: 9, bold: true })
+      ws.getCell(`D${r}`).font = getScoreFont(groupRata, { size: 9, bold: false })
       r++
     })
 
@@ -376,6 +379,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       ws.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } }
     })
     ws.getCell(`C${r}`).font = getScoreFont(data.evaluasi.rataAkhir, { size: 10, bold: true })
+    ws.getCell(`D${r}`).font = getScoreFont(data.evaluasi.rataAkhir, { size: 9, bold: false })
     r++
 
     // PERINGKAT KELAS
