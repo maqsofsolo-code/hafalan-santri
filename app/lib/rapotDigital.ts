@@ -197,6 +197,13 @@ export const RAPOT_SUBJECT_CONFIG: Record<JenjangKey, JenjangSubjectConfig> = {
   ulya: RAPOT_CONFIG_ULYA_10,
 }
 
+export const RAPOT_CONFIG_UNAVAILABLE: JenjangSubjectConfig = {
+  jenjang: 'ula',
+  label: 'Belum Tersedia',
+  enabled: false,
+  groups: [],
+}
+
 /**
  * Resolver konfigurasi mapel rapot digital berdasarkan jenjang dan nomor kelas.
  * - Ula (1..6)       => RAPOT_CONFIG_ULA (10 mapel)
@@ -204,35 +211,53 @@ export const RAPOT_SUBJECT_CONFIG: Record<JenjangKey, JenjangSubjectConfig> = {
  * - Ulya Kelas 10    => RAPOT_CONFIG_ULYA_10 (12 mapel)
  * - Ulya Kelas 11    => RAPOT_CONFIG_ULYA_11 (13 mapel)
  * - Ulya Kelas 12    => RAPOT_CONFIG_ULYA_12 (11 mapel: no shorof, imla, khoth)
+ * 
+ * Mengembalikan RAPOT_CONFIG_UNAVAILABLE (enabled: false) jika kombinasi jenjang & kelas tidak valid.
  */
 export function getRapotSubjectConfig(
   jenjang: JenjangKey | string | null | undefined,
   kelasNum?: number | string | null
 ): JenjangSubjectConfig {
-  const kNum = kelasNum ? parseInt(String(kelasNum), 10) : null
-  let resolvedJenjang: JenjangKey = (jenjang as JenjangKey) || 'ula'
+  if (!jenjang) return RAPOT_CONFIG_UNAVAILABLE
+  const j = String(jenjang).toLowerCase() as JenjangKey
+  const kNum = (kelasNum !== undefined && kelasNum !== null && String(kelasNum).trim() !== '')
+    ? parseInt(String(kelasNum), 10)
+    : null
 
-  if (kNum && Number.isInteger(kNum)) {
-    if (kNum <= 6) resolvedJenjang = 'ula'
-    else if (kNum <= 9) resolvedJenjang = 'wustha'
-    else resolvedJenjang = 'ulya'
-  }
-
-  if (resolvedJenjang === 'ula') {
+  if (j === 'ula') {
+    if (kNum !== null && (isNaN(kNum) || kNum < 1 || kNum > 6)) {
+      return RAPOT_CONFIG_UNAVAILABLE
+    }
     return RAPOT_CONFIG_ULA
   }
 
-  if (resolvedJenjang === 'wustha') {
+  if (j === 'wustha') {
+    if (kNum !== null && (isNaN(kNum) || kNum < 7 || kNum > 9)) {
+      return RAPOT_CONFIG_UNAVAILABLE
+    }
     return RAPOT_CONFIG_WUSTHA
   }
 
-  if (resolvedJenjang === 'ulya') {
+  if (j === 'ulya') {
+    if (kNum === 10) return RAPOT_CONFIG_ULYA_10
     if (kNum === 11) return RAPOT_CONFIG_ULYA_11
     if (kNum === 12) return RAPOT_CONFIG_ULYA_12
-    return RAPOT_CONFIG_ULYA_10
+    // Ulya wajib memiliki kelasNum (10, 11, atau 12) karena komposisi mapel berbeda tiap kelas
+    return RAPOT_CONFIG_UNAVAILABLE
   }
 
-  return RAPOT_CONFIG_ULA
+  return RAPOT_CONFIG_UNAVAILABLE
+}
+
+/**
+ * Helper availability: mengecek apakah kombinasi jenjang dan kelas memiliki konfigurasi mapel aktif.
+ */
+export function isRapotConfigAvailable(
+  jenjang: JenjangKey | string | null | undefined,
+  kelasNum?: number | string | null
+): boolean {
+  const config = getRapotSubjectConfig(jenjang, kelasNum)
+  return !!config && config.enabled && config.groups.length > 0
 }
 
 /**

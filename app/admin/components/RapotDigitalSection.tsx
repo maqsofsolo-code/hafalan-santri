@@ -2,7 +2,7 @@
 import { useEffect } from 'react'
 import { getKelasOptions, jenjangLabel } from '../utils'
 import type { useAdminRapot } from '../hooks/useAdminRapot'
-import { getAcademicProgress, getRapotSubjectConfig, type JenjangKey } from '../../lib/rapotDigital'
+import { getAcademicProgress, getRapotSubjectConfig, isRapotConfigAvailable, type JenjangKey } from '../../lib/rapotDigital'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
@@ -185,7 +185,11 @@ export function RapotDigitalSection(props: {
                         </span>
                       </div>
                       {rapot.rapotExistingId && (() => {
-                        const prog = getAcademicProgress(rapot.rapotNilai, (rapot.rapotJenjangSnapshot as JenjangKey) || 'ula')
+                        const prog = getAcademicProgress(
+                          rapot.rapotNilai,
+                          (rapot.rapotJenjangSnapshot as JenjangKey) || 'ula',
+                          rapot.rapotKelasSnapshot ? parseInt(rapot.rapotKelasSnapshot) : undefined
+                        )
                         return (
                           <div className={`text-xs mt-0.5 font-medium ${prog.lengkap ? 'text-green-600' : prog.hasAny ? 'text-amber-600' : 'text-gray-500'}`}>
                             {prog.lengkap ? `✓ Lengkap (${prog.filled}/${prog.total} mapel)` : prog.hasAny ? `Belum Lengkap (${prog.filled}/${prog.total} mapel)` : '✓ Data sudah ada (Belum ada nilai mapel)'}
@@ -242,6 +246,18 @@ export function RapotDigitalSection(props: {
 
               {rapot.rapotInputSantri && rapot.rapotKelasSnapshot && (
                 <>
+                  {!isRapotConfigAvailable(rapot.rapotJenjangSnapshot, parseInt(rapot.rapotKelasSnapshot)) ? (
+                    <div className="p-6 bg-amber-50 border-2 border-amber-300 rounded-2xl text-center mb-4">
+                      <div className="text-3xl mb-2">🚧</div>
+                      <h3 className="font-bold text-amber-900 text-base">
+                        Jenjang {jenjangLabel(rapot.rapotJenjangSnapshot)} Kelas {rapot.rapotKelasSnapshot} Belum Tersedia
+                      </h3>
+                      <p className="text-amber-700 text-sm mt-1 max-w-md mx-auto">
+                        Daftar mata pelajaran untuk kombinasi jenjang dan kelas ini belum dikonfigurasi.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
                   <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                     <p className="text-sm font-bold text-gray-700 mb-1">A. Hifzhul Qur&apos;an</p>
                     <div className="p-3 bg-white rounded-lg border border-gray-200 text-xs text-gray-600 flex items-center gap-2">
@@ -367,6 +383,8 @@ export function RapotDigitalSection(props: {
                     style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
                     {rapot.rapotInputLoading ? 'Menyimpan...' : rapot.rapotExistingId ? '✓ Update Nilai Rapot' : '✓ Simpan Nilai Rapot'}
                   </button>
+                    </>
+                  )}
                 </>
               )}
 

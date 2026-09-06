@@ -6,6 +6,7 @@ import type { PeriodeAkademik, WaliKelasAssignmentItem, SantriRapotItem, NilaiRa
 import {
   ALL_POSSIBLE_MAPEL_KEYS,
   getActiveSubjects,
+  isRapotConfigAvailable,
   type JenjangKey,
 } from '../../lib/rapotDigital'
 
@@ -190,7 +191,7 @@ export function useRapotDigital() {
       setRapotMsg('Gagal: Input nilai rapot sedang ditutup oleh Admin.')
       return
     }
-    if (selectedAssignment.jenjang !== 'ula') {
+    if (!isRapotConfigAvailable(selectedAssignment.jenjang, selectedAssignment.kelas_num)) {
       setRapotMsg('Daftar mata pelajaran jenjang ini belum dikonfigurasi.')
       return
     }

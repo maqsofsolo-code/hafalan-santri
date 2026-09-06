@@ -4,6 +4,7 @@ import { useRapotDigital } from '../hooks/useRapotDigital'
 import {
   getRapotSubjectConfig,
   getAcademicProgress,
+  isRapotConfigAvailable,
   type JenjangKey,
 } from '../../lib/rapotDigital'
 
@@ -163,19 +164,21 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                 </div>
               )}
 
-              {/* Jenjang Non-Ula Message */}
-              {rapot.selectedAssignment && rapot.selectedAssignment.jenjang !== 'ula' && (
+              {/* Pesan Jika Konfigurasi Jenjang / Kelas Belum Tersedia */}
+              {rapot.selectedAssignment && !isRapotConfigAvailable(rapot.selectedAssignment.jenjang, rapot.selectedAssignment.kelas_num) && (
                 <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 text-center">
                   <div className="text-3xl mb-2">🚧</div>
-                  <h3 className="font-bold text-amber-900 text-base">Jenjang {formatJenjang(rapot.selectedAssignment.jenjang)} Belum Tersedia</h3>
+                  <h3 className="font-bold text-amber-900 text-base">
+                    Jenjang {formatJenjang(rapot.selectedAssignment.jenjang)} Kelas {rapot.selectedAssignment.kelas_num} Belum Tersedia
+                  </h3>
                   <p className="text-amber-700 text-sm mt-1 max-w-md mx-auto">
-                    Daftar mata pelajaran jenjang ini belum dikonfigurasi. Modul Rapot Digital saat ini baru diaktifkan untuk Jenjang Ula.
+                    Daftar mata pelajaran untuk kombinasi jenjang dan kelas ini belum dikonfigurasi.
                   </p>
                 </div>
               )}
 
-              {/* Daftar Santri & Form Input (Hanya untuk Ula) */}
-              {rapot.selectedAssignment && rapot.selectedAssignment.jenjang === 'ula' && (
+              {/* Daftar Santri & Form Input (Aktif jika konfigurasi tersedia) */}
+              {rapot.selectedAssignment && isRapotConfigAvailable(rapot.selectedAssignment.jenjang, rapot.selectedAssignment.kelas_num) && (
                 <div>
                   {/* Step 1: Daftar Santri */}
                   {!rapot.selectedSantri && (
@@ -186,7 +189,7 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                           <p className="text-xs text-gray-500">Pilih santri untuk memasukkan atau mengedit nilai rapot.</p>
                         </div>
                         <div className="text-xs font-semibold px-3 py-1 bg-gray-100 rounded-full text-gray-600">
-                          {rapot.santriList.filter(s => (s.academic_progress || getAcademicProgress(s.nilai, s.jenjang as JenjangKey)).lengkap).length} / {rapot.santriList.length} Lengkap
+                          {rapot.santriList.filter(s => (s.academic_progress || getAcademicProgress(s.nilai, s.jenjang as JenjangKey, s.kelas_num)).lengkap).length} / {rapot.santriList.length} Lengkap
                         </div>
                       </div>
 
@@ -197,7 +200,7 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                           {rapot.santriList.map((s, idx) => {
-                            const prog = s.academic_progress || getAcademicProgress(s.nilai, s.jenjang as JenjangKey)
+                            const prog = s.academic_progress || getAcademicProgress(s.nilai, s.jenjang as JenjangKey, s.kelas_num)
                             const isLengkap = prog.lengkap
                             const isPartial = prog.hasAny && !prog.lengkap
 
