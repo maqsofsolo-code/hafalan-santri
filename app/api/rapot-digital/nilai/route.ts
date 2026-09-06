@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
-import { validateNilaiRaw, ALL_MAPEL_ULA_KEYS, getAcademicProgress, type JenjangKey } from '../../../lib/rapotDigital'
+import {
+  validateNilaiRaw,
+  getRapotSubjectConfig,
+  getActiveSubjects,
+  getAcademicProgress,
+  ALL_POSSIBLE_MAPEL_KEYS,
+  type JenjangKey,
+} from '../../../lib/rapotDigital'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -99,7 +106,7 @@ export async function GET(request: Request) {
       }
     : null
 
-  const academicProgress = getAcademicProgress(nilaiRes.data, santri.jenjang as JenjangKey)
+  const academicProgress = getAcademicProgress(nilaiRes.data, santri.jenjang as JenjangKey, santri.kelas_num)
   return NextResponse.json({ santri, nilai, absensi_otomatis: absensi, hifzh_otomatis: hifzh, academic_progress: academicProgress })
 }
 
@@ -174,32 +181,46 @@ export async function POST(request: Request) {
       }, { status: 403 })
     }
 
-    // C. Jenjang Wustho / Ulya belum final
-    if (santri.jenjang !== 'ula') {
+    // C. Verifikasi konfigurasi mapel aktif kelas santri
+    const subjectConfig = getRapotSubjectConfig(santri.jenjang as JenjangKey, santri.kelas_num)
+    if (!subjectConfig || !subjectConfig.enabled) {
       return NextResponse.json({
         error: 'Daftar mata pelajaran jenjang ini belum dikonfigurasi. Belum dapat menyimpan nilai akademik.'
       }, { status: 400 })
     }
   } else if (auth.role === 'admin') {
     // Admin boleh simpan meski rapot_input_dibuka=false
-    if (santri.jenjang !== 'ula') {
+    const subjectConfig = getRapotSubjectConfig(santri.jenjang as JenjangKey, santri.kelas_num)
+    if (!subjectConfig || !subjectConfig.enabled) {
       return NextResponse.json({
         error: 'Daftar mata pelajaran jenjang ini belum dikonfigurasi. Belum dapat menyimpan nilai akademik.'
       }, { status: 400 })
     }
   }
 
-  // 4. Validasi nilai mentah 10 mapel Ula (harus integer 0-100 atau null)
+  // 4. Validasi nilai mentah mapel aktif untuk kelas santri (harus integer 0-100 atau null)
+  // Server-authoritative: hanya subject aktif untuk santri.jenjang + santri.kelas_num yang boleh ditulis.
+  const activeSubjects = getActiveSubjects(santri.jenjang as JenjangKey, santri.kelas_num)
+  const activeKeys = new Set(activeSubjects.map(s => s.id))
   const mapelData: Record<string, number | null> = {}
-  for (const mapelKey of ALL_MAPEL_ULA_KEYS) {
-    const rawVal = nilai[mapelKey]
+
+  for (const sub of activeSubjects) {
+    const rawVal = nilai[sub.id]
     const validation = validateNilaiRaw(rawVal)
     if (!validation.valid) {
       return NextResponse.json({
-        error: `Nilai ${mapelKey} tidak valid: ${validation.error}`
+        error: `Nilai ${sub.label || sub.id} tidak valid: ${validation.error}`
       }, { status: 400 })
     }
-    mapelData[mapelKey] = validation.value
+    mapelData[sub.id] = validation.value
+  }
+
+  // Server write whitelist: seluruh inactive subjects yang ada di database di-set NULL secara eksplisit
+  // sehingga data santri bersih dan inactive subjects tidak memengaruhi kelengkapan atau ranking.
+  for (const key of ALL_POSSIBLE_MAPEL_KEYS) {
+    if (!activeKeys.has(key)) {
+      mapelData[key] = null
+    }
   }
 
   // Validasi Kepribadian ('A' | 'B' | 'C')
@@ -327,7 +348,7 @@ export async function POST(request: Request) {
     isInsert = true
   }
 
-  const academicProgress = getAcademicProgress(savedData, santri.jenjang as JenjangKey)
+  const academicProgress = getAcademicProgress(savedData, santri.jenjang as JenjangKey, santri.kelas_num)
 
   return NextResponse.json({
     success: true,

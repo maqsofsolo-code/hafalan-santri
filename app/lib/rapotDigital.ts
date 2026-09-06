@@ -8,6 +8,7 @@ export type JenjangKey = 'ula' | 'wustha' | 'ulya'
 export interface SubjectItem {
   id: string
   label: string
+  labelArab?: string
 }
 
 export interface SubjectGroup {
@@ -24,63 +25,254 @@ export interface JenjangSubjectConfig {
   groups: SubjectGroup[]
 }
 
+export const RAPOT_CONFIG_ULA: JenjangSubjectConfig = {
+  jenjang: 'ula',
+  label: 'Ula',
+  enabled: true,
+  groups: [
+    {
+      id: 'diniyyah',
+      name: 'MATERI DINIYYAH',
+      code: 'B',
+      subjects: [
+        { id: 'aqidah', label: 'AQIDAH' },
+        { id: 'akhlak', label: 'ADAB / AKHLAK' },
+        { id: 'fiqh', label: 'FIQH' },
+        { id: 'bhs_arab', label: 'BAHASA ARAB' },
+        { id: 'siroh', label: 'SIROH' },
+        { id: 'khoth', label: 'KHOTH' },
+      ],
+    },
+    {
+      id: 'umum',
+      name: 'MATERI UMUM',
+      code: 'C',
+      subjects: [
+        { id: 'bhs_indonesia', label: 'BAHASA INDONESIA' },
+        { id: 'berhitung', label: 'BERHITUNG' },
+        { id: 'ipa', label: 'IPA' },
+        { id: 'ips', label: 'IPS' },
+      ],
+    },
+  ],
+}
+
+export const RAPOT_CONFIG_WUSTHA: JenjangSubjectConfig = {
+  jenjang: 'wustha',
+  label: 'Wustha',
+  enabled: true,
+  groups: [
+    {
+      id: 'diniyyah',
+      name: 'MATERI DINIYYAH',
+      code: 'B',
+      subjects: [
+        { id: 'aqidah', label: 'Aqidah' },
+        { id: 'akhlak', label: 'Adab / Akhlak' },
+        { id: 'fiqh', label: 'Fiqh' },
+        { id: 'bhs_arab', label: 'Bahasa Arab' },
+        { id: 'siroh', label: 'Siroh' },
+        { id: 'khoth', label: 'Khoth' },
+        { id: 'tahsin', label: 'Tahsin' },
+      ],
+    },
+    {
+      id: 'umum',
+      name: 'MATERI UMUM',
+      code: 'C',
+      subjects: [
+        { id: 'bhs_indonesia', label: 'Bahasa Indonesia' },
+        { id: 'berhitung', label: 'Berhitung' },
+      ],
+    },
+  ],
+}
+
+export const RAPOT_CONFIG_ULYA_10: JenjangSubjectConfig = {
+  jenjang: 'ulya',
+  label: 'Ulya (Kelas 10)',
+  enabled: true,
+  groups: [
+    {
+      id: 'diniyyah',
+      name: 'MATERI DINIYYAH',
+      code: 'B',
+      subjects: [
+        { id: 'aqidah', label: 'Aqidah', labelArab: 'العَقِيدَةُ' },
+        { id: 'akhlak', label: 'Adab / Akhlak', labelArab: 'الآدَابُ / الأَخْلَاقُ' },
+        { id: 'fiqh', label: 'Fiqh', labelArab: 'الفِقْهُ' },
+        { id: 'bhs_arab', label: 'Bahasa Arab', labelArab: 'اللُّغَةُ العَرَبِيَّةُ' },
+        { id: 'nahwu', label: 'Nahwu', labelArab: 'النَّحْوُ' },
+        { id: 'shorof', label: 'Shorof', labelArab: 'الصَّرْفُ' },
+        { id: 'siroh', label: 'Siroh', labelArab: 'السِّيرَةُ' },
+        { id: 'khoth', label: 'Khoth', labelArab: 'الخَطُّ' },
+        { id: 'tahsin', label: 'Tahsin', labelArab: 'التَّحْسِينُ' },
+        { id: 'imla', label: 'Imla', labelArab: 'الإِمْلَاءُ' },
+      ],
+    },
+    {
+      id: 'umum',
+      name: 'MATERI UMUM',
+      code: 'C',
+      subjects: [
+        { id: 'berhitung', label: 'Berhitung', labelArab: 'الحِسَابُ' },
+        { id: 'bhs_indonesia', label: 'Bahasa Indonesia', labelArab: 'اللُّغَةُ الإِنْدُونِيسِيَّةُ' },
+      ],
+    },
+  ],
+}
+
+export const RAPOT_CONFIG_ULYA_11: JenjangSubjectConfig = {
+  jenjang: 'ulya',
+  label: 'Ulya (Kelas 11)',
+  enabled: true,
+  groups: [
+    {
+      id: 'diniyyah',
+      name: 'MATERI DINIYYAH',
+      code: 'B',
+      subjects: [
+        { id: 'aqidah', label: 'Aqidah', labelArab: 'العَقِيدَةُ' },
+        { id: 'akhlak', label: 'Adab / Akhlak', labelArab: 'الآدَابُ / الأَخْلَاقُ' },
+        { id: 'fiqh', label: 'Fiqh', labelArab: 'الفِقْهُ' },
+        { id: 'bhs_arab', label: 'Bahasa Arab', labelArab: 'اللُّغَةُ العَرَبِيَّةُ' },
+        { id: 'nahwu', label: 'Nahwu', labelArab: 'النَّحْوُ' },
+        { id: 'shorof', label: 'Shorof', labelArab: 'الصَّرْفُ' },
+        { id: 'siroh', label: 'Siroh', labelArab: 'السِّيرَةُ' },
+        { id: 'usul_fiqih', label: 'Usul Fiqih', labelArab: 'أُصُولُ الفِقْهِ' },
+        { id: 'mustholah', label: 'Mustholah', labelArab: 'مُصْطَلَحُ الحَدِيثِ' },
+        { id: 'tahsin', label: 'Tahsin', labelArab: 'التَّحْسِينُ' },
+        { id: 'imla', label: 'Imla', labelArab: 'الإِمْلَاءُ' },
+      ],
+    },
+    {
+      id: 'umum',
+      name: 'MATERI UMUM',
+      code: 'C',
+      subjects: [
+        { id: 'berhitung', label: 'Berhitung', labelArab: 'الحِسَابُ' },
+        { id: 'bhs_indonesia', label: 'Bahasa Indonesia', labelArab: 'اللُّغَةُ الإِنْدُونِيسِيَّةُ' },
+      ],
+    },
+  ],
+}
+
+export const RAPOT_CONFIG_ULYA_12: JenjangSubjectConfig = {
+  jenjang: 'ulya',
+  label: 'Ulya (Kelas 12)',
+  enabled: true,
+  groups: [
+    {
+      id: 'diniyyah',
+      name: 'MATERI DINIYYAH',
+      code: 'B',
+      subjects: [
+        // Kelas 12: TIDAK ada Shorof, TIDAK ada Imla, TIDAK ada Khoth
+        { id: 'aqidah', label: 'Aqidah', labelArab: 'العَقِيدَةُ' },
+        { id: 'akhlak', label: 'Adab / Akhlak', labelArab: 'الآدَابُ / الأَخْلَاقُ' },
+        { id: 'fiqh', label: 'Fiqh', labelArab: 'الفِقْهُ' },
+        { id: 'bhs_arab', label: 'Bahasa Arab', labelArab: 'اللُّغَةُ العَرَبِيَّةُ' },
+        { id: 'nahwu', label: 'Nahwu', labelArab: 'النَّحْوُ' },
+        { id: 'siroh', label: 'Siroh', labelArab: 'السِّيرَةُ' },
+        { id: 'usul_fiqih', label: 'Usul Fiqih', labelArab: 'أُصُولُ الفِقْهِ' },
+        { id: 'mustholah', label: 'Mustholah', labelArab: 'مُصْطَلَحُ الحَدِيثِ' },
+        { id: 'tahsin', label: 'Tahsin', labelArab: 'التَّحْسِينُ' },
+      ],
+    },
+    {
+      id: 'umum',
+      name: 'MATERI UMUM',
+      code: 'C',
+      subjects: [
+        { id: 'berhitung', label: 'Berhitung', labelArab: 'الحِسَابُ' },
+        { id: 'bhs_indonesia', label: 'Bahasa Indonesia', labelArab: 'اللُّغَةُ الإِنْدُونِيسِيَّةُ' },
+      ],
+    },
+  ],
+}
+
 export const RAPOT_SUBJECT_CONFIG: Record<JenjangKey, JenjangSubjectConfig> = {
-  ula: {
-    jenjang: 'ula',
-    label: 'Ula',
-    enabled: true,
-    groups: [
-      {
-        id: 'diniyyah',
-        name: 'MATERI DINIYYAH',
-        code: 'B',
-        subjects: [
-          { id: 'aqidah', label: 'AQIDAH' },
-          { id: 'akhlak', label: 'ADAB / AKHLAK' },
-          { id: 'fiqh', label: 'FIQH' },
-          { id: 'bhs_arab', label: 'BAHASA ARAB' },
-          { id: 'siroh', label: 'SIROH' },
-          { id: 'khoth', label: 'KHOTH' },
-        ],
-      },
-      {
-        id: 'umum',
-        name: 'MATERI UMUM',
-        code: 'C',
-        subjects: [
-          { id: 'bhs_indonesia', label: 'BAHASA INDONESIA' },
-          { id: 'berhitung', label: 'BERHITUNG' },
-          { id: 'ipa', label: 'IPA' },
-          { id: 'ips', label: 'IPS' },
-        ],
-      },
-    ],
-  },
-  wustha: {
-    jenjang: 'wustha',
-    label: 'Wustha',
-    enabled: false,
-    groups: [],
-  },
-  ulya: {
-    jenjang: 'ulya',
-    label: 'Ulya',
-    enabled: false,
-    groups: [],
-  },
+  ula: RAPOT_CONFIG_ULA,
+  wustha: RAPOT_CONFIG_WUSTHA,
+  ulya: RAPOT_CONFIG_ULYA_10,
 }
 
 /**
- * Mengambil daftar seluruh mapel aktif untuk suatu jenjang.
+ * Resolver konfigurasi mapel rapot digital berdasarkan jenjang dan nomor kelas.
+ * - Ula (1..6)       => RAPOT_CONFIG_ULA (10 mapel)
+ * - Wustha (7..9)    => RAPOT_CONFIG_WUSTHA (9 mapel)
+ * - Ulya Kelas 10    => RAPOT_CONFIG_ULYA_10 (12 mapel)
+ * - Ulya Kelas 11    => RAPOT_CONFIG_ULYA_11 (13 mapel)
+ * - Ulya Kelas 12    => RAPOT_CONFIG_ULYA_12 (11 mapel: no shorof, imla, khoth)
  */
-export function getActiveSubjects(jenjang: JenjangKey): SubjectItem[] {
-  const cfg = RAPOT_SUBJECT_CONFIG[jenjang]
+export function getRapotSubjectConfig(
+  jenjang: JenjangKey | string | null | undefined,
+  kelasNum?: number | string | null
+): JenjangSubjectConfig {
+  const kNum = kelasNum ? parseInt(String(kelasNum), 10) : null
+  let resolvedJenjang: JenjangKey = (jenjang as JenjangKey) || 'ula'
+
+  if (kNum && Number.isInteger(kNum)) {
+    if (kNum <= 6) resolvedJenjang = 'ula'
+    else if (kNum <= 9) resolvedJenjang = 'wustha'
+    else resolvedJenjang = 'ulya'
+  }
+
+  if (resolvedJenjang === 'ula') {
+    return RAPOT_CONFIG_ULA
+  }
+
+  if (resolvedJenjang === 'wustha') {
+    return RAPOT_CONFIG_WUSTHA
+  }
+
+  if (resolvedJenjang === 'ulya') {
+    if (kNum === 11) return RAPOT_CONFIG_ULYA_11
+    if (kNum === 12) return RAPOT_CONFIG_ULYA_12
+    return RAPOT_CONFIG_ULYA_10
+  }
+
+  return RAPOT_CONFIG_ULA
+}
+
+/**
+ * Seluruh kunci mata pelajaran akademik di tabel public.nilai_rapot lintas jenjang.
+ */
+export const ALL_POSSIBLE_MAPEL_KEYS = [
+  'aqidah',
+  'akhlak',
+  'fiqh',
+  'bhs_arab',
+  'siroh',
+  'khoth',
+  'bhs_indonesia',
+  'berhitung',
+  'ipa',
+  'ips',
+  'tahsin',
+  'nahwu',
+  'shorof',
+  'imla',
+  'usul_fiqih',
+  'mustholah',
+] as const
+
+export type PossibleMapelKey = typeof ALL_POSSIBLE_MAPEL_KEYS[number]
+
+/**
+ * Mengambil daftar seluruh mapel aktif untuk suatu jenjang dan kelas.
+ */
+export function getActiveSubjects(
+  jenjang: JenjangKey | string | null | undefined,
+  kelasNum?: number | string | null
+): SubjectItem[] {
+  const cfg = getRapotSubjectConfig(jenjang as JenjangKey, kelasNum)
   if (!cfg || !cfg.enabled) return []
   return cfg.groups.flatMap(g => g.subjects)
 }
 
-export const MATA_PELAJARAN_ULA_DINIYYAH = RAPOT_SUBJECT_CONFIG.ula.groups[0].subjects
-export const MATA_PELAJARAN_ULA_UMUM = RAPOT_SUBJECT_CONFIG.ula.groups[1].subjects
+export const MATA_PELAJARAN_ULA_DINIYYAH = RAPOT_CONFIG_ULA.groups[0].subjects
+export const MATA_PELAJARAN_ULA_UMUM = RAPOT_CONFIG_ULA.groups[1].subjects
 export const ALL_MAPEL_ULA_KEYS = getActiveSubjects('ula').map(s => s.id)
 
 export type MapelUlaKey = typeof ALL_MAPEL_ULA_KEYS[number]
@@ -157,13 +349,14 @@ export type AcademicProgress = {
 
 /**
  * Menghitung progress pengisian nilai akademik santri secara dinamis
- * berdasarkan RAPOT_SUBJECT_CONFIG jenjang aktif (tanpa hardcode jumlah mapel).
+ * berdasarkan konfigurasi jenjang dan kelas aktif (tanpa hardcode jumlah mapel).
  */
 export function getAcademicProgress(
   nilai: Record<string, any> | null | undefined,
-  jenjang: JenjangKey = 'ula'
+  jenjang: JenjangKey | string = 'ula',
+  kelasNum?: number | string | null
 ): AcademicProgress {
-  const cfg = RAPOT_SUBJECT_CONFIG[jenjang]
+  const cfg = getRapotSubjectConfig(jenjang as JenjangKey, kelasNum)
   if (!cfg || !cfg.enabled) {
     return {
       groups: [],
@@ -234,20 +427,21 @@ export type HasilRataRataSantri = {
 }
 
 /**
- * Menghitung kelengkapan dan rata-rata nilai akademik santri secara jenjang-agnostic.
+ * Menghitung kelengkapan dan rata-rata nilai akademik santri secara jenjang & kelas spesifik.
  * 
  * Ketentuan:
- * 1. Hanya mapel aktif dalam konfigurasi jenjang yang dihitung.
+ * 1. Hanya mapel aktif dalam konfigurasi jenjang + kelas yang dihitung.
  * 2. Seluruh mapel aktif berbobot sama.
- * 3. Pembagi = jumlah mapel aktif dalam konfigurasi (untuk Ula = 10).
+ * 3. Pembagi = jumlah mapel aktif dalam konfigurasi (Ula = 10, Wustha = 9, Ulya 10 = 12, Ulya 11 = 13, Ulya 12 = 11).
  * 4. Lengkap jika SELURUH mapel aktif memiliki nilai valid != null.
  * 5. Jika tidak lengkap, `rataAkhir = null` dan santri tidak eligible ranking.
  */
 export function hitungRataRataAkademik(
   nilaiRaw: Record<string, any> | null | undefined,
-  jenjang: JenjangKey = 'ula'
+  jenjang: JenjangKey | string = 'ula',
+  kelasNum?: number | string | null
 ): HasilRataRataSantri {
-  const cfg = RAPOT_SUBJECT_CONFIG[jenjang]
+  const cfg = getRapotSubjectConfig(jenjang as JenjangKey, kelasNum)
   if (!cfg || !cfg.enabled) {
     return {
       lengkap: false,
@@ -255,12 +449,12 @@ export function hitungRataRataAkademik(
       rataDiniyyah: null,
       rataUmum: null,
       nilaiEfektifMap: {},
-      progress: getAcademicProgress(nilaiRaw, jenjang),
+      progress: getAcademicProgress(nilaiRaw, jenjang, kelasNum),
     }
   }
 
-  const progress = getAcademicProgress(nilaiRaw, jenjang)
-  const activeSubjects = getActiveSubjects(jenjang)
+  const progress = getAcademicProgress(nilaiRaw, jenjang, kelasNum)
+  const activeSubjects = getActiveSubjects(jenjang, kelasNum)
   const nilaiEfektifMap: Record<string, number | null> = {}
   let sumTotal = 0
 
@@ -321,6 +515,8 @@ export function hitungRataRataAkademik(
 export type SantriRankingItem = {
   id: string
   nama: string
+  kelas_num?: number | string | null
+  jenjang?: string | null
 }
 
 export type SantriRankingResult = SantriRankingItem & {
@@ -339,11 +535,13 @@ export type SantriRankingResult = SantriRankingItem & {
  * 2. Incomplete = no rank (peringkat = null).
  * 3. Competition ranking: Jika nilai rata-rata sama persis, santri mendapatkan PERINGKAT YANG SAMA (1, 2, 2, 4).
  * 4. Nama / ID hanya digunakan untuk kestabilan urutan tampilan.
+ * 5. Divisor dinamis sesuai jumlah mapel aktif kelas bersangkutan.
  */
 export function hitungRankingRapotKelas<T extends SantriRankingItem>(
   santriList: T[],
   nilaiMap: Map<string, any> | Record<string, any>,
-  jenjang: JenjangKey = 'ula'
+  jenjang: JenjangKey | string = 'ula',
+  kelasNum?: number | string | null
 ): {
   hasilList: (T & SantriRankingResult)[]
   rankingMap: Map<string, number | null>
@@ -352,7 +550,9 @@ export function hitungRankingRapotKelas<T extends SantriRankingItem>(
 } {
   const evaluasiList = santriList.map(s => {
     const rawNilai = nilaiMap instanceof Map ? nilaiMap.get(s.id) : (nilaiMap as any)[s.id]
-    const rata = hitungRataRataAkademik(rawNilai, jenjang)
+    const sKelasNum = s.kelas_num ?? kelasNum ?? null
+    const sJenjang = s.jenjang ?? jenjang ?? 'ula'
+    const rata = hitungRataRataAkademik(rawNilai, sJenjang as JenjangKey, sKelasNum)
     return {
       ...s,
       lengkap: rata.lengkap,

@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   const periodeId = searchParams.get('periode_id')
   const kelasNumRaw = searchParams.get('kelas_num')
   const kelasNum = kelasNumRaw ? parseInt(kelasNumRaw, 10) : NaN
-  if (!periodeId || !Number.isInteger(kelasNum) || kelasNum < 1 || kelasNum > 6) {
+  if (!periodeId || !Number.isInteger(kelasNum) || kelasNum < 1 || kelasNum > 12) {
     return NextResponse.json({ error: 'Parameter tidak valid' }, { status: 400 })
   }
 
@@ -88,10 +88,11 @@ export async function GET(request: Request) {
 
   let nilaiList = nilaiSnapshot || []
   if (nilaiList.length === 0) {
+    const targetJenjang = kelasNum <= 6 ? 'ula' : kelasNum <= 9 ? 'wustha' : 'ulya'
     const { data: santriKelas, error: santriError } = await serviceClient
       .from('santri')
       .select('id')
-      .eq('jenjang', 'ula')
+      .eq('jenjang', targetJenjang)
       .eq('kelas_num', kelasNum)
 
     if (santriError) {

@@ -133,7 +133,7 @@ export async function GET(request: Request) {
   }
 
   // 5. Hitung ranking kelas dengan competition ranking
-  const rankingRes = hitungRankingRapotKelas(santriRows, nilaiMap, jenjang)
+  const rankingRes = hitungRankingRapotKelas(santriRows, nilaiMap, jenjang, kelasNum)
   const rankingEvaluasiMap = new Map(rankingRes.hasilList.map(item => [item.id, item]))
 
   // 6. Nama Wali Kelas resmi

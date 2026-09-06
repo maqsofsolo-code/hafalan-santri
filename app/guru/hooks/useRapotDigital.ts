@@ -3,7 +3,11 @@ import { useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fetchWithAuth } from '../../lib/authClient'
 import type { PeriodeAkademik, WaliKelasAssignmentItem, SantriRapotItem, NilaiRapotForm, RapotNilaiApiRow, RapotRekapRow } from '../types'
-import { ALL_MAPEL_ULA_KEYS } from '../../lib/rapotDigital'
+import {
+  ALL_POSSIBLE_MAPEL_KEYS,
+  getActiveSubjects,
+  type JenjangKey,
+} from '../../lib/rapotDigital'
 
 export function useRapotDigital() {
   const [periodeAktif, setPeriodeAktif] = useState<PeriodeAkademik | null>(null)
@@ -129,6 +133,9 @@ export function useRapotDigital() {
     const autoIzin = s.nilai?.hadir_izin ?? (s as any).absensi_otomatis?.hadir_izin ?? 0
     const autoAlpha = s.nilai?.hadir_alpha ?? (s as any).absensi_otomatis?.hadir_alpha ?? 0
 
+    const activeSubs = getActiveSubjects(s.jenjang as JenjangKey, s.kelas_num)
+    const activeKeys = activeSubs.map(sub => sub.id)
+
     if (s.nilai) {
       setExistingRapotId(s.nilai.id)
       const formVal: NilaiRapotForm = {
@@ -142,8 +149,10 @@ export function useRapotDigital() {
         hadir_alpha: autoAlpha,
         catatan: s.nilai.catatan || '',
       }
-      for (const k of ALL_MAPEL_ULA_KEYS) {
-        formVal[k] = s.nilai[k] ?? ''
+      for (const k of ALL_POSSIBLE_MAPEL_KEYS) {
+        if (activeKeys.includes(k)) {
+          formVal[k] = s.nilai[k] ?? ''
+        }
       }
       setNilaiRapot(formVal)
     } else {
@@ -159,7 +168,7 @@ export function useRapotDigital() {
         hadir_alpha: autoAlpha,
         catatan: '',
       }
-      for (const k of ALL_MAPEL_ULA_KEYS) {
+      for (const k of activeKeys) {
         formVal[k] = ''
       }
       setNilaiRapot(formVal)
@@ -257,7 +266,14 @@ export function useRapotDigital() {
           nama: n.santri?.nama || '-',
         }))
         const nilaiMap = new Map(nilaiList.map(n => [n.id, n]))
-        const rankingRes = (await import('../../lib/rapotDigital')).hitungRankingRapotKelas(santriItems, nilaiMap, 'ula')
+        const assign = assignments.find(a => a.kelas_num.toString() === kelas)
+        const targetJenjang = assign?.jenjang || (Number(kelas) <= 6 ? 'ula' : Number(kelas) <= 9 ? 'wustha' : 'ulya')
+        const rankingRes = (await import('../../lib/rapotDigital')).hitungRankingRapotKelas(
+          santriItems,
+          nilaiMap,
+          targetJenjang as JenjangKey,
+          Number(kelas)
+        )
 
         const withPeringkat: RapotRekapRow[] = rankingRes.hasilList.map(item => {
           const original = nilaiMap.get(item.id)!

@@ -2,7 +2,7 @@
 import { useEffect } from 'react'
 import { getKelasOptions, jenjangLabel } from '../utils'
 import type { useAdminRapot } from '../hooks/useAdminRapot'
-import { getAcademicProgress, type JenjangKey } from '../../lib/rapotDigital'
+import { getAcademicProgress, getRapotSubjectConfig, type JenjangKey } from '../../lib/rapotDigital'
 
 const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
 const btnPrimary = "text-white px-6 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 shadow transition"
@@ -250,45 +250,46 @@ export function RapotDigitalSection(props: {
                     </div>
                   </div>
 
-                  <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-sm font-bold text-gray-700 mb-3">B. Materi Diiniyyah (Raw 0–100)</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { key: 'aqidah', label: 'Aqidah' },
-                        { key: 'akhlak', label: 'Akhlak/Adab' },
-                        { key: 'fiqh', label: 'Fiqh' },
-                        { key: 'bhs_arab', label: 'Bahasa Arab' },
-                        { key: 'siroh', label: 'Siroh' },
-                        { key: 'khoth', label: 'Khoth' },
-                      ].map(m => (
-                        <div key={m.key}>
-                          <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                          <input type="number" min="0" max="100" value={rapot.rapotNilai[m.key] ?? ''}
-                            onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, [m.key]: e.target.value})}
-                            placeholder="0-100" className={inputClass} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  {/* Dynamic Academic Subject Groups (Materi Diiniyyah, Materi Umum, dll.) */}
+                  {(() => {
+                    const currentConfig = getRapotSubjectConfig(
+                      rapot.rapotJenjangSnapshot as JenjangKey,
+                      rapot.rapotKelasSnapshot ? parseInt(rapot.rapotKelasSnapshot) : null
+                    )
+                    return currentConfig.groups.map(group => {
+                      const isDiniyyah = group.id === 'diniyyah'
+                      const bgClass = isDiniyyah ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'
 
-                  <div className="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-200">
-                    <p className="text-sm font-bold text-gray-700 mb-3">C. Materi Umum (Raw 0–100)</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { key: 'bhs_indonesia', label: 'Bahasa Indonesia' },
-                        { key: 'berhitung', label: 'Berhitung' },
-                        { key: 'ipa', label: 'IPA' },
-                        { key: 'ips', label: 'IPS' },
-                      ].map(m => (
-                        <div key={m.key}>
-                          <label className="block text-xs text-gray-500 mb-1">{m.label}</label>
-                          <input type="number" min="0" max="100" value={rapot.rapotNilai[m.key] ?? ''}
-                            onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, [m.key]: e.target.value})}
-                            placeholder="0-100" className={inputClass} />
+                      return (
+                        <div key={group.id} className={`mb-4 p-4 rounded-xl border ${bgClass}`}>
+                          <p className="text-sm font-bold text-gray-700 mb-3">
+                            {group.code}. {group.name} (Raw 0–100)
+                          </p>
+                          <div className="grid grid-cols-2 gap-3">
+                            {group.subjects.map(m => (
+                              <div key={m.id}>
+                                <label className="block text-xs text-gray-500 mb-1">
+                                  <div>{m.label}</div>
+                                  {m.labelArab && (
+                                    <div className="text-[11px] text-gray-400 font-normal mt-0.5">{m.labelArab}</div>
+                                  )}
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={rapot.rapotNilai[m.id] ?? ''}
+                                  onChange={e => rapot.setRapotNilai({ ...rapot.rapotNilai, [m.id]: e.target.value })}
+                                  placeholder="0-100"
+                                  className={inputClass}
+                                />
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      )
+                    })
+                  })()}
 
                   <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
                     <p className="text-sm font-bold text-gray-700 mb-3">Kepribadian</p>
@@ -455,111 +456,147 @@ export function RapotDigitalSection(props: {
               </div>
 
               <div className="overflow-x-auto">
-                <table style={{ minWidth: '900px', width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                  <thead>
-                    <tr style={{ background: '#f0f4ff' }}>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '35px' }}>No</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left', minWidth: '130px' }}>Nama Santri</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Klancaran</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Tajwid</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Aqidah</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Akhlak</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Fiqh</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Arab</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Siroh</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Khoth</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata D</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Ind</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Hitung</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPA</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPS</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata U</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Rata Akhir</th>
-                      <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Peringkat</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rapot.rapotRekapData.map((n, i) => {
-                      const isComplete = Boolean(n.lengkap && n.rata_akhir !== null)
-                      return (
-                        <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                          <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
-                          <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>
-                            <div style={{ fontWeight: '600' }}>{n.santri?.nama || '-'}</div>
-                            {n.santri?.status !== 'aktif' && (
-                              <div style={{ fontSize: '10px', color: '#d97706' }}>{n.santri?.status}</div>
-                            )}
-                          </td>
-                          {[n.kelancaran, n.tajwid].map((v, idx) => (
-                            <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? '#1e3a8a' : '#ccc' }}>
-                              {v ?? '-'}
-                            </td>
+                {(() => {
+                  const rekapConfig = getRapotSubjectConfig(
+                    rapot.rapotRekapJenjang as JenjangKey,
+                    rapot.rapotRekapKelas ? parseInt(rapot.rapotRekapKelas) : null
+                  )
+                  const diniyyahGroup = rekapConfig.groups.find(g => g.id === 'diniyyah')
+                  const umumGroup = rekapConfig.groups.find(g => g.id === 'umum')
+                  const diniyyahSubs = diniyyahGroup ? diniyyahGroup.subjects : []
+                  const umumSubs = umumGroup ? umumGroup.subjects : []
+
+                  return (
+                    <table style={{ minWidth: '900px', width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                      <thead>
+                        <tr style={{ background: '#f0f4ff' }}>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '35px' }}>No</th>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left', minWidth: '130px' }}>Nama Santri</th>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Klancaran</th>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Tajwid</th>
+                          {diniyyahSubs.map(sub => (
+                            <th key={sub.id} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                              <div>{sub.label}</div>
+                              {sub.labelArab && (
+                                <div style={{ fontSize: '10px', color: '#6b7280', fontWeight: 'normal', marginTop: '2px' }}>{sub.labelArab}</div>
+                              )}
+                            </th>
                           ))}
-                          {[n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].map((v, idx) => (
-                            <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>
-                              {v ?? '-'}
-                            </td>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata D</th>
+                          {umumSubs.map(sub => (
+                            <th key={sub.id} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                              <div>{sub.label}</div>
+                              {sub.labelArab && (
+                                <div style={{ fontSize: '10px', color: '#6b7280', fontWeight: 'normal', marginTop: '2px' }}>{sub.labelArab}</div>
+                              )}
+                            </th>
                           ))}
-                          <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
-                            {n.rata_diiniyyah ? n.rata_diiniyyah.toFixed(1) : '-'}
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>Rata U</th>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Rata Akhir</th>
+                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef3c7', fontWeight: 'bold' }}>Peringkat</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rapot.rapotRekapData.map((n, i) => {
+                          const isComplete = Boolean(n.lengkap && n.rata_akhir !== null)
+                          return (
+                            <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>
+                                <div style={{ fontWeight: '600' }}>{n.santri?.nama || '-'}</div>
+                                {n.santri?.status !== 'aktif' && (
+                                  <div style={{ fontSize: '10px', color: '#d97706' }}>{n.santri?.status}</div>
+                                )}
+                              </td>
+                              {[n.kelancaran, n.tajwid].map((v, idx) => (
+                                <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? '#1e3a8a' : '#ccc' }}>
+                                  {v ?? '-'}
+                                </td>
+                              ))}
+                              {diniyyahSubs.map(sub => {
+                                const v = (n as any)[sub.id]
+                                return (
+                                  <td key={sub.id} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>
+                                    {v ?? '-'}
+                                  </td>
+                                )
+                              })}
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
+                                {n.rata_diiniyyah ? n.rata_diiniyyah.toFixed(1) : '-'}
+                              </td>
+                              {umumSubs.map(sub => {
+                                const v = (n as any)[sub.id]
+                                return (
+                                  <td key={sub.id} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>
+                                    {v ?? '-'}
+                                  </td>
+                                )
+                              })}
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
+                                {n.rata_umum ? n.rata_umum.toFixed(1) : '-'}
+                              </td>
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3', fontWeight: 'bold', fontSize: '12px', color: isComplete ? '#92400e' : '#ccc' }}>
+                                {n.rata_akhir ? n.rata_akhir.toFixed(1) : '-'}
+                              </td>
+                              <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
+                                {isComplete && n.peringkat !== null ? (
+                                  <span style={{
+                                    background: n.peringkat === 1 ? '#fbbf24' : n.peringkat === 2 ? '#9ca3af' : n.peringkat === 3 ? '#f97316' : '#e5e7eb',
+                                    color: n.peringkat <= 3 ? 'white' : '#374151',
+                                    padding: '2px 8px', borderRadius: '999px', fontWeight: 'bold', fontSize: '11px'
+                                  }}>
+                                    {n.peringkat}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>-</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: '#f0f4ff', fontWeight: 'bold' }}>
+                          <td colSpan={2} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>Rata-rata Kelas</td>
+                          {(['kelancaran', 'tajwid'] as const).map(field => {
+                            const vals = rapot.rapotRekapData.map(n => (n as any)[field]).filter((v): v is number => v != null && v > 0)
+                            const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                            return <td key={field} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
+                          })}
+                          {diniyyahSubs.map(sub => {
+                            const vals = rapot.rapotRekapData.map(n => (n as any)[sub.id]).filter((v): v is number => v != null && v > 0)
+                            const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                            return <td key={sub.id} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
+                          })}
+                          <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>
+                            {(() => {
+                              const vals = rapot.rapotRekapData.map(n => n.rata_diiniyyah).filter((v): v is number => v != null && v > 0)
+                              return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                            })()}
                           </td>
-                          {[n.bhs_indonesia, n.berhitung, n.ipa, n.ips].map((v, idx) => (
-                            <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 60 ? '#dc2626' : '#166534') : '#ccc' }}>
-                              {v ?? '-'}
-                            </td>
-                          ))}
-                          <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe', fontWeight: 'bold', color: '#1e3a8a' }}>
-                            {n.rata_umum ? n.rata_umum.toFixed(1) : '-'}
-                          </td>
-                          <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3', fontWeight: 'bold', fontSize: '12px', color: isComplete ? '#92400e' : '#ccc' }}>
-                            {n.rata_akhir ? n.rata_akhir.toFixed(1) : '-'}
+                          {umumSubs.map(sub => {
+                            const vals = rapot.rapotRekapData.map(n => (n as any)[sub.id]).filter((v): v is number => v != null && v > 0)
+                            const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                            return <td key={sub.id} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
+                          })}
+                          <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>
+                            {(() => {
+                              const vals = rapot.rapotRekapData.map(n => n.rata_umum).filter((v): v is number => v != null && v > 0)
+                              return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                            })()}
                           </td>
                           <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
-                            {isComplete && n.peringkat !== null ? (
-                              <span style={{
-                                background: n.peringkat === 1 ? '#fbbf24' : n.peringkat === 2 ? '#9ca3af' : n.peringkat === 3 ? '#f97316' : '#e5e7eb',
-                                color: n.peringkat <= 3 ? 'white' : '#374151',
-                                padding: '2px 8px', borderRadius: '999px', fontWeight: 'bold', fontSize: '11px'
-                              }}>
-                                {n.peringkat}
-                              </span>
-                            ) : (
-                              <span style={{ color: '#9ca3af', fontSize: '11px' }}>-</span>
-                            )}
+                            {(() => {
+                              const vals = rapot.rapotRekapData.map(n => n.rata_akhir).filter(v => v != null && v > 0)
+                              return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                            })()}
                           </td>
+                          <td style={{ border: '1px solid #ddd' }}></td>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: '#f0f4ff', fontWeight: 'bold' }}>
-                      <td colSpan={2} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>Rata-rata Kelas</td>
-                      {(['kelancaran','tajwid','aqidah','akhlak','fiqh','bhs_arab','siroh','khoth'] as const).map((field) => {
-                        const vals = rapot.rapotRekapData.map((n) => n[field]).filter((v): v is number => v != null && v > 0)
-                        const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
-                        return <td key={field} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
-                      })}
-                      <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#e8f0fe' }}>
-                        {(() => {
-                          const vals = rapot.rapotRekapData.map((n) => n.rata_diiniyyah).filter((v): v is number => v != null && v > 0)
-                          return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
-                        })()}
-                      </td>
-                      {(['bhs_indonesia','berhitung','ipa','ips'] as const).map((field) => {
-                        const vals = rapot.rapotRekapData.map((n) => n[field]).filter((v): v is number => v != null && v > 0)
-                        const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
-                        return <td key={field} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{avg}</td>
-                      })}
-                      <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
-                        {(() => {
-                          const vals = rapot.rapotRekapData.map((n) => n.rata_akhir).filter((v) => v != null && v > 0)
-                          return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
-                        })()}
-                      </td>
-                      <td style={{ border: '1px solid #ddd' }}></td>
-                    </tr>
-                  </tfoot>
-                </table>
+                      </tfoot>
+                    </table>
+                  )
+                })()}
               </div>
 
               <div className="p-4">

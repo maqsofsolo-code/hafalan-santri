@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import ExcelJS from 'exceljs'
 import {
-  RAPOT_SUBJECT_CONFIG,
+  getRapotSubjectConfig,
   angkaKeHuruf,
   type JenjangKey,
 } from './rapotDigital'
@@ -91,7 +91,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     santriDataList,
   } = params
 
-  const cfg = RAPOT_SUBJECT_CONFIG[jenjang] || RAPOT_SUBJECT_CONFIG.ula
+  const cfg = getRapotSubjectConfig(jenjang, kelasNum)
   const semesterLabel = periode.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'
   const tanggalDisplay = periode.tanggal_rapot
     ? new Date(periode.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -321,15 +321,26 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
 
       group.subjects.forEach((sub, sIdx) => {
         const val = data.evaluasi.nilaiEfektifMap[sub.id]
+        const isBilingual = Boolean(sub.labelArab && (jenjang === 'ulya' || data.santri.jenjang === 'ulya'))
+        const displayLabel = isBilingual ? `${sub.label}\n${sub.labelArab}` : sub.label
+
         ws.getCell(`A${r}`).value = String(sIdx + 1)
-        ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
-        ws.getCell(`B${r}`).value = sub.label
+        ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+        ws.getCell(`B${r}`).value = displayLabel
+        ws.getCell(`B${r}`).alignment = isBilingual
+          ? { vertical: 'middle', wrapText: true }
+          : { vertical: 'middle' }
         ws.getCell(`C${r}`).value = val ?? '-'
-        ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
+        ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
         ws.getCell(`D${r}`).value = typeof val === 'number' ? angkaKeHuruf(val) : '-'
+        ws.getCell(`D${r}`).alignment = { vertical: 'middle' }
         ws.getCell(`E${r}`).value = ''
         ws.getCell(`F${r}`).value = '-'
-        ws.getCell(`F${r}`).alignment = { horizontal: 'center' }
+        ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+
+        if (isBilingual) {
+          ws.getRow(r).height = 27
+        }
 
         ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
           ws.getCell(`${c}${r}`).border = BORDER_THIN

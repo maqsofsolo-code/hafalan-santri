@@ -2,8 +2,7 @@
 import React, { useEffect } from 'react'
 import { useRapotDigital } from '../hooks/useRapotDigital'
 import {
-  MATA_PELAJARAN_ULA_DINIYYAH,
-  MATA_PELAJARAN_ULA_UMUM,
+  getRapotSubjectConfig,
   getAcademicProgress,
   type JenjangKey,
 } from '../../lib/rapotDigital'
@@ -278,7 +277,7 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-1.5">
                             {(() => {
-                              const currentProg = getAcademicProgress(rapot.nilaiRapot, rapot.selectedSantri.jenjang as JenjangKey)
+                              const currentProg = getAcademicProgress(rapot.nilaiRapot, rapot.selectedSantri.jenjang as JenjangKey, rapot.selectedSantri.kelas_num)
                               const isLengkap = currentProg.lengkap
                               const isPartial = currentProg.hasAny && !currentProg.lengkap
                               return (
@@ -345,47 +344,50 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                         </div>
                       </div>
 
-                      {/* Section B: Materi Diniyyah (6 Mapel) */}
-                      <div className="mb-4 p-4 bg-blue-50/60 rounded-xl border border-blue-200">
-                        <p className="text-sm font-bold text-blue-900 mb-3">B. Materi Diiniyyah (Nilai Raw 0–100)</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {MATA_PELAJARAN_ULA_DINIYYAH.map(m => (
-                            <div key={m.id}>
-                              <label className="block text-xs font-semibold text-gray-700 mb-1">{m.label}</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={rapot.nilaiRapot[m.id] ?? ''}
-                                onChange={e => rapot.setNilaiRapot({ ...rapot.nilaiRapot, [m.id]: e.target.value })}
-                                placeholder="0-100"
-                                className={inputClass}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      {/* Dynamic Academic Subject Groups (Materi Diiniyyah, Materi Umum, dll.) */}
+                      {(() => {
+                        const currentConfig = getRapotSubjectConfig(
+                          rapot.selectedSantri.jenjang as JenjangKey,
+                          rapot.selectedSantri.kelas_num
+                        )
+                        return currentConfig.groups.map(group => {
+                          const isDiniyyah = group.id === 'diniyyah'
+                          const bgClass = isDiniyyah ? 'bg-blue-50/60 border-blue-200' : 'bg-purple-50/60 border-purple-200'
+                          const titleClass = isDiniyyah ? 'text-blue-900' : 'text-purple-900'
+                          const gridCols = isDiniyyah
+                            ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                            : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
 
-                      {/* Section C: Materi Umum (4 Mapel) */}
-                      <div className="mb-4 p-4 bg-purple-50/60 rounded-xl border border-purple-200">
-                        <p className="text-sm font-bold text-purple-900 mb-3">C. Materi Umum (Nilai Raw 0–100)</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {MATA_PELAJARAN_ULA_UMUM.map(m => (
-                            <div key={m.id}>
-                              <label className="block text-xs font-semibold text-gray-700 mb-1">{m.label}</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={rapot.nilaiRapot[m.id] ?? ''}
-                                onChange={e => rapot.setNilaiRapot({ ...rapot.nilaiRapot, [m.id]: e.target.value })}
-                                placeholder="0-100"
-                                className={inputClass}
-                              />
+                          return (
+                            <div key={group.id} className={`mb-4 p-4 rounded-xl border ${bgClass}`}>
+                              <p className={`text-sm font-bold ${titleClass} mb-3`}>
+                                {group.code}. {group.name} (Nilai Raw 0–100)
+                              </p>
+                              <div className={`grid ${gridCols} gap-3`}>
+                                {group.subjects.map(m => (
+                                  <div key={m.id}>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                      <div>{m.label}</div>
+                                      {m.labelArab && (
+                                        <div className="text-[11px] text-gray-500 font-normal mt-0.5">{m.labelArab}</div>
+                                      )}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      value={rapot.nilaiRapot[m.id] ?? ''}
+                                      onChange={e => rapot.setNilaiRapot({ ...rapot.nilaiRapot, [m.id]: e.target.value })}
+                                      placeholder="0-100"
+                                      className={inputClass}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
+                          )
+                        })
+                      })()}
 
                       {/* Section: Kepribadian */}
                       <div className="mb-4 p-4 bg-orange-50/60 rounded-xl border border-orange-200">
@@ -565,78 +567,89 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                     </div>
                   </div>
                   <div className="overflow-x-auto">
-                    <table style={{ minWidth: '1050px', width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                      <thead>
-                        <tr style={{ background: '#f0f4ff' }}>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '35px' }}>No</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left', minWidth: '130px' }}>Nama Santri</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Aqidah</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Akhlak</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Fiqh</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Arab</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Siroh</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Khoth</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Bhs Ind</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Hitung</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPA</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>IPS</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e0e7ff' }}>Rata Akhir</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e0e7ff' }}>Peringkat</th>
-                          <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rapot.rapotRekapData.map((n, i) => (
-                          <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                            <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
-                            <td style={{ padding: '6px 8px', border: '1px solid #ddd', fontWeight: 600 }}>{n.santri?.nama || '-'}</td>
-                            {[n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth, n.bhs_indonesia, n.berhitung, n.ipa, n.ips].map((v, idx) => (
-                              <td key={idx} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 50 ? '#dc2626' : '#166534') : '#ccc' }}>
-                                {v ?? '-'}
-                              </td>
-                            ))}
-                            <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', background: '#f5f7ff' }}>
-                              {n.rata_akhir ?? '-'}
-                            </td>
-                            <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: n.peringkat ? '#1d4ed8' : '#9ca3af' }}>
-                              {n.peringkat ? `Ke-${n.peringkat}` : '-'}
-                            </td>
-                            <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${n.lengkap ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                {n.lengkap ? 'Lengkap' : 'Belum Lengkap'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                    {(() => {
+                      const rekapConfig = getRapotSubjectConfig(
+                        selectedAssign?.jenjang as JenjangKey,
+                        Number(rapot.rapotRekapKelas)
+                      )
+                      const rekapSubjects = rekapConfig.groups.flatMap(g => g.subjects)
 
-                        {/* Rata-Rata Kelas Row */}
-                        <tr style={{ background: '#fef3c7', fontWeight: 'bold' }}>
-                          <td colSpan={2} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
-                            RATA-RATA KELAS
-                          </td>
-                          {['aqidah', 'akhlak', 'fiqh', 'bhs_arab', 'siroh', 'khoth', 'bhs_indonesia', 'berhitung', 'ipa', 'ips'].map(k => {
-                            const vals = rapot.rapotRekapData
-                              .map(r => (r as any)[k])
-                              .filter((v): v is number => typeof v === 'number')
-                            const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
-                            return (
-                              <td key={k} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
-                                {avg}
+                      return (
+                        <table style={{ minWidth: '1050px', width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                          <thead>
+                            <tr style={{ background: '#f0f4ff' }}>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '35px' }}>No</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left', minWidth: '130px' }}>Nama Santri</th>
+                              {rekapSubjects.map(sub => (
+                                <th key={sub.id} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', minWidth: '70px' }}>
+                                  <div>{sub.label}</div>
+                                  {sub.labelArab && (
+                                    <div style={{ fontSize: '10px', color: '#6b7280', fontWeight: 'normal', marginTop: '2px' }}>{sub.labelArab}</div>
+                                  )}
+                                </th>
+                              ))}
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e0e7ff', width: '70px' }}>Rata Akhir</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', background: '#e0e7ff', width: '65px' }}>Peringkat</th>
+                              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', width: '80px' }}>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rapot.rapotRekapData.map((n, i) => (
+                              <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                                <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
+                                <td style={{ padding: '6px 8px', border: '1px solid #ddd', fontWeight: 600 }}>{n.santri?.nama || '-'}</td>
+                                {rekapSubjects.map(sub => {
+                                  const v = (n as any)[sub.id]
+                                  return (
+                                    <td key={sub.id} style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', color: v ? (v < 50 ? '#dc2626' : '#166534') : '#ccc' }}>
+                                      {v ?? '-'}
+                                    </td>
+                                  )
+                                })}
+                                <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', background: '#f5f7ff' }}>
+                                  {n.rata_akhir ?? '-'}
+                                </td>
+                                <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: n.peringkat ? '#1d4ed8' : '#9ca3af' }}>
+                                  {n.peringkat ? `Ke-${n.peringkat}` : '-'}
+                                </td>
+                                <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${n.lengkap ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {n.lengkap ? 'Lengkap' : 'Belum Lengkap'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+
+                            {/* Rata-Rata Kelas Row */}
+                            <tr style={{ background: '#fef3c7', fontWeight: 'bold' }}>
+                              <td colSpan={2} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                                RATA-RATA KELAS
                               </td>
-                            )
-                          })}
-                          <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
-                            {(() => {
-                              const vals = rapot.rapotRekapData
-                                .map(r => r.rata_akhir)
-                                .filter((v): v is number => typeof v === 'number')
-                              return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
-                            })()}
-                          </td>
-                          <td colSpan={2} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>-</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                              {rekapSubjects.map(sub => {
+                                const vals = rapot.rapotRekapData
+                                  .map(r => (r as any)[sub.id])
+                                  .filter((v): v is number => typeof v === 'number')
+                                const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                return (
+                                  <td key={sub.id} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                                    {avg}
+                                  </td>
+                                )
+                              })}
+                              <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                                {(() => {
+                                  const vals = rapot.rapotRekapData
+                                    .map(r => r.rata_akhir)
+                                    .filter((v): v is number => typeof v === 'number')
+                                  return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '-'
+                                })()}
+                              </td>
+                              <td colSpan={2} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>-</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      )
+                    })()}
                   </div>
                 </div>
               )}

@@ -25,7 +25,7 @@ import type { NilaiRapotForm, PeriodeRapot, RapotNilaiApiRow, RapotRekapRow, San
 // Guru/Wali/Santri/Kalender di kode asli (nama field berbeda), jadi dipegang
 // langsung oleh hook ini, bukan oleh useAdminEntityForm.
 import { fetchWithAuth } from '../../lib/authClient'
-import { hitungRankingRapotKelas, type JenjangKey } from '../../lib/rapotDigital'
+import { hitungRankingRapotKelas, ALL_POSSIBLE_MAPEL_KEYS, type JenjangKey } from '../../lib/rapotDigital'
 
 export function useAdminRapot(params: {
   setLoading: (v: boolean) => void
@@ -213,20 +213,10 @@ export function useAdminRapot(params: {
     const { data } = await query.maybeSingle()
     if (data) {
       setRapotExistingId(data.id)
-      setRapotNilai({
+      const formVal: Record<string, any> = {
         kelancaran: data.kelancaran || '',
         tajwid: data.tajwid || '',
         keterangan_hafalan: data.keterangan_hafalan || '',
-        aqidah: data.aqidah || '',
-        akhlak: data.akhlak || '',
-        fiqh: data.fiqh || '',
-        bhs_arab: data.bhs_arab || '',
-        siroh: data.siroh || '',
-        khoth: data.khoth || '',
-        bhs_indonesia: data.bhs_indonesia || '',
-        berhitung: data.berhitung || '',
-        ipa: data.ipa || '',
-        ips: data.ips || '',
         akhlak_kepribadian: data.akhlak_kepribadian || 'B',
         kebersihan: data.kebersihan || 'B',
         ketertiban: data.ketertiban || 'B',
@@ -236,17 +226,31 @@ export function useAdminRapot(params: {
         hadir_izin: data.hadir_izin ?? 0,
         hadir_alpha: data.hadir_alpha ?? 0,
         catatan: data.catatan || '',
-      })
+      }
+      for (const k of ALL_POSSIBLE_MAPEL_KEYS) {
+        formVal[k] = data[k] ?? ''
+      }
+      setRapotNilai(formVal)
     } else {
       setRapotExistingId(null)
-      setRapotNilai({
-        kelancaran: '', tajwid: '', keterangan_hafalan: '',
-        aqidah: '', akhlak: '', fiqh: '', bhs_arab: '', siroh: '', khoth: '',
-        bhs_indonesia: '', berhitung: '', ipa: '', ips: '',
-        akhlak_kepribadian: 'B', kebersihan: 'B', ketertiban: 'B',
-        ekskul_renang: '', ekskul_beladiri: '',
-        hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0, catatan: '',
-      })
+      const formVal: Record<string, any> = {
+        kelancaran: '',
+        tajwid: '',
+        keterangan_hafalan: '',
+        akhlak_kepribadian: 'B',
+        kebersihan: 'B',
+        ketertiban: 'B',
+        ekskul_renang: '',
+        ekskul_beladiri: '',
+        hadir_sakit: 0,
+        hadir_izin: 0,
+        hadir_alpha: 0,
+        catatan: '',
+      }
+      for (const k of ALL_POSSIBLE_MAPEL_KEYS) {
+        formVal[k] = ''
+      }
+      setRapotNilai(formVal)
     }
   }
 
@@ -415,7 +419,12 @@ export function useAdminRapot(params: {
         nilaiMap.set(n.santri_id || n.id, n)
       }
 
-      const rankingRes = hitungRankingRapotKelas(santriItems, nilaiMap, rapotRekapJenjang as JenjangKey)
+      const rankingRes = hitungRankingRapotKelas(
+        santriItems,
+        nilaiMap,
+        rapotRekapJenjang as JenjangKey,
+        rapotRekapKelas ? parseInt(rapotRekapKelas) : null
+      )
 
       const finalRekapRows: RapotRekapRow[] = rankingRes.hasilList.map(item => ({
         ...item.row,

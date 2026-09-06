@@ -129,7 +129,7 @@ export async function GET(request: Request) {
     const nilaiDb = nilaiMap.get(s.id) || null
     const absensi = absensiMap.get(s.id) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
     const hifzh = hifzhMap.get(s.id) || { kelancaran: null, tajwid: null, keterangan_hafalan: '-' }
-    const academicProgress = getAcademicProgress(nilaiDb, s.jenjang as JenjangKey)
+    const academicProgress = getAcademicProgress(nilaiDb, s.jenjang as JenjangKey, s.kelas_num)
 
     // Merged nilai: timpa kolom absensi & hifzh dengan data otoritatif server
     const nilai = nilaiDb
