@@ -137,7 +137,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
 
     // Atur lebar kolom yang proporsional dan tidak memotong teks identitas
     ws.getColumn('A').width = 18  // No / Label Identitas
-    ws.getColumn('B').width = 26  // Mapel / Nilai Santri
+    ws.getColumn('B').width = jenjang === 'ulya' ? 28 : 26  // Mapel / Nilai Santri
     ws.getColumn('C').width = 11  // Nilai Angka
     ws.getColumn('D').width = 21  // Nilai Huruf / Label Kanan
     ws.getColumn('E').width = 13  // Rata-rata / Nilai Kanan 1
@@ -331,17 +331,17 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
           ws.getCell(`B${r}`).value = {
             richText: [
               {
-                text: sub.label.toUpperCase() + '\n',
-                font: { name: 'Times New Roman', size: 10, bold: true },
+                text: `${sub.label.toUpperCase()} — `,
+                font: { name: 'Times New Roman', size: 9, bold: true },
               },
               {
                 text: sub.labelArab || '',
-                font: { name: 'Traditional Arabic', size: 11, bold: false },
+                font: { name: 'Traditional Arabic', size: 10, bold: false },
               },
             ],
           }
-          ws.getCell(`B${r}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-          ws.getRow(r).height = 34
+          ws.getCell(`B${r}`).alignment = { vertical: 'middle', wrapText: false }
+          ws.getRow(r).height = 20
         } else {
           ws.getCell(`B${r}`).value = sub.label.toUpperCase()
           ws.getCell(`B${r}`).alignment = { vertical: 'middle' }
