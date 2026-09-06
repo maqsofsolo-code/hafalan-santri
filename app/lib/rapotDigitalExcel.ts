@@ -55,10 +55,10 @@ export type BuildRapotClassParams = {
 }
 
 const BORDER_THIN: Partial<ExcelJS.Borders> = {
-  top: { style: 'thin', color: { argb: 'FF999999' } },
-  left: { style: 'thin', color: { argb: 'FF999999' } },
-  bottom: { style: 'thin', color: { argb: 'FF999999' } },
-  right: { style: 'thin', color: { argb: 'FF999999' } },
+  top: { style: 'thin', color: { argb: 'FF000000' } },
+  left: { style: 'thin', color: { argb: 'FF000000' } },
+  bottom: { style: 'thin', color: { argb: 'FF000000' } },
+  right: { style: 'thin', color: { argb: 'FF000000' } },
 }
 
 function getScoreFont(val: number | null | undefined, baseFont: Partial<ExcelJS.Font> = {}): Partial<ExcelJS.Font> {
@@ -146,8 +146,8 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     // Posisikan logo resmi Daarus Salaf seimbang di sebelah kiri header kop
     if (logoImageId !== null) {
       ws.addImage(logoImageId, {
-        tl: { col: 0.2, row: 0.25 },
-        ext: { width: 68, height: 68 },
+        tl: { col: 0.15, row: 0.2 },
+        ext: { width: 82, height: 82 },
         editAs: 'oneCell',
       })
     }
@@ -267,9 +267,11 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     // A. HIFZHUL QUR'AN (Otomatis dari Raport Hifzh)
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = "A. HIFZHUL QUR'AN"
-    ws.getCell(`A${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
+      ws.getCell(`${c}${r}`).border = BORDER_THIN
+      ws.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+    })
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
-    ws.getCell(`A${r}`).border = BORDER_THIN
     r++
 
     const barisHifzh = [
@@ -300,16 +302,20 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = `  Jumlah Hafalan: ${data.hifzh.keterangan_hafalan || '-'}`
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 8, italic: true }
-    ws.getCell(`A${r}`).border = BORDER_THIN
+    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
+      ws.getCell(`${c}${r}`).border = BORDER_THIN
+    })
     r++
 
     // SUBJECT GROUPS (B. DINIYYAH, C. UMUM, dsb.)
     cfg.groups.forEach(group => {
       ws.mergeCells(`A${r}:F${r}`)
       ws.getCell(`A${r}`).value = `${group.code}. ${group.name}`
-      ws.getCell(`A${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+      ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
+        ws.getCell(`${c}${r}`).border = BORDER_THIN
+        ws.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+      })
       ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
-      ws.getCell(`A${r}`).border = BORDER_THIN
       r++
 
       group.subjects.forEach((sub, sIdx) => {
