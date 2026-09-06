@@ -56,10 +56,12 @@ export function useRapotDigital() {
       setPeriodeAktif(p)
       setAssignments(assignList)
 
-      // Jika hanya memegang 1 kelas, langsung pilih kelas tersebut
+      // Jika input dibuka dan hanya memegang 1 kelas, langsung pilih kelas tersebut
       if (assignList.length === 1) {
         setSelectedAssignment(assignList[0])
-        fetchSantriListForAssignment(assignList[0], p.id, session.access_token)
+        if (p.rapot_input_dibuka) {
+          fetchSantriListForAssignment(assignList[0], p.id, session.access_token)
+        }
       } else {
         setSelectedAssignment(null)
         setSantriList([])
@@ -111,7 +113,7 @@ export function useRapotDigital() {
   // Pilih kelas / assignment
   const handleSelectAssignment = (assign: WaliKelasAssignmentItem) => {
     setSelectedAssignment(assign)
-    if (periodeAktif) {
+    if (periodeAktif && periodeAktif.rapot_input_dibuka) {
       fetchSantriListForAssignment(assign, periodeAktif.id)
     }
   }
@@ -122,6 +124,11 @@ export function useRapotDigital() {
     setSearchSantri(s.nama)
     setRapotMsg('')
 
+    // Absensi & Hifzh otomatis
+    const autoSakit = s.nilai?.hadir_sakit ?? (s as any).absensi_otomatis?.hadir_sakit ?? 0
+    const autoIzin = s.nilai?.hadir_izin ?? (s as any).absensi_otomatis?.hadir_izin ?? 0
+    const autoAlpha = s.nilai?.hadir_alpha ?? (s as any).absensi_otomatis?.hadir_alpha ?? 0
+
     if (s.nilai) {
       setExistingRapotId(s.nilai.id)
       const formVal: NilaiRapotForm = {
@@ -130,9 +137,9 @@ export function useRapotDigital() {
         ketertiban: s.nilai.ketertiban || 'B',
         ekskul_renang: s.nilai.ekskul_renang ?? '',
         ekskul_beladiri: s.nilai.ekskul_beladiri || '',
-        hadir_sakit: s.nilai.hadir_sakit ?? 0,
-        hadir_izin: s.nilai.hadir_izin ?? 0,
-        hadir_alpha: s.nilai.hadir_alpha ?? 0,
+        hadir_sakit: autoSakit,
+        hadir_izin: autoIzin,
+        hadir_alpha: autoAlpha,
         catatan: s.nilai.catatan || '',
       }
       for (const k of ALL_MAPEL_ULA_KEYS) {
@@ -147,9 +154,9 @@ export function useRapotDigital() {
         ketertiban: 'B',
         ekskul_renang: '',
         ekskul_beladiri: '',
-        hadir_sakit: 0,
-        hadir_izin: 0,
-        hadir_alpha: 0,
+        hadir_sakit: autoSakit,
+        hadir_izin: autoIzin,
+        hadir_alpha: autoAlpha,
         catatan: '',
       }
       for (const k of ALL_MAPEL_ULA_KEYS) {
@@ -244,31 +251,25 @@ export function useRapotDigital() {
         const hasilRekap = await resRekap.json().catch(() => null)
         const nilaiList: RapotNilaiApiRow[] = hasilRekap?.nilaiList || []
 
-        const hitungRata = (n: RapotNilaiApiRow) => {
-          const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v) => v != null && v > 0)
-          const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v) => v != null && v > 0)
-          if (d.length === 0 && u.length === 0) return 0
-          const rd = d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : 0
-          const ru = u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : 0
-          if (d.length === 0) return ru
-          if (u.length === 0) return rd
-          return (rd + ru) / 2
-        }
+        // Gunakan shared helper hitungRankingRapotKelas (competition ranking 1, 2, 2, 4 + cap 50-95)
+        const santriItems = nilaiList.map(n => ({
+          id: n.id,
+          nama: n.santri?.nama || '-',
+        }))
+        const nilaiMap = new Map(nilaiList.map(n => [n.id, n]))
+        const rankingRes = (await import('../../lib/rapotDigital')).hitungRankingRapotKelas(santriItems, nilaiMap, 'ula')
 
-        const withRata = nilaiList.map((n) => ({
-          ...n,
-          rata_diiniyyah: (() => {
-            const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v) => v != null && v > 0)
-            return d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : null
-          })(),
-          rata_umum: (() => {
-            const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v) => v != null && v > 0)
-            return u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : null
-          })(),
-          rata_akhir: hitungRata(n)
-        })).sort((a, b) => b.rata_akhir - a.rata_akhir)
-
-        const withPeringkat = withRata.map((n, i) => ({ ...n, peringkat: i + 1 }))
+        const withPeringkat: RapotRekapRow[] = rankingRes.hasilList.map(item => {
+          const original = nilaiMap.get(item.id)!
+          return {
+            ...original,
+            rata_diiniyyah: item.rataDiniyyah,
+            rata_umum: item.rataUmum,
+            rata_akhir: item.rataAkhir,
+            peringkat: item.peringkat,
+            lengkap: item.lengkap,
+          }
+        })
         setRapotRekapData(withPeringkat)
       } else {
         const err = await resRekap.json().catch(() => ({}))
@@ -278,6 +279,49 @@ export function useRapotDigital() {
       console.error(err)
     } finally {
       setRapotRekapLoading(false)
+    }
+  }
+
+  // Download Excel Rapot Satu Kelas
+  const [downloadExcelLoading, setDownloadExcelLoading] = useState(false)
+  const downloadExcelKelas = async (assignment: WaliKelasAssignmentItem) => {
+    if (!periodeAktif) return
+    setDownloadExcelLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('Sesi login tidak ditemukan. Silakan login kembali.')
+        return
+      }
+
+      const url = `/api/rapot-digital/kelas-excel?periode_id=${encodeURIComponent(periodeAktif.id)}&kelas_num=${assignment.kelas_num}&jenis_kelas=${encodeURIComponent(assignment.jenis_kelas)}&jenjang=${encodeURIComponent(assignment.jenjang)}`
+      const res = await fetchWithAuth(url, session.access_token)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        alert('Gagal mengunduh Excel: ' + (errData.error || 'Terjadi kesalahan'))
+        return
+      }
+
+      const blob = await res.blob()
+      const disposition = res.headers.get('content-disposition')
+      let filename = `Rapot-Kelas-${assignment.kelas_num}.xlsx`
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^"]+)"?/)
+        if (match && match[1]) filename = match[1]
+      }
+
+      const objectUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(objectUrl)
+    } catch (err: any) {
+      alert('Gagal mengunduh Excel: ' + err.message)
+    } finally {
+      setDownloadExcelLoading(false)
     }
   }
 
@@ -302,12 +346,14 @@ export function useRapotDigital() {
     rapotRekapData,
     rapotRekapLoading,
     rapotRekapKelas,
+    downloadExcelLoading,
+    downloadExcelKelas,
     fetchPeriodeAktif,
     handleSelectAssignment,
     handleSelectSantri,
     handleBatalSantri,
     handleSimpanRapot,
-    fetchRekapKelasByGuru,
     handleGantiKelasRekap: (kelas: string) => { setRapotRekapKelas(kelas); setRapotRekapData([]) },
+    fetchRekapKelasByGuru,
   }
 }

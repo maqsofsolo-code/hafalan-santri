@@ -19,10 +19,28 @@ export async function GET(request: Request) {
 
   const serviceClient = createServiceRoleClient()
 
-  // Ambil santri untuk validasi akses
+  // 1. Verifikasi periode akademik
+  const { data: periode, error: periodeError } = await serviceClient
+    .from('periode_akademik')
+    .select('id, tahun_ajaran, semester, tanggal_mulai, tanggal_selesai, is_aktif, rapot_input_dibuka')
+    .eq('id', periodeId)
+    .single()
+
+  if (periodeError || !periode) {
+    return NextResponse.json({ error: 'Periode akademik tidak ditemukan' }, { status: 404 })
+  }
+
+  // Hard-close check untuk role Guru
+  if (auth.role === 'guru' && !periode.rapot_input_dibuka) {
+    return NextResponse.json({
+      error: 'Input nilai rapot sedang ditutup oleh Admin.'
+    }, { status: 403 })
+  }
+
+  // 2. Ambil santri untuk validasi akses
   const { data: santri, error: santriError } = await serviceClient
     .from('santri')
-    .select('id, nama, kelas_num, jenjang, jenis_kelas')
+    .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
     .eq('id', santriId)
     .single()
 
@@ -30,7 +48,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Santri tidak ditemukan' }, { status: 404 })
   }
 
-  // Jika Guru, verifikasi penugasan wali kelas
+  // 3. Jika Guru, verifikasi penugasan wali kelas
   if (auth.role === 'guru') {
     const { data: assignment } = await serviceClient
       .from('wali_kelas_assignment')
@@ -47,18 +65,41 @@ export async function GET(request: Request) {
     }
   }
 
-  const { data: nilai, error: nilaiError } = await serviceClient
-    .from('nilai_rapot')
-    .select('*')
-    .eq('santri_id', santriId)
-    .eq('periode_id', periodeId)
-    .maybeSingle()
+  const [nilaiRes, absensiMap, hifzhMap] = await Promise.all([
+    serviceClient
+      .from('nilai_rapot')
+      .select('*')
+      .eq('santri_id', santriId)
+      .eq('periode_id', periodeId)
+      .maybeSingle(),
+    import('../../../lib/absensiRapot').then(m =>
+      m.hitungKetidakhadiranSantri(serviceClient, [santriId], periode.tanggal_mulai, periode.tanggal_selesai)
+    ),
+    import('../../../lib/hifzhRapot').then(m =>
+      m.muatNilaiHifzhFinalKelas(serviceClient, [santri], periode)
+    ),
+  ])
 
-  if (nilaiError) {
-    return NextResponse.json({ error: 'Gagal memuat nilai rapot: ' + nilaiError.message }, { status: 500 })
+  if (nilaiRes.error) {
+    return NextResponse.json({ error: 'Gagal memuat nilai rapot: ' + nilaiRes.error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ santri, nilai })
+  const absensi = absensiMap.get(santriId) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
+  const hifzh = hifzhMap.get(santriId) || { kelancaran: null, tajwid: null, keterangan_hafalan: santri.total_hafalan_juz ? `${santri.total_hafalan_juz} Juz` : '-' }
+
+  const nilai = nilaiRes.data
+    ? {
+        ...nilaiRes.data,
+        hadir_sakit: absensi.hadir_sakit,
+        hadir_izin: absensi.hadir_izin,
+        hadir_alpha: absensi.hadir_alpha,
+        kelancaran: hifzh.kelancaran,
+        tajwid: hifzh.tajwid,
+        keterangan_hafalan: hifzh.keterangan_hafalan,
+      }
+    : null
+
+  return NextResponse.json({ santri, nilai, absensi_otomatis: absensi, hifzh_otomatis: hifzh })
 }
 
 export async function POST(request: Request) {
@@ -83,7 +124,7 @@ export async function POST(request: Request) {
   // 1. Ambil periode akademik target
   const { data: periode, error: periodeError } = await serviceClient
     .from('periode_akademik')
-    .select('id, tahun_ajaran, semester, is_aktif, rapot_input_dibuka')
+    .select('id, tahun_ajaran, semester, tanggal_mulai, tanggal_selesai, is_aktif, rapot_input_dibuka')
     .eq('id', periodeId)
     .single()
 
@@ -94,7 +135,7 @@ export async function POST(request: Request) {
   // 2. Ambil data asli santri untuk otorisasi & snapshot
   const { data: santri, error: santriError } = await serviceClient
     .from('santri')
-    .select('id, nama, kelas_num, jenjang, jenis_kelas, status')
+    .select('id, nama, kelas, kelas_num, jenjang, jenis_kelas, status, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
     .eq('id', santriId)
     .single()
 
@@ -166,14 +207,23 @@ export async function POST(request: Request) {
   const kebersihan = validHuruf.includes(nilai.kebersihan) ? nilai.kebersihan : 'B'
   const ketertiban = validHuruf.includes(nilai.ketertiban) ? nilai.ketertiban : 'B'
 
-  // Validasi Kehadiran (integer >= 0)
-  const parseNonNegInt = (val: any, def = 0) => {
-    const num = parseInt(String(val), 10)
-    return Number.isInteger(num) && num >= 0 ? num : def
+  // Otoritatif Server: Hitung Kehadiran dari domain Setoran & Hifzh dari Ujian Hifzh
+  // Input manual dari client DIABAIKAN demi integritas data.
+  const [absensiMap, hifzhMap] = await Promise.all([
+    import('../../../lib/absensiRapot').then(m =>
+      m.hitungKetidakhadiranSantri(serviceClient, [santriId], periode.tanggal_mulai, periode.tanggal_selesai)
+    ),
+    import('../../../lib/hifzhRapot').then(m =>
+      m.muatNilaiHifzhFinalKelas(serviceClient, [santri], periode)
+    ),
+  ])
+
+  const absensiOtoritatif = absensiMap.get(santriId) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
+  const hifzhOtoritatif = hifzhMap.get(santriId) || {
+    kelancaran: null,
+    tajwid: null,
+    keterangan_hafalan: santri.total_hafalan_juz ? `${santri.total_hafalan_juz} Juz` : '-',
   }
-  const hadirSakit = parseNonNegInt(nilai.hadir_sakit, 0)
-  const hadirIzin = parseNonNegInt(nilai.hadir_izin, 0)
-  const hadirAlpha = parseNonNegInt(nilai.hadir_alpha, 0)
 
   // Validasi Ekskul
   const ekskulRenangVal = nilai.ekskul_renang != null && String(nilai.ekskul_renang).trim() !== ''
@@ -208,7 +258,7 @@ export async function POST(request: Request) {
   if (existingRow) {
     // UPDATE:
     // Pertahankan guru_id lama (jangan percaya guru_id dari frontend payload)
-    // Pertahankan nilai Hifzh existing (karena Wali Kelas dilarang input manual Hifzh di Phase 1)
+    // Tulis nilai Absensi & Hifzh yang dihitung secara otoritatif oleh server
     const updatePayload = {
       ...snapshotData,
       ...mapelData,
@@ -217,9 +267,12 @@ export async function POST(request: Request) {
       ketertiban,
       ekskul_renang: ekskulRenang,
       ekskul_beladiri: ekskulBeladiri,
-      hadir_sakit: hadirSakit,
-      hadir_izin: hadirIzin,
-      hadir_alpha: hadirAlpha,
+      hadir_sakit: absensiOtoritatif.hadir_sakit,
+      hadir_izin: absensiOtoritatif.hadir_izin,
+      hadir_alpha: absensiOtoritatif.hadir_alpha,
+      kelancaran: hifzhOtoritatif.kelancaran,
+      tajwid: hifzhOtoritatif.tajwid,
+      keterangan_hafalan: hifzhOtoritatif.keterangan_hafalan,
       catatan,
     }
 
@@ -238,7 +291,6 @@ export async function POST(request: Request) {
   } else {
     // INSERT:
     // Server menetapkan guru_id dari authenticated user (auth.userId)
-    // Nilai Hifzh dibiarkan null (akan sinkron dari Raport Hifzh di fase berikutnya)
     const insertPayload = {
       santri_id: santriId,
       periode_id: periodeId,
@@ -250,13 +302,13 @@ export async function POST(request: Request) {
       ketertiban,
       ekskul_renang: ekskulRenang,
       ekskul_beladiri: ekskulBeladiri,
-      hadir_sakit: hadirSakit,
-      hadir_izin: hadirIzin,
-      hadir_alpha: hadirAlpha,
+      hadir_sakit: absensiOtoritatif.hadir_sakit,
+      hadir_izin: absensiOtoritatif.hadir_izin,
+      hadir_alpha: absensiOtoritatif.hadir_alpha,
       catatan,
-      kelancaran: null,
-      tajwid: null,
-      keterangan_hafalan: null,
+      kelancaran: hifzhOtoritatif.kelancaran,
+      tajwid: hifzhOtoritatif.tajwid,
+      keterangan_hafalan: hifzhOtoritatif.keterangan_hafalan,
     }
 
     const { data: inserted, error: insertError } = await serviceClient

@@ -95,6 +95,7 @@ export type NilaiRapotForm = Record<string, string | number>
 /** Satu baris nilai_rapot rekap kelas admin, sebelum rata-rata/peringkat dihitung -- termasuk status santri (aktif/alumni/keluar), khusus Admin (Guru tidak melihat alumni). */
 export type RapotNilaiApiRow = {
   id: string
+  santri_id?: string
   santri?: { nama: string | null, kelas_num: number | null, jenjang: string | null, status: string | null } | null
   kelancaran?: number | null
   tajwid?: number | null
@@ -114,8 +115,9 @@ export type RapotNilaiApiRow = {
 export type RapotRekapRow = RapotNilaiApiRow & {
   rata_diiniyyah: number | null
   rata_umum: number | null
-  rata_akhir: number
-  peringkat: number
+  rata_akhir: number | null
+  peringkat: number | null
+  lengkap: boolean
 }
 
 /** Payload ke /api/create-user (tambah/update/hapus akun guru & wali). */

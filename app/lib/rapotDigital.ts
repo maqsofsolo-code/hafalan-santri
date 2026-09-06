@@ -1,32 +1,87 @@
 /**
- * Domain types, constants, and helper functions for Rapot Digital (Phase 1).
+ * Domain types, constants, and helper functions for Rapot Digital.
+ * Dirancang JENJANG-AGNOSTIC dengan konfigurasi RAPOT_SUBJECT_CONFIG.
  */
 
-export interface MapelItem {
+export type JenjangKey = 'ula' | 'wustha' | 'ulya'
+
+export interface SubjectItem {
   id: string
   label: string
 }
 
-export const MATA_PELAJARAN_ULA_DINIYYAH: MapelItem[] = [
-  { id: 'aqidah', label: 'Aqidah' },
-  { id: 'akhlak', label: 'Adab / Akhlak' },
-  { id: 'fiqh', label: 'Fiqh' },
-  { id: 'bhs_arab', label: 'Bahasa Arab' },
-  { id: 'siroh', label: 'Siroh' },
-  { id: 'khoth', label: 'Khoth' },
-]
+export interface SubjectGroup {
+  id: string
+  name: string
+  code: string // 'B', 'C', dsb.
+  subjects: SubjectItem[]
+}
 
-export const MATA_PELAJARAN_ULA_UMUM: MapelItem[] = [
-  { id: 'bhs_indonesia', label: 'Bahasa Indonesia' },
-  { id: 'berhitung', label: 'Berhitung' },
-  { id: 'ipa', label: 'IPA' },
-  { id: 'ips', label: 'IPS' },
-]
+export interface JenjangSubjectConfig {
+  jenjang: JenjangKey
+  label: string
+  enabled: boolean
+  groups: SubjectGroup[]
+}
 
-export const ALL_MAPEL_ULA_KEYS = [
-  ...MATA_PELAJARAN_ULA_DINIYYAH.map(m => m.id),
-  ...MATA_PELAJARAN_ULA_UMUM.map(m => m.id),
-] as const
+export const RAPOT_SUBJECT_CONFIG: Record<JenjangKey, JenjangSubjectConfig> = {
+  ula: {
+    jenjang: 'ula',
+    label: 'Ula',
+    enabled: true,
+    groups: [
+      {
+        id: 'diniyyah',
+        name: 'MATERI DINIYYAH',
+        code: 'B',
+        subjects: [
+          { id: 'aqidah', label: 'AQIDAH' },
+          { id: 'akhlak', label: 'ADAB / AKHLAK' },
+          { id: 'fiqh', label: 'FIQH' },
+          { id: 'bhs_arab', label: 'BAHASA ARAB' },
+          { id: 'siroh', label: 'SIROH' },
+          { id: 'khoth', label: 'KHOTH' },
+        ],
+      },
+      {
+        id: 'umum',
+        name: 'MATERI UMUM',
+        code: 'C',
+        subjects: [
+          { id: 'bhs_indonesia', label: 'BAHASA INDONESIA' },
+          { id: 'berhitung', label: 'BERHITUNG' },
+          { id: 'ipa', label: 'IPA' },
+          { id: 'ips', label: 'IPS' },
+        ],
+      },
+    ],
+  },
+  wustha: {
+    jenjang: 'wustha',
+    label: 'Wustha',
+    enabled: false,
+    groups: [],
+  },
+  ulya: {
+    jenjang: 'ulya',
+    label: 'Ulya',
+    enabled: false,
+    groups: [],
+  },
+}
+
+/**
+ * Mengambil daftar seluruh mapel aktif untuk suatu jenjang.
+ */
+export function getActiveSubjects(jenjang: JenjangKey): SubjectItem[] {
+  const cfg = RAPOT_SUBJECT_CONFIG[jenjang]
+  if (!cfg || !cfg.enabled) return []
+  return cfg.groups.flatMap(g => g.subjects)
+}
+
+export const MATA_PELAJARAN_ULA_DINIYYAH = RAPOT_SUBJECT_CONFIG.ula.groups[0].subjects
+export const MATA_PELAJARAN_ULA_UMUM = RAPOT_SUBJECT_CONFIG.ula.groups[1].subjects
+export const ALL_MAPEL_ULA_KEYS = getActiveSubjects('ula').map(s => s.id)
 
 export type MapelUlaKey = typeof ALL_MAPEL_ULA_KEYS[number]
 
@@ -54,7 +109,6 @@ export function validateNilaiRaw(val: unknown): { valid: boolean; value: number 
     return { valid: true, value: null }
   }
 
-  // Harus integer positif/nol tanpa desimal
   if (!/^\d+$/.test(str)) {
     return { valid: false, value: null, error: 'Nilai harus berupa angka bulat 0-100' }
   }
@@ -65,4 +119,197 @@ export function validateNilaiRaw(val: unknown): { valid: boolean; value: number 
   }
 
   return { valid: true, value: num }
+}
+
+/**
+ * Mengonversi angka nilai (dibulatkan) ke kata bilangan dalam Bahasa Indonesia.
+ */
+export function angkaKeHuruf(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n) || n <= 0) return '-'
+  const satuan = [
+    '', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan',
+    'Sepuluh', 'Sebelas', 'Dua Belas', 'Tiga Belas', 'Empat Belas', 'Lima Belas', 'Enam Belas',
+    'Tujuh Belas', 'Delapan Belas', 'Sembilan Belas'
+  ]
+  const puluhan = [
+    '', '', 'Dua Puluh', 'Tiga Puluh', 'Empat Puluh', 'Lima Puluh',
+    'Enam Puluh', 'Tujuh Puluh', 'Delapan Puluh', 'Sembilan Puluh'
+  ]
+  const num = Math.round(n)
+  if (num < 20) return satuan[num]
+  return puluhan[Math.floor(num / 10)] + (num % 10 ? ' ' + satuan[num % 10] : '')
+}
+
+export type HasilRataRataSantri = {
+  lengkap: boolean
+  rataAkhir: number | null
+  rataDiniyyah: number | null
+  rataUmum: number | null
+  nilaiEfektifMap: Record<string, number | null>
+}
+
+/**
+ * Menghitung kelengkapan dan rata-rata nilai akademik santri secara jenjang-agnostic.
+ * 
+ * Ketentuan:
+ * 1. Hanya mapel aktif dalam konfigurasi jenjang yang dihitung.
+ * 2. Seluruh mapel aktif berbobot sama.
+ * 3. Pembagi = jumlah mapel aktif dalam konfigurasi (untuk Ula = 10).
+ * 4. Lengkap jika SELURUH mapel aktif memiliki nilai valid != null.
+ * 5. Jika tidak lengkap, `rataAkhir = null` dan santri tidak eligible ranking.
+ */
+export function hitungRataRataAkademik(
+  nilaiRaw: Record<string, any> | null | undefined,
+  jenjang: JenjangKey = 'ula'
+): HasilRataRataSantri {
+  const cfg = RAPOT_SUBJECT_CONFIG[jenjang]
+  if (!cfg || !cfg.enabled) {
+    return {
+      lengkap: false,
+      rataAkhir: null,
+      rataDiniyyah: null,
+      rataUmum: null,
+      nilaiEfektifMap: {},
+    }
+  }
+
+  const activeSubjects = getActiveSubjects(jenjang)
+  const nilaiEfektifMap: Record<string, number | null> = {}
+  let isLengkap = true
+  let sumTotal = 0
+
+  for (const sub of activeSubjects) {
+    const rawVal = nilaiRaw ? nilaiRaw[sub.id] : null
+    const valNum = (rawVal !== null && rawVal !== undefined && rawVal !== '')
+      ? Number(rawVal)
+      : null
+
+    if (valNum === null || !Number.isFinite(valNum)) {
+      isLengkap = false
+      nilaiEfektifMap[sub.id] = null
+    } else {
+      const efektif = nilaiEfektifRapot(valNum)
+      nilaiEfektifMap[sub.id] = efektif
+      if (efektif !== null) sumTotal += efektif
+    }
+  }
+
+  // Rata-rata per grup
+  let rataDiniyyah: number | null = null
+  let rataUmum: number | null = null
+
+  const diniyyahGroup = cfg.groups.find(g => g.id === 'diniyyah')
+  if (diniyyahGroup && diniyyahGroup.subjects.length > 0) {
+    const vals = diniyyahGroup.subjects
+      .map(s => nilaiEfektifMap[s.id])
+      .filter((v): v is number => v !== null)
+    if (vals.length === diniyyahGroup.subjects.length) {
+      rataDiniyyah = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+    }
+  }
+
+  const umumGroup = cfg.groups.find(g => g.id === 'umum')
+  if (umumGroup && umumGroup.subjects.length > 0) {
+    const vals = umumGroup.subjects
+      .map(s => nilaiEfektifMap[s.id])
+      .filter((v): v is number => v !== null)
+    if (vals.length === umumGroup.subjects.length) {
+      rataUmum = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+    }
+  }
+
+  const totalSubjects = activeSubjects.length
+  const rataAkhir = isLengkap && totalSubjects > 0
+    ? Math.round((sumTotal / totalSubjects) * 10) / 10
+    : null
+
+  return {
+    lengkap: isLengkap,
+    rataAkhir,
+    rataDiniyyah,
+    rataUmum,
+    nilaiEfektifMap,
+  }
+}
+
+export type SantriRankingItem = {
+  id: string
+  nama: string
+}
+
+export type SantriRankingResult = SantriRankingItem & {
+  lengkap: boolean
+  rataAkhir: number | null
+  rataDiniyyah: number | null
+  rataUmum: number | null
+  peringkat: number | null
+  nilaiEfektifMap: Record<string, number | null>
+}
+
+/**
+ * Menghitung ranking akademik kelas dengan ATURAN FINAL:
+ * 1. Hanya santri yang lengkap seluruh mapel aktif yang mendapat peringkat.
+ * 2. Incomplete = no rank (peringkat = null).
+ * 3. Competition ranking: Jika nilai rata-rata sama persis, santri mendapatkan PERINGKAT YANG SAMA (1, 2, 2, 4).
+ * 4. Nama / ID hanya digunakan untuk kestabilan urutan tampilan.
+ */
+export function hitungRankingRapotKelas<T extends SantriRankingItem>(
+  santriList: T[],
+  nilaiMap: Map<string, any> | Record<string, any>,
+  jenjang: JenjangKey = 'ula'
+): {
+  hasilList: (T & SantriRankingResult)[]
+  rankingMap: Map<string, number | null>
+  totalSantri: number
+  totalLengkap: number
+} {
+  const evaluasiList = santriList.map(s => {
+    const rawNilai = nilaiMap instanceof Map ? nilaiMap.get(s.id) : (nilaiMap as any)[s.id]
+    const rata = hitungRataRataAkademik(rawNilai, jenjang)
+    return {
+      ...s,
+      lengkap: rata.lengkap,
+      rataAkhir: rata.rataAkhir,
+      rataDiniyyah: rata.rataDiniyyah,
+      rataUmum: rata.rataUmum,
+      nilaiEfektifMap: rata.nilaiEfektifMap,
+      peringkat: null as number | null,
+    }
+  })
+
+  const lengkapList = evaluasiList.filter(s => s.lengkap && s.rataAkhir !== null)
+  const belumLengkapList = evaluasiList.filter(s => !s.lengkap || s.rataAkhir === null)
+
+  // Sort lengkap: rataAkhir desc, nama asc ('id' locale), id asc
+  lengkapList.sort((a, b) => {
+    const diff = (b.rataAkhir ?? 0) - (a.rataAkhir ?? 0)
+    if (diff !== 0) return diff
+    const namaComp = (a.nama || '').localeCompare(b.nama || '', 'id')
+    if (namaComp !== 0) return namaComp
+    return String(a.id).localeCompare(String(b.id))
+  })
+
+  // Competition ranking: 1, 2, 2, 4
+  for (let i = 0; i < lengkapList.length; i++) {
+    if (i > 0 && lengkapList[i].rataAkhir === lengkapList[i - 1].rataAkhir) {
+      lengkapList[i].peringkat = lengkapList[i - 1].peringkat
+    } else {
+      lengkapList[i].peringkat = i + 1
+    }
+  }
+
+  const rankingMap = new Map<string, number | null>()
+  lengkapList.forEach(s => rankingMap.set(s.id, s.peringkat))
+  belumLengkapList.forEach(s => rankingMap.set(s.id, null))
+
+  // Hasil gabungan terurut: santri lengkap terurut peringkat, disusul santri belum lengkap (urut nama)
+  belumLengkapList.sort((a, b) => (a.nama || '').localeCompare(b.nama || '', 'id'))
+  const hasilList = [...lengkapList, ...belumLengkapList]
+
+  return {
+    hasilList,
+    rankingMap,
+    totalSantri: santriList.length,
+    totalLengkap: lengkapList.length,
+  }
 }

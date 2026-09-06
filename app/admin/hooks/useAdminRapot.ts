@@ -25,6 +25,7 @@ import type { NilaiRapotForm, PeriodeRapot, RapotNilaiApiRow, RapotRekapRow, San
 // Guru/Wali/Santri/Kalender di kode asli (nama field berbeda), jadi dipegang
 // langsung oleh hook ini, bukan oleh useAdminEntityForm.
 import { fetchWithAuth } from '../../lib/authClient'
+import { hitungRankingRapotKelas, type JenjangKey } from '../../lib/rapotDigital'
 
 export function useAdminRapot(params: {
   setLoading: (v: boolean) => void
@@ -63,11 +64,14 @@ export function useAdminRapot(params: {
   const [rapotDownloadSantri, setRapotDownloadSantri] = useState<Santri | null>(null)
   const [rapotDownloadKelas, setRapotDownloadKelas] = useState('')
   const [rapotDownloadJenjang, setRapotDownloadJenjang] = useState('ula')
+  const [rapotDownloadJenisKelas, setRapotDownloadJenisKelas] = useState('banin')
   const [rapotRekapPeriodeId, setRapotRekapPeriodeId] = useState('')
   const [rapotRekapJenjang, setRapotRekapJenjang] = useState('ula')
   const [rapotRekapKelas, setRapotRekapKelas] = useState('')
+  const [rapotRekapJenisKelas, setRapotRekapJenisKelas] = useState('banin')
   const [rapotRekapData, setRapotRekapData] = useState<RapotRekapRow[]>([])
   const [rapotRekapLoading, setRapotRekapLoading] = useState(false)
+  const [excelLoading, setExcelLoading] = useState(false)
 
   const fetchPeriode = useCallback(async () => {
     setPeriodeLoading(true)
@@ -336,68 +340,134 @@ export function useAdminRapot(params: {
     setRapotRekapKelas(kelas); setRapotRekapData([])
   }
 
+  const handleGantiRapotRekapJenisKelas = (jk: string) => {
+    setRapotRekapJenisKelas(jk); setRapotRekapData([])
+  }
+
+  const handleGantiRapotDownloadJenisKelas = (jk: string) => {
+    setRapotDownloadJenisKelas(jk)
+  }
+
   const fetchRekapKelas = async () => {
     if (!rapotRekapPeriodeId || !rapotRekapKelas) return
     setRapotRekapLoading(true)
     setRapotRekapData([])
 
-    // Ambil nilai berdasarkan kelas_snapshot dulu
-    const { data: nilaiSnapshot } = await supabase
-      .from('nilai_rapot')
-      .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
-      .eq('periode_id', rapotRekapPeriodeId)
-      .eq('kelas_snapshot', parseInt(rapotRekapKelas))
+    try {
+      // Ambil nilai berdasarkan kelas_snapshot dulu
+      let query = supabase
+        .from('nilai_rapot')
+        .select('*, santri:santri_id(nama, kelas_num, jenjang, jenis_kelas, status)')
+        .eq('periode_id', rapotRekapPeriodeId)
+        .eq('kelas_snapshot', parseInt(rapotRekapKelas))
 
-    let nilaiList: RapotNilaiApiRow[] = nilaiSnapshot || []
-
-    // Jika tidak ada kelas_snapshot, fallback ke kelas santri saat ini
-    if (nilaiList.length === 0) {
-      const { data: santriKelas } = await supabase
-        .from('santri').select('id')
-        .eq('jenjang', rapotRekapJenjang)
-        .eq('kelas_num', parseInt(rapotRekapKelas))
-      const ids = (santriKelas || []).map((s) => s.id)
-      if (ids.length > 0) {
-        const { data: nilaiFallback } = await supabase
-          .from('nilai_rapot')
-          .select('*, santri:santri_id(nama, kelas_num, jenjang, status)')
-          .eq('periode_id', rapotRekapPeriodeId)
-          .in('santri_id', ids)
-        nilaiList = nilaiFallback || []
+      if (rapotRekapJenisKelas) {
+        query = query.eq('jenis_kelas_snapshot', rapotRekapJenisKelas)
       }
+
+      const { data: nilaiSnapshot, error: snapshotErr } = await query
+      if (snapshotErr) {
+        console.error('[useAdminRapot] Gagal memuat snapshot nilai:', snapshotErr.message)
+      }
+
+      let nilaiList: RapotNilaiApiRow[] = (nilaiSnapshot || []) as RapotNilaiApiRow[]
+
+      // Jika tidak ada kelas_snapshot, fallback ke kelas santri saat ini
+      if (nilaiList.length === 0) {
+        let santriQuery = supabase
+          .from('santri').select('id')
+          .eq('jenjang', rapotRekapJenjang)
+          .eq('kelas_num', parseInt(rapotRekapKelas))
+
+        if (rapotRekapJenisKelas) {
+          santriQuery = santriQuery.eq('jenis_kelas', rapotRekapJenisKelas)
+        }
+
+        const { data: santriKelas, error: santriErr } = await santriQuery
+        if (santriErr) {
+          console.error('[useAdminRapot] Gagal memuat data santri:', santriErr.message)
+        }
+
+        const ids = (santriKelas || []).map((s) => s.id)
+        if (ids.length > 0) {
+          const { data: nilaiFallback, error: fallbackErr } = await supabase
+            .from('nilai_rapot')
+            .select('*, santri:santri_id(nama, kelas_num, jenjang, jenis_kelas, status)')
+            .eq('periode_id', rapotRekapPeriodeId)
+            .in('santri_id', ids)
+
+          if (fallbackErr) {
+            console.error('[useAdminRapot] Gagal memuat fallback nilai:', fallbackErr.message)
+          }
+          nilaiList = (nilaiFallback || []) as RapotNilaiApiRow[]
+        }
+      }
+
+      // Hitung ranking dan kelengkapan menggunakan engine jenjang-agnostic
+      const santriItems = nilaiList.map(n => ({
+        id: n.santri_id || n.id,
+        nama: n.santri?.nama || 'Tanpa Nama',
+        row: n,
+      }))
+
+      const nilaiMap = new Map<string, RapotNilaiApiRow>()
+      for (const n of nilaiList) {
+        nilaiMap.set(n.santri_id || n.id, n)
+      }
+
+      const rankingRes = hitungRankingRapotKelas(santriItems, nilaiMap, rapotRekapJenjang as JenjangKey)
+
+      const finalRekapRows: RapotRekapRow[] = rankingRes.hasilList.map(item => ({
+        ...item.row,
+        rata_diiniyyah: item.rataDiniyyah,
+        rata_umum: item.rataUmum,
+        rata_akhir: item.rataAkhir,
+        peringkat: item.peringkat,
+        lengkap: item.lengkap,
+      }))
+
+      setRapotRekapData(finalRekapRows)
+    } catch (err: any) {
+      console.error('[useAdminRapot] Gagal fetchRekapKelas:', err)
+    } finally {
+      setRapotRekapLoading(false)
     }
+  }
 
-    // Hitung rata-rata per santri
-    const hitungRata = (n: RapotNilaiApiRow) => {
-      const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v) => v != null && v > 0)
-      const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v) => v != null && v > 0)
-      if (d.length === 0 && u.length === 0) return 0
-      const rd = d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : 0
-      const ru = u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : 0
-      if (d.length === 0) return ru
-      if (u.length === 0) return rd
-      return (rd + ru) / 2
+  const downloadExcelKelasAdmin = async (periodeId: string, kelasNum: number | string, jenjang: string, jenisKelas?: string) => {
+    if (!periodeId || !kelasNum) {
+      alert('Pilih periode dan kelas terlebih dahulu!')
+      return
     }
-
-    // Tambah rata-rata dan urutkan
-    const withRata = nilaiList.map((n) => ({
-      ...n,
-      rata_diiniyyah: (() => {
-        const d = [n.aqidah, n.akhlak, n.fiqh, n.bhs_arab, n.siroh, n.khoth].filter((v) => v != null && v > 0)
-        return d.length > 0 ? d.reduce((a: number, b: number) => a + b, 0) / d.length : null
-      })(),
-      rata_umum: (() => {
-        const u = [n.bhs_indonesia, n.berhitung, n.ipa, n.ips].filter((v) => v != null && v > 0)
-        return u.length > 0 ? u.reduce((a: number, b: number) => a + b, 0) / u.length : null
-      })(),
-      rata_akhir: hitungRata(n)
-    })).sort((a, b) => b.rata_akhir - a.rata_akhir)
-
-    // Tambah peringkat
-    const withPeringkat = withRata.map((n, i) => ({ ...n, peringkat: i + 1 }))
-
-    setRapotRekapData(withPeringkat)
-    setRapotRekapLoading(false)
+    setExcelLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('Sesi login tidak valid. Silakan login kembali.')
+        return
+      }
+      const jk = jenisKelas || 'banin'
+      const url = `/api/rapot-digital/kelas-excel?periode_id=${encodeURIComponent(periodeId)}&kelas_num=${encodeURIComponent(String(kelasNum))}&jenjang=${encodeURIComponent(jenjang)}&jenis_kelas=${encodeURIComponent(jk)}`
+      const res = await fetchWithAuth(url, session.access_token)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert('Gagal download Excel: ' + (err.error || res.statusText))
+        return
+      }
+      const blob = await res.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = `RAPOT_KELAS_${kelasNum}_${jenjang.toUpperCase()}_${jk.toUpperCase()}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(downloadUrl)
+    } catch (err: any) {
+      alert('Terjadi kesalahan download Excel: ' + err.message)
+    } finally {
+      setExcelLoading(false)
+    }
   }
 
   // ===== DOWNLOAD =====
@@ -406,6 +476,7 @@ export function useAdminRapot(params: {
     setRapotDownloadSearch(s.nama)
     setRapotDownloadKelas(s.kelas_num?.toString() || '')
     setRapotDownloadJenjang(s.jenjang || 'ula')
+    setRapotDownloadJenisKelas(s.jenis_kelas || 'banin')
   }
 
   const handleBatalkanRapotDownloadSantri = () => {
@@ -426,14 +497,16 @@ export function useAdminRapot(params: {
     rapotInputPeriodeId, rapotInputSantriList, rapotInputSantri, rapotInputSearch, setRapotInputSearch,
     rapotNilai, setRapotNilai, rapotInputLoading, rapotInputMsg, rapotExistingId,
     rapotKelasSnapshot, rapotJenjangSnapshot, rapotActiveTab,
-    rapotDownloadSearch, setRapotDownloadSearch, rapotDownloadSantri, rapotDownloadKelas, setRapotDownloadKelas, rapotDownloadJenjang,
-    rapotRekapPeriodeId, rapotRekapJenjang, rapotRekapKelas, rapotRekapData, rapotRekapLoading,
+    rapotDownloadSearch, setRapotDownloadSearch, rapotDownloadSantri, rapotDownloadKelas, setRapotDownloadKelas, rapotDownloadJenjang, rapotDownloadJenisKelas, setRapotDownloadJenisKelas,
+    rapotRekapPeriodeId, rapotRekapJenjang, rapotRekapKelas, rapotRekapJenisKelas, rapotRekapData, rapotRekapLoading,
+    excelLoading,
     fetchPeriode, resetFormPeriode,
     handleToggleWindow,
     handleSelectRapotTab,
     handleSelectRapotInputPeriode, handlePilihRapotInputSantri, handleBatalkanRapotInputSantri,
     handleGantiRapotJenjangSnapshot, handleGantiRapotKelasSnapshot, handleSimpanRapotAdmin,
-    handleGantiRapotRekapPeriode, handleGantiRapotRekapJenjang, handleGantiRapotRekapKelas, fetchRekapKelas,
-    handlePilihRapotDownloadSantri, handleBatalkanRapotDownloadSantri, handleGantiRapotDownloadJenjang,
+    handleGantiRapotRekapPeriode, handleGantiRapotRekapJenjang, handleGantiRapotRekapKelas, handleGantiRapotRekapJenisKelas, fetchRekapKelas,
+    handlePilihRapotDownloadSantri, handleBatalkanRapotDownloadSantri, handleGantiRapotDownloadJenjang, handleGantiRapotDownloadJenisKelas,
+    downloadExcelKelasAdmin,
   }
 }

@@ -33,7 +33,25 @@ export async function GET(request: Request) {
 
   const serviceClient = createServiceRoleClient()
 
-  // 1. Authorization check for Guru
+  // 1. Ambil data periode akademik untuk verifikasi status input & rentang tanggal
+  const { data: periode, error: periodeError } = await serviceClient
+    .from('periode_akademik')
+    .select('id, tahun_ajaran, semester, tanggal_mulai, tanggal_selesai, rapot_input_dibuka')
+    .eq('id', periodeId)
+    .maybeSingle()
+
+  if (periodeError || !periode) {
+    return NextResponse.json({ error: 'Periode akademik tidak ditemukan' }, { status: 404 })
+  }
+
+  // Hard-close check untuk role Guru
+  if (auth.role === 'guru' && !periode.rapot_input_dibuka) {
+    return NextResponse.json({
+      error: 'Input nilai rapot sedang ditutup oleh Admin.'
+    }, { status: 403 })
+  }
+
+  // 2. Authorization check for Guru: penugasan wali kelas
   if (auth.role === 'guru') {
     const { data: assignment, error: assignError } = await serviceClient
       .from('wali_kelas_assignment')
@@ -56,10 +74,10 @@ export async function GET(request: Request) {
     }
   }
 
-  // 2. Query seluruh santri aktif pada kelas & jenis_kelas ini
+  // 3. Query seluruh santri aktif pada kelas & jenis_kelas ini
   let santriQuery = serviceClient
     .from('santri')
-    .select('id, nama, nisn, kelas_num, jenjang, jenis_kelas, status, total_hafalan_juz')
+    .select('id, nama, nisn, kelas, kelas_num, jenjang, jenis_kelas, status, total_hafalan_juz, surah_terakhir_nomor, ayat_terakhir')
     .eq('kelas_num', kelasNum)
     .eq('jenis_kelas', jenisKelas)
     .eq('status', 'aktif')
@@ -80,30 +98,57 @@ export async function GET(request: Request) {
     return NextResponse.json({ santriList: [] })
   }
 
-  // 3. LEFT JOIN / merge dengan nilai_rapot untuk periode ini
+  // 4. Query nilai rapot, absensi otomatis, dan Hifzh otomatis
   const santriIds = santriRows.map(s => s.id)
-  const { data: nilaiList, error: nilaiError } = await serviceClient
-    .from('nilai_rapot')
-    .select('*')
-    .eq('periode_id', periodeId)
-    .in('santri_id', santriIds)
 
-  if (nilaiError) {
-    return NextResponse.json({ error: 'Gagal memuat data nilai rapot: ' + nilaiError.message }, { status: 500 })
+  const [nilaiRes, absensiMap, hifzhMap] = await Promise.all([
+    serviceClient
+      .from('nilai_rapot')
+      .select('*')
+      .eq('periode_id', periodeId)
+      .in('santri_id', santriIds),
+    import('../../../lib/absensiRapot').then(m =>
+      m.hitungKetidakhadiranSantri(serviceClient, santriIds, periode.tanggal_mulai, periode.tanggal_selesai)
+    ),
+    import('../../../lib/hifzhRapot').then(m =>
+      m.muatNilaiHifzhFinalKelas(serviceClient, santriRows, periode)
+    ),
+  ])
+
+  if (nilaiRes.error) {
+    return NextResponse.json({ error: 'Gagal memuat data nilai rapot: ' + nilaiRes.error.message }, { status: 500 })
   }
 
   const nilaiMap = new Map<string, any>()
-  for (const n of (nilaiList || [])) {
+  for (const n of (nilaiRes.data || [])) {
     nilaiMap.set(n.santri_id, n)
   }
 
   const merged = santriRows.map(s => {
-    const nilai = nilaiMap.get(s.id) || null
+    const nilaiDb = nilaiMap.get(s.id) || null
+    const absensi = absensiMap.get(s.id) || { hadir_sakit: 0, hadir_izin: 0, hadir_alpha: 0 }
+    const hifzh = hifzhMap.get(s.id) || { kelancaran: null, tajwid: null, keterangan_hafalan: s.total_hafalan_juz ? `${s.total_hafalan_juz} Juz` : '-' }
+
+    // Merged nilai: timpa kolom absensi & hifzh dengan data otoritatif server
+    const nilai = nilaiDb
+      ? {
+          ...nilaiDb,
+          hadir_sakit: absensi.hadir_sakit,
+          hadir_izin: absensi.hadir_izin,
+          hadir_alpha: absensi.hadir_alpha,
+          kelancaran: hifzh.kelancaran,
+          tajwid: hifzh.tajwid,
+          keterangan_hafalan: hifzh.keterangan_hafalan,
+        }
+      : null
+
     return {
       ...s,
-      has_nilai: !!nilai,
-      nilai_id: nilai ? nilai.id : null,
+      has_nilai: !!nilaiDb,
+      nilai_id: nilaiDb ? nilaiDb.id : null,
       nilai,
+      absensi_otomatis: absensi,
+      hifzh_otomatis: hifzh,
     }
   })
 

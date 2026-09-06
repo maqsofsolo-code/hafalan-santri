@@ -141,6 +141,7 @@ export type RapotNilaiApiRow = {
 export type RapotRekapRow = RapotNilaiApiRow & {
   rata_diiniyyah: number | null
   rata_umum: number | null
-  rata_akhir: number
-  peringkat: number
+  rata_akhir: number | null
+  peringkat: number | null
+  lengkap: boolean
 }

@@ -386,7 +386,7 @@ export function RapotDigitalSection(props: {
                   {rapot.periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}{p.is_aktif ? ' (Aktif)' : ''}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
                   <select value={rapot.rapotRekapJenjang}
@@ -408,6 +408,17 @@ export function RapotDigitalSection(props: {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
+                  <select value={rapot.rapotRekapJenisKelas}
+                    onChange={e => rapot.handleGantiRapotRekapJenisKelas(e.target.value)}
+                    className={inputClass}>
+                    <option value="banin">Banin</option>
+                    <option value="banat">Banat</option>
+                    <option value="tn_a">TN A</option>
+                    <option value="tn_b">TN B</option>
+                  </select>
+                </div>
               </div>
             </div>
             <button onClick={rapot.fetchRekapKelas}
@@ -420,12 +431,19 @@ export function RapotDigitalSection(props: {
 
           {rapot.rapotRekapData.length > 0 && (
             <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
-              <div className="px-5 py-4 flex justify-between items-center"
+              <div className="px-5 py-4 flex flex-wrap justify-between items-center gap-3"
                 style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
                 <div>
-                  <h3 className="text-white font-bold">Rekap Kelas {rapot.rapotRekapKelas} {jenjangLabel(rapot.rapotRekapJenjang)}</h3>
+                  <h3 className="text-white font-bold">Rekap Kelas {rapot.rapotRekapKelas} {jenjangLabel(rapot.rapotRekapJenjang)} ({rapot.rapotRekapJenisKelas.toUpperCase()})</h3>
                   <p className="text-blue-200 text-xs mt-0.5">{rapot.rapotRekapData.length} santri • {rapot.periodeList.find(p => p.id === rapot.rapotRekapPeriodeId)?.nama}</p>
                 </div>
+                <button
+                  onClick={() => rapot.downloadExcelKelasAdmin(rapot.rapotRekapPeriodeId, rapot.rapotRekapKelas, rapot.rapotRekapJenjang, rapot.rapotRekapJenisKelas)}
+                  disabled={rapot.excelLoading}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {rapot.excelLoading ? '⏳ Menyiapkan Excel...' : '📥 Download Excel Rapot Kelas'}
+                </button>
               </div>
 
               <div className="overflow-x-auto">
@@ -454,7 +472,7 @@ export function RapotDigitalSection(props: {
                   </thead>
                   <tbody>
                     {rapot.rapotRekapData.map((n, i) => {
-                      const isComplete = n.rata_akhir > 0
+                      const isComplete = Boolean(n.lengkap && n.rata_akhir !== null)
                       return (
                         <tr key={n.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
                           <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{i + 1}</td>
@@ -489,7 +507,7 @@ export function RapotDigitalSection(props: {
                             {n.rata_akhir ? n.rata_akhir.toFixed(1) : '-'}
                           </td>
                           <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', background: '#fef9c3' }}>
-                            {isComplete ? (
+                            {isComplete && n.peringkat !== null ? (
                               <span style={{
                                 background: n.peringkat === 1 ? '#fbbf24' : n.peringkat === 2 ? '#9ca3af' : n.peringkat === 3 ? '#f97316' : '#e5e7eb',
                                 color: n.peringkat <= 3 ? 'white' : '#374151',
@@ -497,7 +515,9 @@ export function RapotDigitalSection(props: {
                               }}>
                                 {n.peringkat}
                               </span>
-                            ) : '-'}
+                            ) : (
+                              <span style={{ color: '#9ca3af', fontSize: '11px' }}>-</span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -536,7 +556,7 @@ export function RapotDigitalSection(props: {
 
               <div className="p-4">
                 <p className="text-xs text-gray-400">
-                  Nilai merah = di bawah 60 • Peringkat dihitung dari Rata-rata Akhir (Diiniyyah + Umum) / 2
+                  Nilai efektif rentang 50–95 • Peringkat kompetisi (1, 2, 2, 4) hanya untuk santri dengan nilai lengkap • Nilai merah = di bawah 60
                 </p>
               </div>
             </div>
@@ -555,8 +575,8 @@ export function RapotDigitalSection(props: {
         <div className="space-y-4">
 
           <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
-            <h3 className="font-bold text-gray-800 mb-1">Download Per Kelas</h3>
-            <p className="text-xs text-gray-400 mb-4">Semua rapot santri dalam satu kelas digabung jadi 1 file</p>
+            <h3 className="font-bold text-gray-800 mb-1">Download Rapot Per Kelas (.xlsx)</h3>
+            <p className="text-xs text-gray-400 mb-4">Official report: 1 workbook Excel berisi seluruh rapot santri kelas (1 sheet per santri)</p>
             <div className="space-y-3 mb-4">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Periode</label>
@@ -565,7 +585,7 @@ export function RapotDigitalSection(props: {
                   {rapot.periodeList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Jenjang</label>
                   <select value={rapot.rapotJenjang} onChange={e => { rapot.setRapotJenjang(e.target.value); rapot.setRapotKelas('') }} className={inputClass}>
@@ -581,18 +601,39 @@ export function RapotDigitalSection(props: {
                     {getKelasOptions(rapot.rapotJenjang).map(k => <option key={k} value={k}>Kelas {k}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Kelompok</label>
+                  <select value={rapot.rapotDownloadJenisKelas} onChange={e => rapot.handleGantiRapotDownloadJenisKelas(e.target.value)} className={inputClass}>
+                    <option value="banin">Banin</option>
+                    <option value="banat">Banat</option>
+                    <option value="tn_a">TN A</option>
+                    <option value="tn_b">TN B</option>
+                  </select>
+                </div>
               </div>
             </div>
             <button
               onClick={() => {
                 if (!rapot.rapotPeriodeId || !rapot.rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
-                bukaLaporanHTML(`/api/rapot-pdf?periode_id=${rapot.rapotPeriodeId}&jenjang=${rapot.rapotJenjang}&kelas=${rapot.rapotKelas}`)
+                rapot.downloadExcelKelasAdmin(rapot.rapotPeriodeId, rapot.rapotKelas, rapot.rapotJenjang, rapot.rapotDownloadJenisKelas)
               }}
-              disabled={!rapot.rapotPeriodeId || !rapot.rapotKelas}
-              className="w-full text-white py-3 rounded-xl font-bold text-sm shadow disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-              📄 Download Rapot Satu Kelas
+              disabled={!rapot.rapotPeriodeId || !rapot.rapotKelas || rapot.excelLoading}
+              className="w-full text-white py-3.5 rounded-xl font-bold text-sm shadow disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}>
+              {rapot.excelLoading ? '⏳ Mengunduh Excel...' : '📥 Download Excel Rapot Kelas (.xlsx)'}
             </button>
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+              <span>Format cetak legacy:</span>
+              <button
+                onClick={() => {
+                  if (!rapot.rapotPeriodeId || !rapot.rapotKelas) { alert('Pilih periode dan kelas dulu!'); return }
+                  bukaLaporanHTML(`/api/rapot-pdf?periode_id=${rapot.rapotPeriodeId}&jenjang=${rapot.rapotJenjang}&kelas=${rapot.rapotKelas}`)
+                }}
+                disabled={!rapot.rapotPeriodeId || !rapot.rapotKelas}
+                className="text-gray-500 hover:text-gray-700 underline text-xs disabled:opacity-50">
+                Buka HTML / PDF Legacy
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">

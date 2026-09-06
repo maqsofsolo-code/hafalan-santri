@@ -37,12 +37,19 @@ export async function GET(request: Request) {
   // 1. Verifikasi periode akademik valid
   const { data: periode, error: periodeErr } = await serviceClient
     .from('periode_akademik')
-    .select('id')
+    .select('id, rapot_input_dibuka')
     .eq('id', periodeId)
     .single()
 
   if (periodeErr || !periode) {
     return NextResponse.json({ error: 'Periode akademik tidak ditemukan' }, { status: 404 })
+  }
+
+  // Hard-close check untuk role Guru
+  if (auth.role === 'guru' && !periode.rapot_input_dibuka) {
+    return NextResponse.json({
+      error: 'Input nilai rapot sedang ditutup oleh Admin.'
+    }, { status: 403 })
   }
 
   // 2. Jika Guru, wajib verifikasi penugasan wali_kelas_assignment
