@@ -5,7 +5,6 @@ import {
   getRapotSubjectConfig,
   getActiveSubjects,
   getAcademicProgress,
-  ALL_POSSIBLE_MAPEL_KEYS,
   type JenjangKey,
 } from '../../../lib/rapotDigital'
 
@@ -200,8 +199,11 @@ export async function POST(request: Request) {
 
   // 4. Validasi nilai mentah mapel aktif untuk kelas santri (harus integer 0-100 atau null)
   // Server-authoritative: hanya subject aktif untuk santri.jenjang + santri.kelas_num yang boleh ditulis.
+  // Inactive subjects (seperti IPA/IPS untuk Ula kelas 1–3) TIDAK dimasukkan ke mapelData:
+  // - Pada UPDATE: omitted dari payload sehingga nilai legacy di database ter-preserve apa adanya (bukan di-null-kan paksa).
+  // - Pada INSERT: omitted dari payload sehingga database menetapkan nilai bawaan NULL.
+  // - Forged client payload untuk inactive subjects diabaikan sepenuhnya (tidak writable dari client).
   const activeSubjects = getActiveSubjects(santri.jenjang as JenjangKey, santri.kelas_num)
-  const activeKeys = new Set(activeSubjects.map(s => s.id))
   const mapelData: Record<string, number | null> = {}
 
   for (const sub of activeSubjects) {
@@ -213,14 +215,6 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
     mapelData[sub.id] = validation.value
-  }
-
-  // Server write whitelist: seluruh inactive subjects yang ada di database di-set NULL secara eksplisit
-  // sehingga data santri bersih dan inactive subjects tidak memengaruhi kelengkapan atau ranking.
-  for (const key of ALL_POSSIBLE_MAPEL_KEYS) {
-    if (!activeKeys.has(key)) {
-      mapelData[key] = null
-    }
   }
 
   // Validasi Kepribadian ('A' | 'B' | 'C')

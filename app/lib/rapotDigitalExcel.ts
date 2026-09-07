@@ -211,7 +211,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     const barisIdentitas = [
       ['Nama Santri', `: ${data.santri.nama}`, 'Tahun Ajaran', `: ${periode.tahun_ajaran}`],
       ['Nomor Induk Santri', noIndukDisplay, 'Kelas / Jenjang', `: ${kelasNum} / ${jenjang.toUpperCase()}`],
-      ['NISN', nisnDisplay, 'Semester', `: ${semesterLabel}`],
+      ['NIS', nisnDisplay, 'Semester', `: ${semesterLabel}`],
     ]
 
     barisIdentitas.forEach(row => {

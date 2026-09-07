@@ -256,7 +256,7 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                                 </div>
 
                                 <div className="text-xs text-gray-500 flex justify-between items-center mt-3 pt-2 border-t border-gray-200/60">
-                                  <span>NISN: {s.nisn || '-'}</span>
+                                  <span>NIS: {s.nisn || '-'}</span>
                                   <span className="text-blue-600 font-semibold text-xs">Pilih →</span>
                                 </div>
                               </div>
@@ -276,7 +276,7 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                           <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Input Nilai Rapot Santri</span>
                           <h3 className="text-xl font-black text-gray-900">{rapot.selectedSantri.nama}</h3>
                           <p className="text-xs text-gray-500">
-                            NISN: {rapot.selectedSantri.nisn || '-'} • Kelas {rapot.selectedAssignment.kelas_num} {formatJenisKelas(rapot.selectedAssignment.jenis_kelas)}
+                            NIS: {rapot.selectedSantri.nisn || '-'} • Kelas {rapot.selectedAssignment.kelas_num} {formatJenisKelas(rapot.selectedAssignment.jenis_kelas)}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-1.5">
                             {(() => {

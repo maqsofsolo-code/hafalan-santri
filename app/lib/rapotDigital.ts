@@ -25,9 +25,39 @@ export interface JenjangSubjectConfig {
   groups: SubjectGroup[]
 }
 
-export const RAPOT_CONFIG_ULA: JenjangSubjectConfig = {
+export const RAPOT_CONFIG_ULA_1_3: JenjangSubjectConfig = {
   jenjang: 'ula',
-  label: 'Ula',
+  label: 'Ula (Kelas 1–3)',
+  enabled: true,
+  groups: [
+    {
+      id: 'diniyyah',
+      name: 'MATERI DINIYYAH',
+      code: 'B',
+      subjects: [
+        { id: 'aqidah', label: 'AQIDAH' },
+        { id: 'akhlak', label: 'ADAB / AKHLAK' },
+        { id: 'fiqh', label: 'FIQH' },
+        { id: 'bhs_arab', label: 'BAHASA ARAB' },
+        { id: 'siroh', label: 'SIROH' },
+        { id: 'khoth', label: 'KHOTH' },
+      ],
+    },
+    {
+      id: 'umum',
+      name: 'MATERI UMUM',
+      code: 'C',
+      subjects: [
+        { id: 'bhs_indonesia', label: 'BAHASA INDONESIA' },
+        { id: 'berhitung', label: 'BERHITUNG' },
+      ],
+    },
+  ],
+}
+
+export const RAPOT_CONFIG_ULA_4_6: JenjangSubjectConfig = {
+  jenjang: 'ula',
+  label: 'Ula (Kelas 4–6)',
   enabled: true,
   groups: [
     {
@@ -56,6 +86,8 @@ export const RAPOT_CONFIG_ULA: JenjangSubjectConfig = {
     },
   ],
 }
+
+export const RAPOT_CONFIG_ULA: JenjangSubjectConfig = RAPOT_CONFIG_ULA_4_6
 
 export const RAPOT_CONFIG_WUSTHA: JenjangSubjectConfig = {
   jenjang: 'wustha',
@@ -206,13 +238,15 @@ export const RAPOT_CONFIG_UNAVAILABLE: JenjangSubjectConfig = {
 
 /**
  * Resolver konfigurasi mapel rapot digital berdasarkan jenjang dan nomor kelas.
- * - Ula (1..6)       => RAPOT_CONFIG_ULA (10 mapel)
+ * - Ula Kelas 1..3   => RAPOT_CONFIG_ULA_1_3 (8 mapel: 6 Diniyyah + 2 Umum)
+ * - Ula Kelas 4..6   => RAPOT_CONFIG_ULA_4_6 (10 mapel: 6 Diniyyah + 4 Umum)
  * - Wustha (7..9)    => RAPOT_CONFIG_WUSTHA (9 mapel)
  * - Ulya Kelas 10    => RAPOT_CONFIG_ULYA_10 (12 mapel)
  * - Ulya Kelas 11    => RAPOT_CONFIG_ULYA_11 (13 mapel)
  * - Ulya Kelas 12    => RAPOT_CONFIG_ULYA_12 (11 mapel: no shorof, imla, khoth)
  * 
- * Mengembalikan RAPOT_CONFIG_UNAVAILABLE (enabled: false) jika kombinasi jenjang & kelas tidak valid.
+ * Mengembalikan RAPOT_CONFIG_UNAVAILABLE (enabled: false) jika kombinasi jenjang & kelas tidak valid
+ * atau jika kelasNum tidak disediakan pada jenjang yang komposisinya spesifik per kelas (Ula & Ulya).
  */
 export function getRapotSubjectConfig(
   jenjang: JenjangKey | string | null | undefined,
@@ -220,15 +254,27 @@ export function getRapotSubjectConfig(
 ): JenjangSubjectConfig {
   if (!jenjang) return RAPOT_CONFIG_UNAVAILABLE
   const j = String(jenjang).toLowerCase() as JenjangKey
-  const kNum = (kelasNum !== undefined && kelasNum !== null && String(kelasNum).trim() !== '')
-    ? parseInt(String(kelasNum), 10)
-    : null
+  let kNum: number | null = null
+  if (kelasNum !== undefined && kelasNum !== null && String(kelasNum).trim() !== '') {
+    const rawStr = String(kelasNum).trim()
+    const parsed = parseInt(rawStr, 10)
+    if (!isNaN(parsed)) {
+      kNum = parsed
+    } else {
+      const match = rawStr.match(/\d+/)
+      if (match) kNum = parseInt(match[0], 10)
+    }
+  }
 
   if (j === 'ula') {
-    if (kNum !== null && (isNaN(kNum) || kNum < 1 || kNum > 6)) {
-      return RAPOT_CONFIG_UNAVAILABLE
+    if (kNum === 1 || kNum === 2 || kNum === 3) {
+      return RAPOT_CONFIG_ULA_1_3
     }
-    return RAPOT_CONFIG_ULA
+    if (kNum === 4 || kNum === 5 || kNum === 6) {
+      return RAPOT_CONFIG_ULA_4_6
+    }
+    // Ula wajib memiliki kelasNum valid (1..6) karena komposisi mapel kelas 1–3 (8 mapel) berbeda dari kelas 4–6 (10 mapel)
+    return RAPOT_CONFIG_UNAVAILABLE
   }
 
   if (j === 'wustha') {
@@ -298,7 +344,7 @@ export function getActiveSubjects(
 
 export const MATA_PELAJARAN_ULA_DINIYYAH = RAPOT_CONFIG_ULA.groups[0].subjects
 export const MATA_PELAJARAN_ULA_UMUM = RAPOT_CONFIG_ULA.groups[1].subjects
-export const ALL_MAPEL_ULA_KEYS = getActiveSubjects('ula').map(s => s.id)
+export const ALL_MAPEL_ULA_KEYS = RAPOT_CONFIG_ULA_4_6.groups.flatMap(g => g.subjects).map(s => s.id)
 
 export type MapelUlaKey = typeof ALL_MAPEL_ULA_KEYS[number]
 
