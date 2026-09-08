@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { authorize, createServiceRoleClient } from '../../../lib/serverAuth'
-import { hitungRankingRapotKelas, type JenjangKey } from '../../../lib/rapotDigital'
+import { hitungRankingRapotKelas, hitungRataKelasMapel, type JenjangKey } from '../../../lib/rapotDigital'
 import { hitungKetidakhadiranSantri } from '../../../lib/absensiRapot'
 import { muatNilaiHifzhFinalKelas } from '../../../lib/hifzhRapot'
 import { buildRapotDigitalClassWorkbook, type SantriRapotExcelData } from '../../../lib/rapotDigitalExcel'
@@ -136,8 +136,12 @@ export async function GET(request: Request) {
   const rankingRes = hitungRankingRapotKelas(santriRows, nilaiMap, jenjang, kelasNum)
   const rankingEvaluasiMap = new Map(rankingRes.hasilList.map(item => [item.id, item]))
 
+  // 5b. Hitung Rata Kelas per mata pelajaran akademik untuk seluruh kelas (dihitung 1x)
+  const rataKelasMap = hitungRataKelasMapel(santriRows, nilaiMap, jenjang, kelasNum)
+
   // 6. Nama Wali Kelas resmi
-  const waliKelasNama = (waliRow?.data?.guru as any)?.nama?.trim() || 'Belum ditentukan'
+  const guruObj = (waliRow?.data?.guru as any)
+  const waliKelasNama = guruObj?.nama?.trim() || 'Belum ditentukan'
 
   // 7. Siapkan payload data Excel
   const santriDataList: SantriRapotExcelData[] = santriRows.map(s => {
@@ -189,6 +193,7 @@ export async function GET(request: Request) {
     waliKelasNama,
     totalSantriKelas: santriRows.length,
     santriDataList,
+    rataKelasMap,
   })
 
   const sanitizedTahun = periode.tahun_ajaran.replace(/[^a-zA-Z0-9]/g, '-')

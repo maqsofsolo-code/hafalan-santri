@@ -447,13 +447,14 @@ export function RapotDigitalSection(props?: { rapot?: ReturnType<typeof useRapot
                         <p className="text-sm font-bold text-teal-900 mb-3">Ekstrakurikuler</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Renang (Jumlah Pertemuan)</label>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Nilai Renang</label>
                             <input
                               type="number"
                               min="0"
+                              max="100"
                               value={rapot.nilaiRapot.ekskul_renang ?? ''}
                               onChange={e => rapot.setNilaiRapot({ ...rapot.nilaiRapot, ekskul_renang: e.target.value })}
-                              placeholder="misal: 8"
+                              placeholder="0–100"
                               className={inputClass}
                             />
                           </div>

@@ -351,10 +351,10 @@ export function RapotDigitalSection(props: {
                     <p className="text-sm font-bold text-gray-700 mb-3">Ekstrakurikuler</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">Renang (pertemuan)</label>
-                        <input type="number" min="0" value={rapot.rapotNilai.ekskul_renang || ''}
+                        <label className="block text-xs text-gray-500 mb-1">Nilai Renang</label>
+                        <input type="number" min="0" max="100" value={rapot.rapotNilai.ekskul_renang || ''}
                           onChange={e => rapot.setRapotNilai({...rapot.rapotNilai, ekskul_renang: e.target.value})}
-                          placeholder="misal: 8" className={inputClass} />
+                          placeholder="0–100" className={inputClass} />
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">Beladiri</label>

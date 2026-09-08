@@ -672,3 +672,125 @@ export function hitungRankingRapotKelas<T extends SantriRankingItem>(
     totalLengkap: lengkapList.length,
   }
 }
+
+export type RataKelasMapelItem = {
+  angka: number
+  huruf: string
+}
+
+export type HasilRataKelasMapel = Record<string, RataKelasMapelItem | null>
+
+/**
+ * Menghitung Rata Kelas per mata pelajaran akademik untuk suatu kelas.
+ * 
+ * Aturan Bisnis Resmi:
+ * 1. Dihitung HANYA dari nilai mata pelajaran tersebut dari seluruh santri aktif dalam exact class.
+ * 2. Formula: Rata Kelas Mapel = sum(nilai rapot mapel santri aktif) / count(santri aktif).
+ * 3. Setiap mapel dihitung secara independen.
+ * 4. Nilai menggunakan nilai efektif (clamp 50..95 via nilaiEfektifRapot).
+ * 5. Complete subject only: jika ada 1 saja santri aktif yang nilainya null / belum diisi / missing row,
+ *    maka Rata Kelas untuk mapel tersebut adalah null ('-').
+ * 6. Hasil angka dibulatkan dengan Math.round, dan huruf terbilang dihasilkan dari angka bulat tersebut via angkaKeHuruf.
+ * 7. Hanya mapel akademik aktif sesuai konfigurasi jenjang + kelas (tidak termasuk Hifzh & summary rows).
+ */
+export function hitungRataKelasMapel<T extends { id: string }>(
+  santriList: T[],
+  nilaiMap: Map<string, any> | Record<string, any>,
+  jenjang: JenjangKey | string = 'ula',
+  kelasNum?: number | string | null
+): HasilRataKelasMapel {
+  const result: HasilRataKelasMapel = {}
+  if (!santriList || santriList.length === 0) {
+    return result
+  }
+
+  const activeSubjects = getActiveSubjects(jenjang, kelasNum)
+  if (activeSubjects.length === 0) {
+    return result
+  }
+
+  const totalSantri = santriList.length
+
+  for (const sub of activeSubjects) {
+    let isComplete = true
+    let sumEffective = 0
+
+    for (const s of santriList) {
+      const rawRow = nilaiMap instanceof Map ? nilaiMap.get(s.id) : (nilaiMap as any)?.[s.id]
+      if (!rawRow) {
+        isComplete = false
+        break
+      }
+
+      const rawVal = rawRow[sub.id]
+      if (rawVal === null || rawVal === undefined || rawVal === '') {
+        isComplete = false
+        break
+      }
+
+      const num = Number(rawVal)
+      if (!Number.isFinite(num) || num < 0 || num > 100) {
+        isComplete = false
+        break
+      }
+
+      const efektif = nilaiEfektifRapot(num)
+      if (efektif === null) {
+        isComplete = false
+        break
+      }
+
+      sumEffective += efektif
+    }
+
+    if (isComplete) {
+      const rata = Math.round(sumEffective / totalSantri)
+      result[sub.id] = {
+        angka: rata,
+        huruf: angkaKeHuruf(rata),
+      }
+    } else {
+      result[sub.id] = null
+    }
+  }
+
+  return result
+}
+
+/**
+ * Mengembalikan tanggal resmi penerbitan Rapot Digital.
+ * 
+ * Aturan Bisnis Resmi:
+ * 1. Khusus Tahun Ajaran 2026/2027 Semester 1 (Gasal), tanggal penerbitan resmi adalah
+ *    PERMANEN: "12 September 2026" (tidak dinamis mengikuti tanggal download/selesai/sistem).
+ * 2. Periode lainnya: gunakan tanggal_rapot bila tersedia, atau fallback ke tanggal_selesai,
+ *    atau '-' jika keduanya tidak ada.
+ */
+export function formatTanggalPenerbitanRapot(periode?: {
+  tahun_ajaran?: string | null
+  semester?: number | string | null
+  tanggal_rapot?: string | null
+  tanggal_selesai?: string | null
+} | null): string {
+  if (!periode) return '-'
+  const thn = String(periode.tahun_ajaran || '').trim()
+  const smt = Number(periode.semester)
+  if (thn === '2026/2027' && smt === 1) {
+    return '12 September 2026'
+  }
+  if (periode.tanggal_rapot) {
+    return new Date(periode.tanggal_rapot).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+  if (periode.tanggal_selesai) {
+    return new Date(periode.tanggal_selesai).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+  return '-'
+}

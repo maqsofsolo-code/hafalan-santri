@@ -4,7 +4,9 @@ import ExcelJS from 'exceljs'
 import {
   getRapotSubjectConfig,
   angkaKeHuruf,
+  formatTanggalPenerbitanRapot,
   type JenjangKey,
+  type RataKelasMapelItem,
 } from './rapotDigital'
 
 export type SantriRapotExcelData = {
@@ -52,6 +54,7 @@ export type BuildRapotClassParams = {
   waliKelasNama: string
   totalSantriKelas: number
   santriDataList: SantriRapotExcelData[]
+  rataKelasMap?: Record<string, RataKelasMapelItem | null>
 }
 
 const BORDER_THIN: Partial<ExcelJS.Borders> = {
@@ -89,15 +92,12 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     waliKelasNama,
     totalSantriKelas,
     santriDataList,
+    rataKelasMap,
   } = params
 
   const cfg = getRapotSubjectConfig(jenjang, kelasNum)
   const semesterLabel = periode.semester === 1 ? '1 (Ganjil)' : '2 (Genap)'
-  const tanggalDisplay = periode.tanggal_rapot
-    ? new Date(periode.tanggal_rapot).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-    : periode.tanggal_selesai
-    ? new Date(periode.tanggal_selesai).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-    : '-'
+  const tanggalDisplay = formatTanggalPenerbitanRapot(periode)
 
   // Load logo resmi Ma'had Daarus Salaf
   let logoImageId: number | null = null
@@ -140,8 +140,8 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ws.getColumn('B').width = jenjang === 'ulya' ? 28 : 26  // Mapel / Nilai Santri
     ws.getColumn('C').width = 11  // Nilai Angka
     ws.getColumn('D').width = 21  // Nilai Huruf / Label Kanan
-    ws.getColumn('E').width = 13  // Rata-rata / Nilai Kanan 1
-    ws.getColumn('F').width = 15  // Rata-rata Kelas / Nilai Kanan 2
+    ws.getColumn('E').width = 11  // Rata Kelas Angka
+    ws.getColumn('F').width = 17  // Rata Kelas Huruf
 
     // Posisikan logo resmi Daarus Salaf seimbang di sebelah kiri header kop
     if (logoImageId !== null) {
@@ -245,13 +245,13 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ws.getCell(`B${r}`).value = 'Mata Pelajaran'
     ws.mergeCells(`C${r}:D${r}`)
     ws.getCell(`C${r}`).value = 'Nilai'
-    ws.mergeCells(`E${r}:E${r + 1}`)
-    ws.getCell(`E${r}`).value = 'Rata-Rata'
-    ws.mergeCells(`F${r}:F${r + 1}`)
-    ws.getCell(`F${r}`).value = 'Rata Kelas'
+    ws.mergeCells(`E${r}:F${r}`)
+    ws.getCell(`E${r}`).value = 'Rata Kelas'
 
     ws.getCell(`C${r + 1}`).value = 'Angka'
     ws.getCell(`D${r + 1}`).value = 'Huruf'
+    ws.getCell(`E${r + 1}`).value = 'Angka'
+    ws.getCell(`F${r + 1}`).value = 'Huruf'
 
     for (let rowIdx = r; rowIdx <= r + 1; rowIdx++) {
       ['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
@@ -281,14 +281,17 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
 
     barisHifzh.forEach(([no, label, val]) => {
       ws.getCell(`A${r}`).value = no
-      ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+      ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
       ws.getCell(`B${r}`).value = label
+      ws.getCell(`B${r}`).alignment = { vertical: 'middle' }
       ws.getCell(`C${r}`).value = val ?? '-'
-      ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
+      ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
       ws.getCell(`D${r}`).value = typeof val === 'number' ? angkaKeHuruf(val) : '-'
-      ws.getCell(`E${r}`).value = ''
+      ws.getCell(`D${r}`).alignment = { vertical: 'middle' }
+      ws.getCell(`E${r}`).value = '-'
+      ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
       ws.getCell(`F${r}`).value = '-'
-      ws.getCell(`F${r}`).alignment = { horizontal: 'center' }
+      ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
 
       ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
         ws.getCell(`${c}${r}`).border = BORDER_THIN
@@ -323,6 +326,7 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       group.subjects.forEach((sub, sIdx) => {
         const val = data.evaluasi.nilaiEfektifMap[sub.id]
         const isBilingual = Boolean(sub.labelArab && (jenjang === 'ulya' || data.santri.jenjang === 'ulya'))
+        const rk = rataKelasMap ? rataKelasMap[sub.id] : null
 
         ws.getCell(`A${r}`).value = String(sIdx + 1)
         ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
@@ -341,23 +345,41 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
             ],
           }
           ws.getCell(`B${r}`).alignment = { vertical: 'middle', wrapText: false }
-          ws.getRow(r).height = 20
         } else {
           ws.getCell(`B${r}`).value = sub.label.toUpperCase()
           ws.getCell(`B${r}`).alignment = { vertical: 'middle' }
+        }
+
+        if (isBilingual) {
+          ws.getRow(r).height = 20
         }
 
         ws.getCell(`C${r}`).value = val ?? '-'
         ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
         ws.getCell(`D${r}`).value = typeof val === 'number' ? angkaKeHuruf(val) : '-'
         ws.getCell(`D${r}`).alignment = { vertical: 'middle' }
-        ws.getCell(`E${r}`).value = ''
-        ws.getCell(`F${r}`).value = '-'
-        ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+
+        if (rk) {
+          ws.getCell(`E${r}`).value = rk.angka
+          ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+          ws.getCell(`E${r}`).font = getScoreFont(rk.angka, { size: 9, bold: true })
+
+          ws.getCell(`F${r}`).value = rk.huruf
+          ws.getCell(`F${r}`).alignment = { vertical: 'middle' }
+          ws.getCell(`F${r}`).font = getScoreFont(rk.angka, { size: 9, bold: false })
+        } else {
+          ws.getCell(`E${r}`).value = '-'
+          ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+          ws.getCell(`E${r}`).font = { name: 'Times New Roman', size: 9 }
+
+          ws.getCell(`F${r}`).value = '-'
+          ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+          ws.getCell(`F${r}`).font = { name: 'Times New Roman', size: 9 }
+        }
 
         ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
           ws.getCell(`${c}${r}`).border = BORDER_THIN
-          if (!(c === 'B' && isBilingual)) {
+          if (!(c === 'B' && isBilingual) && c !== 'C' && c !== 'D' && c !== 'E' && c !== 'F') {
             ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
           }
         })
@@ -372,12 +394,14 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       ws.getCell(`A${r}`).value = `Rata-Rata ${group.name}`
       ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
       ws.getCell(`C${r}`).value = groupRata ?? '-'
-      ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
+      ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
       ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
       ws.getCell(`D${r}`).value = typeof groupRata === 'number' ? angkaKeHuruf(groupRata) : '-'
-      ws.getCell(`E${r}`).value = ''
+      ws.getCell(`D${r}`).alignment = { vertical: 'middle' }
+      ws.getCell(`E${r}`).value = '-'
+      ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
       ws.getCell(`F${r}`).value = '-'
-      ws.getCell(`F${r}`).alignment = { horizontal: 'center' }
+      ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
 
       ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
         ws.getCell(`${c}${r}`).border = BORDER_THIN
@@ -393,12 +417,14 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     ws.getCell(`A${r}`).value = 'Rata-Rata Akhir (Materi Diniyyah dan Umum)'
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
     ws.getCell(`C${r}`).value = data.evaluasi.rataAkhir ?? '-'
-    ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 10, bold: true }
     ws.getCell(`D${r}`).value = typeof data.evaluasi.rataAkhir === 'number' ? angkaKeHuruf(data.evaluasi.rataAkhir) : '-'
-    ws.getCell(`E${r}`).value = ''
+    ws.getCell(`D${r}`).alignment = { vertical: 'middle' }
+    ws.getCell(`E${r}`).value = '-'
+    ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
     ws.getCell(`F${r}`).value = '-'
-    ws.getCell(`F${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`F${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
 
     ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
       ws.getCell(`${c}${r}`).border = BORDER_THIN
@@ -440,9 +466,16 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     r++
 
     const rawNilai = data.nilaiRaw || {}
+    const renangVal = (rawNilai.ekskul_renang != null && String(rawNilai.ekskul_renang).trim() !== '')
+      ? String(rawNilai.ekskul_renang).trim()
+      : '-'
+    const beladiriVal = (rawNilai.ekskul_beladiri != null && String(rawNilai.ekskul_beladiri).trim() !== '')
+      ? String(rawNilai.ekskul_beladiri).trim()
+      : '-'
+
     const barisTiga = [
-      ['Akhlak', rawNilai.akhlak_kepribadian || 'B', 'Sakit', `${data.absensi.hadir_sakit} hari`, 'Renang', rawNilai.ekskul_renang ? `${rawNilai.ekskul_renang}x` : '-'],
-      ['Kebersihan', rawNilai.kebersihan || 'B', 'Ijin', `${data.absensi.hadir_izin} hari`, 'Beladiri', rawNilai.ekskul_beladiri || '-'],
+      ['Akhlak', rawNilai.akhlak_kepribadian || 'B', 'Sakit', `${data.absensi.hadir_sakit} hari`, 'Renang', renangVal],
+      ['Kebersihan', rawNilai.kebersihan || 'B', 'Ijin', `${data.absensi.hadir_izin} hari`, 'Beladiri', beladiriVal],
       ['Ketertiban', rawNilai.ketertiban || 'B', 'Tanpa Ijin', `${data.absensi.hadir_alpha} hari`, '', ''],
     ]
 
@@ -468,54 +501,81 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
     r++
 
     // CATATAN WALI KELAS
+    const catatanRaw = rawNilai.catatan ? String(rawNilai.catatan).trim() : ''
+    let lineCount = 1
+    if (catatanRaw) {
+      const explicitLines = catatanRaw.split(/\r?\n/)
+      lineCount = explicitLines.reduce((acc, line) => {
+        const wrapped = Math.max(1, Math.ceil(line.length / 90))
+        return acc + wrapped
+      }, 0)
+    }
+
     ws.mergeCells(`A${r}:F${r}`)
     ws.getCell(`A${r}`).value = 'Catatan Wali Kelas:'
     ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
+    ws.getRow(r).height = 18
     r++
 
-    ws.mergeCells(`A${r}:F${r + 1}`)
-    ws.getCell(`A${r}`).value = rawNilai.catatan ? `"${rawNilai.catatan}"` : '-'
-    ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, italic: true }
-    ws.getCell(`A${r}`).alignment = { vertical: 'top', wrapText: true }
-    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
-      ws.getCell(`${c}${r}`).border = BORDER_THIN
-      ws.getCell(`${c}${r + 1}`).border = BORDER_THIN
-    })
+    const noteStartRow = r
+    const noteEndRow = r + 1
+    ws.mergeCells(`A${noteStartRow}:F${noteEndRow}`)
+    ws.getCell(`A${noteStartRow}`).value = catatanRaw ? `"${catatanRaw}"` : '-'
+    ws.getCell(`A${noteStartRow}`).font = { name: 'Times New Roman', size: 9, italic: true }
+    ws.getCell(`A${noteStartRow}`).alignment = { vertical: 'top', horizontal: 'left', wrapText: true }
+
+    const targetHeight = Math.max(32, Math.round(lineCount * 17.5))
+    const halfHeight = Math.ceil(targetHeight / 2)
+    ws.getRow(noteStartRow).height = halfHeight
+    ws.getRow(noteEndRow).height = halfHeight
+
+    for (let nr = noteStartRow; nr <= noteEndRow; nr++) {
+      ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
+        ws.getCell(`${c}${nr}`).border = BORDER_THIN
+      })
+    }
     r += 3
 
     // TANDA TANGAN
+    const isSemesterGasal = periode.semester === 1
+
+    ws.getRow(r).height = 28
+
     ws.mergeCells(`A${r}:B${r}`)
     ws.getCell(`A${r}`).value = 'Orang Tua / Wali'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9 }
 
-    ws.mergeCells(`C${r}:D${r}`)
-    ws.getCell(`C${r}`).value = 'Mengetahui,\nKepala Sekolah'
-    ws.getCell(`C${r}`).alignment = { horizontal: 'center', wrapText: true }
+    if (!isSemesterGasal) {
+      ws.mergeCells(`C${r}:D${r}`)
+      ws.getCell(`C${r}`).value = 'Mengetahui,\nKepala Sekolah'
+      ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9 }
+    }
 
     ws.mergeCells(`E${r}:F${r}`)
     ws.getCell(`E${r}`).value = `Sukoharjo, ${tanggalDisplay}\nWali Kelas`
-    ws.getCell(`E${r}`).alignment = { horizontal: 'center', wrapText: true }
+    ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    ws.getCell(`E${r}`).font = { name: 'Times New Roman', size: 9 }
 
-    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
-      ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9 }
-    })
     r += 4
 
     ws.mergeCells(`A${r}:B${r}`)
     ws.getCell(`A${r}`).value = '( .................................... )'
-    ws.getCell(`A${r}`).alignment = { horizontal: 'center' }
+    ws.getCell(`A${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
 
-    ws.mergeCells(`C${r}:D${r}`)
-    ws.getCell(`C${r}`).value = '( Ustadz Abu Muhammad Idral )'
-    ws.getCell(`C${r}`).alignment = { horizontal: 'center' }
+    if (!isSemesterGasal) {
+      ws.mergeCells(`C${r}:D${r}`)
+      ws.getCell(`C${r}`).value = '( Ustadz Abu Muhammad Idral )'
+      ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+      ws.getCell(`C${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
+    }
 
     ws.mergeCells(`E${r}:F${r}`)
     ws.getCell(`E${r}`).value = `( ${waliKelasNama} )`
-    ws.getCell(`E${r}`).alignment = { horizontal: 'center' }
-
-    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => {
-      ws.getCell(`${c}${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
-    })
+    ws.getCell(`E${r}`).alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getCell(`E${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
   })
 
   return await wb.xlsx.writeBuffer()

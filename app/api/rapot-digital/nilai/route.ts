@@ -242,10 +242,17 @@ export async function POST(request: Request) {
   }
 
   // Validasi Ekskul
-  const ekskulRenangVal = nilai.ekskul_renang != null && String(nilai.ekskul_renang).trim() !== ''
-    ? parseInt(String(nilai.ekskul_renang), 10)
-    : null
-  const ekskulRenang = Number.isInteger(ekskulRenangVal) && ekskulRenangVal! >= 0 ? ekskulRenangVal : null
+  // Renang adalah nilai asesmen (skala 0–100 inclusive). Jika <0 atau >100, tolak dengan error validasi jelas (tidak clamp, tidak silent convert).
+  let ekskulRenang: number | null = null
+  if (nilai.ekskul_renang !== undefined && nilai.ekskul_renang !== null && String(nilai.ekskul_renang).trim() !== '') {
+    const validationRenang = validateNilaiRaw(nilai.ekskul_renang)
+    if (!validationRenang.valid) {
+      return NextResponse.json({
+        error: `Nilai Renang tidak valid: ${validationRenang.error}`
+      }, { status: 400 })
+    }
+    ekskulRenang = validationRenang.value
+  }
   const ekskulBeladiri = nilai.ekskul_beladiri ? String(nilai.ekskul_beladiri).trim() : null
   const catatan = nilai.catatan ? String(nilai.catatan).trim() : null
 
