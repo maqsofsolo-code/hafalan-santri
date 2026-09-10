@@ -31,6 +31,7 @@ import { AlumniList } from './components/AlumniList'
 import { NaikKelasSection } from './components/NaikKelasSection'
 import { RapotDigitalSection } from './components/RapotDigitalSection'
 import { LaporanBulananSection } from './components/LaporanBulananSection'
+import { PeringkatHifzhSection } from './components/PeringkatHifzhSection'
 import type { Santri } from './types'
 
 // Halaman Admin -- dipecah jadi struktur modular pada Modularisasi Tahap 6A
@@ -243,6 +244,10 @@ export default function AdminDashboard() {
 
           {activeMenu === 'laporan' && (
             <LaporanBulananSection laporan={laporan} santriList={data.santriList} />
+          )}
+
+          {activeMenu === 'peringkat-hifzh' && (
+            <PeringkatHifzhSection />
           )}
 
         </div>

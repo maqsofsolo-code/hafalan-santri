@@ -85,6 +85,7 @@ export const navigationGroups: NavGroup[] = [
     icon: '📊',
     items: [
       { id: 'laporan', label: 'Laporan Bulanan', icon: '📊' },
+      { id: 'peringkat-hifzh', label: 'Peringkat Hifzh', icon: '🏆' },
     ],
   },
 ]
