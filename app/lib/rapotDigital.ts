@@ -199,11 +199,10 @@ export const RAPOT_CONFIG_ULYA_12: JenjangSubjectConfig = {
       name: 'MATERI DINIYYAH',
       code: 'B',
       subjects: [
-        // Kelas 12: TIDAK ada Shorof, TIDAK ada Imla, TIDAK ada Khoth
+        // Kelas 12: TIDAK ada Bahasa Arab, TIDAK ada Shorof, TIDAK ada Imla, TIDAK ada Khoth
         { id: 'aqidah', label: 'Aqidah', labelArab: 'العَقِيدَةُ' },
         { id: 'akhlak', label: 'Adab / Akhlak', labelArab: 'الآدَابُ / الأَخْلَاقُ' },
         { id: 'fiqh', label: 'Fiqh', labelArab: 'الفِقْهُ' },
-        { id: 'bhs_arab', label: 'Bahasa Arab', labelArab: 'اللُّغَةُ العَرَبِيَّةُ' },
         { id: 'nahwu', label: 'Nahwu', labelArab: 'النَّحْوُ' },
         { id: 'siroh', label: 'Siroh', labelArab: 'السِّيرَةُ' },
         { id: 'usul_fiqih', label: 'Usul Fiqih', labelArab: 'أُصُولُ الفِقْهِ' },
@@ -243,7 +242,7 @@ export const RAPOT_CONFIG_UNAVAILABLE: JenjangSubjectConfig = {
  * - Wustha (7..9)    => RAPOT_CONFIG_WUSTHA (9 mapel)
  * - Ulya Kelas 10    => RAPOT_CONFIG_ULYA_10 (12 mapel)
  * - Ulya Kelas 11    => RAPOT_CONFIG_ULYA_11 (13 mapel)
- * - Ulya Kelas 12    => RAPOT_CONFIG_ULYA_12 (11 mapel: no shorof, imla, khoth)
+ * - Ulya Kelas 12    => RAPOT_CONFIG_ULYA_12 (10 mapel: no bhs_arab, shorof, imla, khoth)
  * 
  * Mengembalikan RAPOT_CONFIG_UNAVAILABLE (enabled: false) jika kombinasi jenjang & kelas tidak valid
  * atau jika kelasNum tidak disediakan pada jenjang yang komposisinya spesifik per kelas (Ula & Ulya).

@@ -135,13 +135,13 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
       },
     })
 
-    // Atur lebar kolom yang proporsional dan tidak memotong teks identitas
-    ws.getColumn('A').width = 18  // No / Label Identitas
-    ws.getColumn('B').width = jenjang === 'ulya' ? 28 : 26  // Mapel / Nilai Santri
+    // Atur lebar kolom yang proporsional dan estetis (Kolom No ramping, tabel seimbang & muat F4)
+    ws.getColumn('A').width = 7  // No (ramping & proporsional untuk angka 1-13)
+    ws.getColumn('B').width = jenjang === 'ulya' ? 32 : 30  // Mapel / Nilai Santri
     ws.getColumn('C').width = 11  // Nilai Angka
-    ws.getColumn('D').width = 21  // Nilai Huruf / Label Kanan
+    ws.getColumn('D').width = 24  // Nilai Huruf / Label Kanan
     ws.getColumn('E').width = 11  // Rata Kelas Angka
-    ws.getColumn('F').width = 17  // Rata Kelas Huruf
+    ws.getColumn('F').width = 21  // Rata Kelas Huruf
 
     // Posisikan logo resmi Daarus Salaf seimbang di sebelah kiri header kop
     if (logoImageId !== null) {
@@ -205,35 +205,65 @@ export async function buildRapotDigitalClassWorkbook(params: BuildRapotClassPara
 
     // IDENTITAS SANTRI
     const noIndukRaw = data.santri.nis || data.santri.no_induk
-    const noIndukDisplay = noIndukRaw ? `: ${noIndukRaw}` : ''
-    const nisnDisplay = data.santri.nisn ? `: ${data.santri.nisn}` : '-'
+    const noIndukValue = noIndukRaw || '-'
+    const nisnValue = data.santri.nisn || '-'
 
     const barisIdentitas = [
-      ['Nama Santri', `: ${data.santri.nama}`, 'Tahun Ajaran', `: ${periode.tahun_ajaran}`],
-      ['Nomor Induk Santri', noIndukDisplay, 'Kelas / Jenjang', `: ${kelasNum} / ${jenjang.toUpperCase()}`],
-      ['NIS', nisnDisplay, 'Semester', `: ${semesterLabel}`],
+      {
+        leftLabel: 'Nama Santri',
+        leftValue: data.santri.nama || '-',
+        rightLabel: 'Tahun Ajaran',
+        rightValue: String(periode.tahun_ajaran || '-'),
+      },
+      {
+        leftLabel: 'Nomor Induk Santri',
+        leftValue: noIndukValue,
+        rightLabel: 'Kelas / Jenjang',
+        rightValue: `${kelasNum} / ${jenjang.toUpperCase()}`,
+      },
+      {
+        leftLabel: 'NIS',
+        leftValue: nisnValue,
+        rightLabel: 'Semester',
+        rightValue: String(semesterLabel || '-'),
+      },
     ]
 
-    barisIdentitas.forEach(row => {
+    barisIdentitas.forEach(item => {
       ws.getRow(r).height = 20
 
-      ws.getCell(`A${r}`).value = row[0]
-      ws.getCell(`A${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
-      ws.getCell(`A${r}`).alignment = { vertical: 'middle', horizontal: 'left' }
+      // BLOK KIRI: A:C digabung, label bold + colon rapat + value normal font
+      ws.mergeCells(`A${r}:C${r}`)
+      ws.getCell(`A${r}`).value = {
+        richText: [
+          { text: `${item.leftLabel} : `, font: { name: 'Times New Roman', size: 9, bold: true } },
+          { text: item.leftValue, font: { name: 'Times New Roman', size: 9, bold: false } },
+        ],
+      }
+      ws.getCell(`A${r}`).alignment = {
+        vertical: 'middle',
+        horizontal: 'left',
+        wrapText: false,
+        shrinkToFit: true,
+      }
 
-      ws.mergeCells(`B${r}:C${r}`)
-      ws.getCell(`B${r}`).value = row[1]
-      ws.getCell(`B${r}`).font = { name: 'Times New Roman', size: 9 }
-      ws.getCell(`B${r}`).alignment = { vertical: 'middle', horizontal: 'left', wrapText: false }
+      // SPACER: Kolom D dibiarkan kosong untuk memberi jarak horizontal yang tegas
 
-      ws.getCell(`D${r}`).value = row[2]
-      ws.getCell(`D${r}`).font = { name: 'Times New Roman', size: 9, bold: true }
-      ws.getCell(`D${r}`).alignment = { vertical: 'middle', horizontal: 'left' }
-
+      // BLOK KANAN: E:F digabung (sejajar di atas bagian 'Rata Kelas')
       ws.mergeCells(`E${r}:F${r}`)
-      ws.getCell(`E${r}`).value = row[3]
-      ws.getCell(`E${r}`).font = { name: 'Times New Roman', size: 9 }
-      ws.getCell(`E${r}`).alignment = { vertical: 'middle', horizontal: 'left' }
+      ws.getCell(`E${r}`).value = {
+        richText: [
+          { text: `${item.rightLabel} : `, font: { name: 'Times New Roman', size: 9, bold: true } },
+          { text: item.rightValue, font: { name: 'Times New Roman', size: 9, bold: false } },
+        ],
+      }
+      ws.getCell(`E${r}`).alignment = {
+        vertical: 'middle',
+        horizontal: 'left',
+        wrapText: false,
+        shrinkToFit: true,
+      }
+
       r++
     })
     r++
